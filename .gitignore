@@ -1,0 +1,48 @@
+# IDE
+.idea
+.vscode/
+*.code-workspace
+
+# Git
+.worktrees/
+
+*.orig
+*.rej
+*~
+*.DS_Store
+*.o
+*.swp
+*.log
+*.pyc
+*.bak
+
+# Build
+build/
+node_modules/
+assets/dist/
+*.bundle.js
+*.module.wasm
+
+.drafts
+docker/factory.manifest
+docker/.run
+docker/*.zip
+
+# Python
+.venv
+venv
+
+# Postgres bind-mount data (never commit DB files)
+data/
+backend/db
+
+# Offline map tiles (large binary files)
+tiles/*.mbtiles
+
+# Environment — never commit secrets
+.env
+
+/.composer
+/.npm
+.claude
+CLAUDE.MD

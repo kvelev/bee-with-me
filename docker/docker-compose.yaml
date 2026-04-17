@@ -1,0 +1,18 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    platform: linux/amd64
+    env_file: ../.env
+    volumes:
+      - ../backend/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+      - ../data/pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+  tiles:
+    image: maptiler/tileserver-gl:latest
+    volumes:
+      - ../tiles:/data
+    ports:
+      - "8080:8080"
+    command: --no-config --port 8080
