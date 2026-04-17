@@ -34,7 +34,6 @@ venv
 
 # Postgres bind-mount data (never commit DB files)
 data/
-backend/db
 
 # Offline map tiles (large binary files)
 tiles/*.mbtiles
