@@ -10,3 +10,5 @@
  - change transparency in the group page
  - finish the SOS mode of the device
  - filter by ranks
+ - harden security
+  

@@ -2,6 +2,8 @@
 
 Offline people-tracking application for LoRaWAN-based rescue operations. Receives MGRS coordinates from RescuerBee devices via USB, stores them in PostgreSQL, and displays live positions on an interactive map.
 
+There are a lot of things that could be done differently, but this is mostly a vibe-coded project. Due to the fact that it is not supposed to be exposed to the internet, there are a lot of compromises being done when it comes to security. 
+
 ## Prerequisites
 
 - Python 3.11+
