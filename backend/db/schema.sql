@@ -21,7 +21,8 @@ CREATE TABLE users (
     id             UUID         PRIMARY KEY DEFAULT uuid_generate_v4(),
     username       VARCHAR(64)  UNIQUE,          -- NULL = field personnel with no app login
     password_hash  VARCHAR(255),
-    pin_hash       VARCHAR(255),                 -- numeric PIN for quick field auth
+    pin            VARCHAR(20),                  -- identification number (plaintext)
+    pin_hash       VARCHAR(255),                 -- legacy hashed PIN (kept for auth compat)
     first_name     VARCHAR(128) NOT NULL DEFAULT '',
     last_name      VARCHAR(128) NOT NULL DEFAULT '',
     full_name      VARCHAR(255) NOT NULL,        -- kept as first_name || ' ' || last_name
@@ -31,6 +32,8 @@ CREATE TABLE users (
     blood_type     VARCHAR(5),
     photo_url      VARCHAR(500),
     notes          TEXT,
+    is_radio_enthusiast BOOLEAN      NOT NULL DEFAULT FALSE,
+    radio_initials      VARCHAR(20),
     role           app_role     NOT NULL DEFAULT 'viewer',
     is_active      BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),

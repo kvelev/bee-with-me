@@ -9,6 +9,10 @@ export const getMe = () => api.get('/auth/me')
 
 // Users
 export const getUsers      = ()         => api.get('/users/')
+export const importUsers   = (file)     => {
+  const fd = new FormData(); fd.append('file', file)
+  return api.post('/users/import', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+}
 export const getUser       = (id)       => api.get(`/users/${id}`)
 export const createUser    = (data)     => api.post('/users/', data)
 export const updateUser    = (id, data) => api.put(`/users/${id}`, data)

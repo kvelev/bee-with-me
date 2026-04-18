@@ -2,9 +2,23 @@
   <div class="page">
     <div class="page-header">
       <h2>{{ t('users.title') }}</h2>
-      <button @click="openForm(null)">{{ t('users.add') }}</button>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label class="import-btn">
+          {{ t('users.import') }}
+          <input type="file" accept=".xls,.xlsx" @change="onImport" hidden />
+        </label>
+        <button @click="openForm(null)">{{ t('users.add') }}</button>
+      </div>
     </div>
     <p v-if="pageError" class="page-error">{{ pageError }}</p>
+    <div v-if="importResult" class="import-result" :class="importResult.skipped.length ? 'import-warn' : 'import-ok'">
+      <span>✓ {{ importResult.created }} {{ t('users.importCreated') }}</span>
+      <template v-if="importResult.skipped.length">
+        &nbsp;·&nbsp;{{ importResult.skipped.length }} {{ t('users.importSkipped') }}:
+        <span v-for="s in importResult.skipped" :key="s.row" class="skip-item">row {{ s.row }}: {{ s.reason }}</span>
+      </template>
+      <button class="import-close" @click="importResult = null">✕</button>
+    </div>
 
     <div class="card">
       <table>
@@ -85,8 +99,8 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>{{ t('users.form.pin') }} {{ editing ? t('users.form.passHint') : '*' }}</label>
-            <input v-model="form.pin" type="password" inputmode="numeric" maxlength="8" placeholder="••••" />
+            <label>{{ t('users.form.pin') }}</label>
+            <input v-model="form.pin" type="text" maxlength="20" />
           </div>
           <div class="form-group">
             <label>{{ t('users.form.bloodType') }}</label>
@@ -131,6 +145,16 @@
           <label>{{ t('users.form.notes') }}</label>
           <textarea v-model="form.notes" rows="3" />
         </div>
+        <div class="form-group toggle-row">
+          <label class="toggle-label">
+            <input type="checkbox" v-model="form.is_radio_enthusiast" style="width:auto" />
+            {{ t('users.form.radioEnthusiast') }}
+          </label>
+        </div>
+        <div v-if="form.is_radio_enthusiast" class="form-group">
+          <label>{{ t('users.form.radioInitials') }}</label>
+          <input v-model="form.radio_initials" />
+        </div>
         <div class="form-group">
           <label>{{ t('users.form.device') }}</label>
           <select v-model="selectedDeviceId">
@@ -174,7 +198,7 @@
 import { ref, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '../api/client'
-import { getUsers, createUser, updateUser, deleteUser, deactivateUser, reactivateUser, setGroupLeader, removeMember, getDevices, assignDevice } from '../api'
+import { getUsers, createUser, updateUser, deleteUser, deactivateUser, reactivateUser, setGroupLeader, removeMember, getDevices, assignDevice, importUsers } from '../api'
 
 const { t } = useI18n()
 const BLOOD_TYPES = ['A+', 'A−', 'B+', 'B−', 'AB+', 'AB−', 'O+', 'O−']
@@ -186,7 +210,8 @@ const editing    = ref(null)
 const formError  = ref('')
 const pageError  = ref('')
 const form       = ref({})
-const hasLogin   = ref(false)
+const hasLogin    = ref(false)
+const importResult = ref(null)
 const photoFile  = ref(null)
 const photoPreview    = ref(null)
 const selectedDeviceId  = ref(null)   // device chosen in the form
@@ -207,6 +232,18 @@ function initials(name) {
   return name?.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?'
 }
 
+async function onImport(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  e.target.value = ''
+  try {
+    importResult.value = await importUsers(file)
+    await loadData()
+  } catch (err) {
+    pageError.value = typeof err === 'string' ? err : t('users.importError')
+  }
+}
+
 function openForm(user) {
   editing.value      = user
   formError.value    = ''
@@ -217,8 +254,10 @@ function openForm(user) {
     ? { first_name: user.first_name, last_name: user.last_name,
         username: user.username, rank: user.rank, phone: user.phone,
         blood_type: user.blood_type, email: user.email,
-        notes: user.notes, role: user.role }
-    : { role: 'viewer', blood_type: null, phone: '' }
+        notes: user.notes, role: user.role, pin: user.pin ?? '',
+        is_radio_enthusiast: user.is_radio_enthusiast ?? false,
+        radio_initials: user.radio_initials ?? '' }
+    : { role: 'viewer', blood_type: null, phone: '', pin: '', is_radio_enthusiast: false, radio_initials: '' }
   const currentDevice = user
     ? allDevices.value.find(d => d.user_id === user.id) ?? null
     : null
@@ -397,7 +436,23 @@ button.warning { background: rgba(234,179,8,.15); border-color: #ca8a04; color: 
 .leader-btn:hover      { color: var(--text); }
 .leader-btn-active     { background: rgba(255,200,0,0.15); border-color: #ffc900; color: #ffc900; }
 button.small           { padding: 2px 7px; font-size: 12px; }
-.toggle-row { margin-bottom: 4px; }
+.import-btn {
+  display: inline-block; cursor: pointer; padding: 8px 16px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 6px; font-size: 14px; font-weight: 500; color: var(--text);
+  transition: opacity .15s;
+}
+.import-btn:hover { opacity: .8; }
+.import-result {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  padding: 10px 14px; border-radius: 6px; font-size: 13px; margin-bottom: 12px;
+}
+.import-ok   { background: rgba(34,197,94,0.12);  border: 1px solid var(--success); color: var(--success); }
+.import-warn { background: rgba(245,158,11,0.12); border: 1px solid var(--warning); color: var(--warning); }
+.skip-item   { background: var(--bg-card); border-radius: 4px; padding: 1px 6px; font-size: 11px; font-family: monospace; }
+.import-close { background: none; border: none; color: inherit; padding: 0 4px; font-size: 14px; margin-left: auto; }
+
+.toggle-row { margin-bottom: 12px; }
 .toggle-label { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; color: var(--text-muted); }
 .toggle-label input { cursor: pointer; width: auto; }
 .toggle-locked { opacity: .6; cursor: not-allowed; }

@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.2.1] - 2026-04-18
+
+### Volunteer import (XLS)
+
+- Added `python-calamine` (Rust-based Excel reader) as the primary parser for `.xls` files, replacing the previous multi-fallback chain that failed on OLE2 compound documents with non-standard FAT allocation
+- Column matching now recognises Bulgarian headers: `ПИН` → pin, `Доброволец` → name, `Телефон` → phone
+- Imported volunteers are now assigned role `rescuer` instead of `viewer`
+- Re-importing the same file no longer creates duplicates — rows are skipped if a user with the same full name already exists, and the skip reason is included in the response
+
+### PIN field
+
+- PIN is returned by the API and pre-filled in the edit form when opening an existing volunteer
+- PIN input is now a plain text field (previously masked as a password)
+
+### Radio enthusiast
+
+- Added `is_radio_enthusiast` boolean and `radio_initials VARCHAR(20)` fields to the users table and all related API endpoints
+- Edit form shows a "Радиолюбител" checkbox; when checked, a call sign / initials field appears below it
+
 ## [1.2.0] - 2026-04-18
 
 ### Stale position indicator
