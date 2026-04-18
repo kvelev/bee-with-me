@@ -31,6 +31,7 @@ class SimulateRequest(BaseModel):
     device_id: UUID
     lat: float | None = None   # random if omitted
     lon: float | None = None
+    sos_active: bool = False
 
 
 @router.post('/simulate')
@@ -66,12 +67,25 @@ async def simulate(
         ) VALUES (
             $1, $2, $3, $4,
             ST_SetSRID(ST_MakePoint($6, $5), 4326), $5, $6, $7,
-            $8, $9, $10, $11, FALSE, FALSE, 0
+            $8, $9, $10, $11, $12, FALSE, 0
         ) RETURNING id
         """,
         device['id'], device['user_id'], random.randint(0, 255), now,
-        lat, lon, mgrs_str, alt, speed, sats, bat,
+        lat, lon, mgrs_str, alt, speed, sats, bat, body.sos_active,
     )
+
+    if body.sos_active:
+        await conn.execute(
+            """
+            INSERT INTO sos_alerts (device_id, user_id, triggered_at)
+            SELECT $1, $2, $3
+            WHERE NOT EXISTS (
+                SELECT 1 FROM sos_alerts
+                WHERE device_id = $1 AND resolved_at IS NULL
+            )
+            """,
+            device['id'], device['user_id'], now,
+        )
 
     user_row = await conn.fetchrow(
         'SELECT full_name, rank, photo_url, phone, is_active FROM users WHERE id = $1',
@@ -105,7 +119,7 @@ async def simulate(
         'speed_knots':     speed,
         'battery_voltage': bat,
         'gnss_satellites': sats,
-        'sos_active':      False,
+        'sos_active':      body.sos_active,
         'repeater_mode':   False,
         'recorded_at':     now.isoformat(),
         'groups':          groups,

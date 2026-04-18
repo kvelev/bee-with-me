@@ -42,6 +42,8 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
 pip install -r backend/requirements.txt
 
+The key is: activate the venv from backend/.venv, but run the command from the project root so Python can resolve the backend package.
+
 uvicorn backend.main:app --reload
 ```
 

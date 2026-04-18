@@ -1,12 +1,11 @@
 """
 Serial reader service.
 
-Reads frames from the USB LoRaWAN device, persists them to PostgreSQL,
-and fires pg_notify('location_update', device_id) so the FastAPI
-WebSocket layer can push updates to connected clients.
+Reads frames from the USB LoRaWAN gateway, persists them to PostgreSQL,
+and fires pg_notify so the WebSocket layer pushes updates to connected clients.
 
 Run standalone:  python -m backend.serial.reader
-Or imported as a background task by the FastAPI app.
+Or started as a background task by the FastAPI lifespan in main.py.
 """
 
 from __future__ import annotations
@@ -14,27 +13,41 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
+from datetime import datetime, timezone
 
 import asyncpg
-import serial_asyncio
 
 from .parser import BeeFrame, RepeaterFrame, parse_frame
 
 logger = logging.getLogger(__name__)
 
-SERIAL_PORT = os.getenv('SERIAL_PORT', '/dev/ttyUSB0')
-SERIAL_BAUD = int(os.getenv('SERIAL_BAUD', '9600'))
+# Shared status — read by GET /api/serial/status
+status: dict = {
+    'connected':       False,
+    'port':            None,
+    'baud':            None,
+    'last_frame_at':   None,
+    'frames_received': 0,
+    'error':           None,
+}
+
+RECONNECT_DELAY = 5   # seconds between reconnect attempts
 
 
 def _dsn() -> str:
+    from ..config import settings
     return (
-        f"postgresql://{os.getenv('POSTGRES_USER')}"
-        f":{os.getenv('POSTGRES_PASSWORD')}"
-        f"@{os.getenv('POSTGRES_HOST', 'localhost')}"
-        f":{os.getenv('POSTGRES_PORT', '5432')}"
-        f"/{os.getenv('POSTGRES_DB')}"
+        f"postgresql://{settings.postgres_user}"
+        f":{settings.postgres_password}"
+        f"@{settings.postgres_host}"
+        f":{settings.postgres_port}"
+        f"/{settings.postgres_db}"
     )
+
+
+def _port_and_baud() -> tuple[str, int]:
+    from ..config import settings
+    return settings.serial_port, settings.serial_baud
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
@@ -79,7 +92,6 @@ async def _handle_bee(frame: BeeFrame, conn: asyncpg.Connection) -> None:
     if frame.sos_active:
         await _ensure_sos_alert(frame, device, conn)
 
-    # Fetch user info; skip broadcast for inactive users
     user_row = await conn.fetchrow(
         'SELECT full_name, rank, photo_url, phone, is_active FROM users WHERE id = $1',
         device['user_id'],
@@ -151,43 +163,76 @@ async def _handle_repeater(frame: RepeaterFrame, conn: asyncpg.Connection) -> No
     )
 
 
-# ── Main read loop ────────────────────────────────────────────────────────────
+# ── Read loop (one connected session) ────────────────────────────────────────
+
+async def _read_loop(reader: asyncio.StreamReader, conn: asyncpg.Connection) -> None:
+    while True:
+        raw_bytes = await reader.readline()
+        raw = raw_bytes.decode('ascii', errors='replace').strip()
+        if not raw:
+            continue
+
+        frame = parse_frame(raw)
+        if isinstance(frame, BeeFrame):
+            await _handle_bee(frame, conn)
+        elif isinstance(frame, RepeaterFrame):
+            await _handle_repeater(frame, conn)
+        else:
+            logger.debug('Unparseable or unknown frame: %r', raw)
+
+        status['last_frame_at']   = datetime.now(timezone.utc).isoformat()
+        status['frames_received'] += 1
+
+
+# ── Main run loop (reconnects on failure) ─────────────────────────────────────
 
 async def run() -> None:
-    from dotenv import load_dotenv
-    load_dotenv()
+    # Support standalone execution
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
 
-    conn = await asyncpg.connect(_dsn())
-    logger.info('Connected to PostgreSQL')
+    if __name__ == '__main__':
+        logging.basicConfig(level=logging.INFO)
 
-    reader, _ = await serial_asyncio.open_serial_connection(
-        url=SERIAL_PORT, baudrate=SERIAL_BAUD
-    )
-    logger.info('Serial reader started on %s @ %s baud', SERIAL_PORT, SERIAL_BAUD)
+    port, baud = _port_and_baud()
+    status['port'] = port
+    status['baud'] = baud
 
     while True:
+        conn = None
         try:
-            raw_bytes = await reader.readline()
-            raw = raw_bytes.decode('ascii', errors='replace').strip()
-            if not raw:
-                continue
+            import serial_asyncio
+            conn = await asyncpg.connect(_dsn())
+            reader, _ = await serial_asyncio.open_serial_connection(
+                url=port, baudrate=baud,
+            )
+            status['connected'] = True
+            status['error']     = None
+            logger.info('Serial reader connected on %s @ %d baud', port, baud)
 
-            frame = parse_frame(raw)
-            if isinstance(frame, BeeFrame):
-                await _handle_bee(frame, conn)
-            elif isinstance(frame, RepeaterFrame):
-                await _handle_repeater(frame, conn)
-            else:
-                logger.debug('Unparseable or unknown frame: %r', raw)
+            await _read_loop(reader, conn)
 
         except asyncio.CancelledError:
+            logger.info('Serial reader stopped')
             break
-        except Exception:
-            logger.exception('Error processing serial frame')
 
-    await conn.close()
+        except Exception as exc:
+            msg = str(exc)
+            logger.warning('Serial reader error (%s) — retrying in %ds', msg, RECONNECT_DELAY)
+            status['connected'] = False
+            status['error']     = msg
+
+        finally:
+            if conn and not conn.is_closed():
+                await conn.close()
+
+        await asyncio.sleep(RECONNECT_DELAY)
+
+    status['connected'] = False
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
     asyncio.run(run())

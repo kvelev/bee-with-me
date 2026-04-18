@@ -98,8 +98,8 @@
         </div>
         <!-- App login toggle -->
         <div class="form-group toggle-row">
-          <label class="toggle-label">
-            <input type="checkbox" v-model="hasLogin" />
+          <label class="toggle-label" :class="{ 'toggle-locked': editing?.username === 'admin' }">
+            <input type="checkbox" v-model="hasLogin" :disabled="editing?.username === 'admin'" />
             {{ t('users.form.grantLogin') }}
           </label>
         </div>
@@ -399,7 +399,9 @@ button.warning { background: rgba(234,179,8,.15); border-color: #ca8a04; color: 
 button.small           { padding: 2px 7px; font-size: 12px; }
 .toggle-row { margin-bottom: 4px; }
 .toggle-label { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; color: var(--text-muted); }
-.toggle-label input { cursor: pointer; }
+.toggle-label input { cursor: pointer; width: auto; }
+.toggle-locked { opacity: .6; cursor: not-allowed; }
+.toggle-locked input { cursor: not-allowed; }
 
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(0,0,0,.6);

@@ -47,6 +47,8 @@ DEMO_USERS = [
     },
 ]
 
+SOS_DEVICE = 'demo_elena'   # this device will always transmit with SOS active
+
 DEMO_GROUPS = [
     {
         'name': 'Alpha Team',
@@ -154,13 +156,15 @@ def run(lat: float, lon: float, interval: float, headers: dict, devices: dict) -
             positions[uname] = (plat, plon)
 
             resp = httpx.post(f'{BASE}/test/simulate', headers=headers, json={
-                'device_id': did,
-                'lat':       round(plat, 6),
-                'lon':       round(plon, 6),
+                'device_id':  did,
+                'lat':        round(plat, 6),
+                'lon':        round(plon, 6),
+                'sos_active': uname == SOS_DEVICE,
             })
             if resp.status_code == 200:
                 body = resp.json()
-                print(f'  [{step:>4}] {uname:<15} {body["mgrs"]}   {plat:.5f}N {plon:.5f}E')
+                sos_tag = ' 🚨 SOS' if uname == SOS_DEVICE else ''
+                print(f'  [{step:>4}] {uname:<15} {body["mgrs"]}   {plat:.5f}N {plon:.5f}E{sos_tag}')
             else:
                 print(f'  Error {resp.status_code}: {resp.text}', file=sys.stderr)
 

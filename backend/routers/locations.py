@@ -50,7 +50,7 @@ async def open_sos_alerts(
     _: Annotated[asyncpg.Record, Depends(get_current_user)],
 ):
     rows = await conn.fetch("""
-        SELECT sa.id, sa.triggered_at,
+        SELECT sa.id, sa.device_id, sa.triggered_at,
                d.dev_sn, d.name AS device_name,
                u.full_name, u.rank
         FROM sos_alerts sa

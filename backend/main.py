@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .auth import hash_password
 from .database import close_pool, get_pool, init_pool
-from .routers import auth, devices, export, groups, locations, users, ws, test
+from .routers import auth, devices, export, groups, locations, users, ws, test, serial
 from .ws import manager
 
 logging.basicConfig(level=logging.INFO)
@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
     await close_pool()
 
 
-app = FastAPI(title='Bee With Me API', version='1.0.0', lifespan=lifespan)
+app = FastAPI(title='Bee With Me API', version='1.1.0', lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -70,6 +70,7 @@ app.include_router(locations.router)
 app.include_router(export.router)
 app.include_router(ws.router)
 app.include_router(test.router)
+app.include_router(serial.router)
 
 
 import os

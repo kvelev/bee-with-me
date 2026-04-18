@@ -7,10 +7,13 @@ const TRAIL_MS = TRAIL_MINUTES * 60 * 1000
 
 export const useLocationsStore = defineStore('locations', () => {
   // Keyed by device_id for O(1) updates from WebSocket
-  const positions = ref({})
-  const sosAlerts = ref([])
+  const positions        = ref({})
+  const sosAlerts        = ref([])
+  const sosNotifications = ref([])   // [{id, device_id, name, timestamp}]
   // device_id -> [{lat, lon, recorded_at (ISO string)}]
-  const trails    = ref({})
+  const trails           = ref({})
+  // devices whose SOS was manually resolved — suppress re-trigger until device clears SOS itself
+  const resolvedSOS      = new Set()
 
   const positionList = computed(() => Object.values(positions.value))
   const hasSOS       = computed(() => sosAlerts.value.length > 0)
@@ -28,9 +31,29 @@ export const useLocationsStore = defineStore('locations', () => {
     trails.value = await getTrail(TRAIL_MINUTES)
   }
 
+  function dismissSOSNotification(id) {
+    sosNotifications.value = sosNotifications.value.filter(n => n.id !== id)
+  }
+
   function applyLocationUpdate(data) {
     const existing = positions.value[data.device_id] ?? {}
-    positions.value[data.device_id] = { ...existing, ...data }
+
+    // If the device cleared its SOS on the hardware side, lift the suppression
+    if (!data.sos_active) resolvedSOS.delete(data.device_id)
+
+    // Effective SOS: raw flag AND not manually resolved by operator
+    const effectiveSOS = data.sos_active && !resolvedSOS.has(data.device_id)
+
+    if (effectiveSOS && !existing.sos_active) {
+      sosNotifications.value.push({
+        id:        Date.now() + Math.random(),
+        device_id: data.device_id,
+        name:      data.full_name || data.device_name || `SN:${data.dev_sn ?? ''}`,
+        timestamp: new Date().toISOString(),
+      })
+    }
+
+    positions.value[data.device_id] = { ...existing, ...data, sos_active: effectiveSOS }
 
     // Append to trail and prune points older than 30 min
     if (data.latitude == null || data.longitude == null) return
@@ -49,13 +72,20 @@ export const useLocationsStore = defineStore('locations', () => {
   }
 
   async function resolveSOS(alertId, notes) {
+    const alert = sosAlerts.value.find(a => a.id === alertId)
     await apiResolve(alertId, notes)
     sosAlerts.value = sosAlerts.value.filter(a => a.id !== alertId)
+    if (alert?.device_id) {
+      resolvedSOS.add(alert.device_id)
+      if (positions.value[alert.device_id]) {
+        positions.value[alert.device_id] = { ...positions.value[alert.device_id], sos_active: false }
+      }
+    }
   }
 
   return {
-    positions, sosAlerts, trails, positionList, hasSOS,
+    positions, sosAlerts, sosNotifications, trails, positionList, hasSOS,
     fetchLive, fetchSOS, fetchTrail,
-    applyLocationUpdate, applySOSAlert, resolveSOS,
+    applyLocationUpdate, applySOSAlert, resolveSOS, dismissSOSNotification,
   }
 })

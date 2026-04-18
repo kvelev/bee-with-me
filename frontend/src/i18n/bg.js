@@ -20,6 +20,9 @@ export default {
   map: {
     trackers:      'Тракери',
     noTrackers:    'Няма активни тракери',
+    searchRank:         'Търсене по звание…',
+    serialConnected:    'Gateway свързан',
+    serialDisconnected: 'Gateway изключен',
     mgrsGrid:      'MGRS Мрежа',
     trail:         'Маршрут',
     trailNumbers:  'Проследяване',
@@ -159,8 +162,9 @@ export default {
     generating: 'Генериране…',
   },
   sos: {
-    active:  '🚨 SOS АКТИВЕН —',
-    resolve: 'Разреши',
+    active:     '🚨 SOS АКТИВЕН —',
+    resolve:    'Разреши',
+    alertTitle: 'SOS Активиран',
   },
   about: {
     description: 'Описание',

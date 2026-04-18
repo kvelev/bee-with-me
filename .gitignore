@@ -29,8 +29,8 @@ docker/.run
 docker/*.zip
 
 # Python
-.venv
-venv
+.venv*
+venv*
 
 # Postgres bind-mount data (never commit DB files)
 data/

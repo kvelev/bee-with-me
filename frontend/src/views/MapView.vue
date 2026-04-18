@@ -1,41 +1,22 @@
 <template>
+  <SOSToast />
   <div class="map-layout">
     <div ref="mapEl" class="map-container" />
-
-    <!-- OL popup -->
-    <div ref="popupEl" class="map-popup" style="display:none">
-      <template v-if="popupData">
-        <div class="popup-header">
-          <img v-if="popupData.photo_url" :src="popupData.photo_url" class="popup-avatar" />
-          <div>
-            <div class="popup-name">{{ popupData.full_name || '—' }}</div>
-            <div class="popup-rank">{{ popupData.rank || '' }}</div>
-          </div>
-        </div>
-        <div class="popup-row"><b>{{ t('map.mgrs') }}</b> {{ popupData.mgrs }}</div>
-        <div class="popup-row"><b>{{ t('map.alt') }}</b> {{ popupData.altitude_m ?? '—' }} m</div>
-        <div class="popup-row"><b>{{ t('map.speed') }}</b> {{ popupData.speed_knots ?? '—' }} kn</div>
-        <div class="popup-row"><b>{{ t('map.battery') }}</b> {{ popupData.battery_voltage ?? '—' }} V</div>
-        <div class="popup-row"><b>{{ t('map.satellites') }}</b> {{ popupData.gnss_satellites ?? '—' }}</div>
-        <div class="popup-row"><b>{{ t('map.updated') }}</b> {{ formatTime(popupData.recorded_at) }}</div>
-        <div v-if="popupData.sos_active" class="popup-sos">{{ t('map.sosActive') }}</div>
-        <div v-if="popupData.groups?.length" class="popup-groups">
-          <span
-            v-for="g in popupData.groups" :key="g.id"
-            class="group-chip" :style="{ background: g.color }"
-          >
-            {{ g.is_leader ? '★ ' : '' }}{{ g.name }}
-          </span>
-        </div>
-      </template>
-      <button class="popup-close" @click="closePopup">✕</button>
-    </div>
 
     <!-- Cursor coordinate readout -->
     <div v-if="cursorCoords && (mgrsGridOn || latLonOn)" class="mgrs-readout">
       <span v-if="mgrsGridOn">{{ cursorCoords.mgrs }}</span>
       <span v-if="mgrsGridOn && latLonOn" class="readout-sep">|</span>
       <span v-if="latLonOn">{{ cursorCoords.lat.toFixed(5) }}, {{ cursorCoords.lon.toFixed(5) }}</span>
+    </div>
+
+    <!-- Serial device status (bottom-left, above basemap controls) -->
+    <div v-if="serialStatus" class="serial-status" :class="serialStatus.connected ? 'serial-ok' : 'serial-off'">
+      <span class="serial-dot" />
+      <span v-if="serialStatus.connected">
+        {{ t('map.serialConnected') }} · {{ serialStatus.port }} · {{ serialStatus.frames_received }} frames
+      </span>
+      <span v-else>{{ t('map.serialDisconnected') }} · {{ serialStatus.port }}</span>
     </div>
 
     <!-- Basemap + grid + trail controls (bottom-left) -->
@@ -76,6 +57,14 @@
       <div class="panel-header">
         <span>{{ t('map.trackers') }} ({{ displayList.length }})</span>
         <span v-if="store.hasSOS" class="badge badge-sos sos-pulse">SOS</span>
+      </div>
+      <div class="rank-search">
+        <input
+          v-model="rankFilter"
+          :placeholder="t('map.searchRank')"
+          class="rank-input"
+        />
+        <button v-if="rankFilter" class="rank-clear" @click="rankFilter = ''">✕</button>
       </div>
 
       <!-- Individual mode -->
@@ -126,33 +115,42 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { fromLonLat } from 'ol/proj'
 import { useLocationsStore } from '../stores/locations'
 import { useWebSocket } from '../composables/useWebSocket'
 import { useMap, BASEMAPS } from '../composables/useMap'
 import { getGroups, getGroup } from '../api'
+import SOSToast from '../components/SOSToast.vue'
+import { getSerialStatus } from '../api'
 
 const { t } = useI18n()
 const store   = useLocationsStore()
 const mapEl   = ref(null)
-const popupEl = ref(null)
 
 const activeBasemap  = ref('osm')
+const serialStatus   = ref(null)   // null = not yet fetched
 const mgrsGridOn     = ref(false)
 const trailOn        = ref(false)
 const trailNumbersOn = ref(false)
 const cursorCoords   = ref(null)   // { mgrs, lat, lon }
 const latLonOn       = ref(false)
 const viewMode       = ref('individuals') // 'individuals' | 'groups'
+const rankFilter     = ref('')
 // id -> { id, name, color, members: [{id, full_name, rank, is_leader}] }
 const groupsMap      = ref({})
 
+const rankFiltered = computed(() => {
+  const q = rankFilter.value.trim().toLowerCase()
+  if (!q) return store.positionList
+  return store.positionList.filter(pos => pos.rank?.toLowerCase().includes(q))
+})
+
 // In teams mode show only leaders, labelled by team name
 const displayList = computed(() => {
-  if (viewMode.value === 'individuals') return store.positionList
-  return store.positionList
+  if (viewMode.value === 'individuals') return rankFiltered.value
+  return rankFiltered.value
     .filter(pos => pos.groups?.some(g => g.is_leader))
     .map(pos => {
       const leaderGroup = pos.groups.find(g => g.is_leader)
@@ -162,9 +160,8 @@ const displayList = computed(() => {
 
 // Build a list of groups with their leader's live position for the panel
 const groupsWithLeaders = computed(() => {
-  // Collect all distinct groups from live positions
   const groupMap = {}
-  for (const pos of store.positionList) {
+  for (const pos of rankFiltered.value) {
     for (const g of (pos.groups ?? [])) {
       if (!groupMap[g.id]) groupMap[g.id] = { id: g.id, name: g.name, color: g.color, leader: null }
       if (g.is_leader) groupMap[g.id].leader = pos
@@ -173,8 +170,8 @@ const groupsWithLeaders = computed(() => {
   return Object.values(groupMap).sort((a, b) => a.name.localeCompare(b.name))
 })
 
-const { map, setBasemap, setMGRSGrid, setTrailVisible, setCheckpointNumbers, refreshMarkers } = useMap(
-  mapEl, popupEl,
+const { map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, refreshMarkers } = useMap(
+  mapEl,
   displayList,
   computed(() => store.trails),
   (coords) => { cursorCoords.value = coords },
@@ -182,7 +179,14 @@ const { map, setBasemap, setMGRSGrid, setTrailVisible, setCheckpointNumbers, ref
 )
 const { connect } = useWebSocket()
 
-const popupData = computed(() => popupEl.value?.__data__ ?? null)
+let serialPollTimer = null
+
+async function refreshSerialStatus() {
+  try {
+    const r = await getSerialStatus()
+    serialStatus.value = r.data
+  } catch { /* backend might be starting up */ }
+}
 
 onMounted(async () => {
   await Promise.all([store.fetchLive(), store.fetchSOS(), store.fetchTrail()])
@@ -191,7 +195,12 @@ onMounted(async () => {
   const list    = await getGroups()
   const details = await Promise.all(list.map(g => getGroup(g.id)))
   groupsMap.value = Object.fromEntries(details.map(g => [g.id, g]))
+
+  refreshSerialStatus()
+  serialPollTimer = setInterval(refreshSerialStatus, 5000)
 })
+
+onUnmounted(() => clearInterval(serialPollTimer))
 
 function switchBasemap(id) {
   activeBasemap.value = id
@@ -210,6 +219,7 @@ function toggleMGRS() {
 }
 function toggleLatLon() {
   latLonOn.value = !latLonOn.value
+  setLatLonGrid(latLonOn.value)
 }
 function toggleTrail() {
   trailOn.value = !trailOn.value
@@ -218,9 +228,6 @@ function toggleTrail() {
 function toggleTrailNumbers() {
   trailNumbersOn.value = !trailNumbersOn.value
   setCheckpointNumbers(trailNumbersOn.value)
-}
-function closePopup() {
-  popupEl.value.style.display = 'none'
 }
 function focusDevice(pos) {
   const m = map()
@@ -242,24 +249,20 @@ function batClass(v) {
 .map-layout { flex: 1; display: flex; position: relative; overflow: hidden; }
 .map-container { flex: 1; height: 100%; }
 
-.map-popup {
-  position: absolute;
+
+.serial-status {
+  position: absolute; bottom: 62px; left: 12px; z-index: 50;
+  display: flex; align-items: center; gap: 6px;
   background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: 8px; padding: 14px; min-width: 200px;
-  font-size: 13px; z-index: 100; box-shadow: 0 4px 20px rgba(0,0,0,.4);
+  border-radius: 4px; padding: 4px 10px; font-size: 11px; color: var(--text-muted);
 }
-.popup-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-.popup-avatar { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border); flex-shrink: 0; }
-.popup-name  { font-weight: 700; font-size: 15px; margin-bottom: 2px; }
-.popup-rank  { color: var(--text-muted); font-size: 12px; }
-.popup-row   { margin-bottom: 4px; }
-.popup-sos   { color: var(--danger); font-weight: 700; margin-top: 8px; }
-.popup-groups { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
-.group-chip  { padding: 2px 8px; border-radius: 99px; font-size: 11px; color: #fff; }
-.popup-close {
-  position: absolute; top: 8px; right: 8px;
-  background: none; padding: 2px 6px; font-size: 12px; color: var(--text-muted);
+.serial-ok  { border-color: var(--success); color: var(--success); }
+.serial-off { border-color: var(--danger);  color: var(--danger); }
+.serial-dot {
+  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  background: currentColor;
 }
+.serial-ok .serial-dot { animation: sos-pulse-border .none; box-shadow: 0 0 4px currentColor; }
 
 .basemap-switcher {
   position: absolute; bottom: 24px; left: 12px; z-index: 50;
@@ -302,6 +305,11 @@ function batClass(v) {
 .bat-warn { color: var(--warning); }
 .bat-low  { color: var(--danger); }
 .no-trackers { padding: 20px; text-align: center; color: var(--text-muted); font-size: 13px; }
+.rank-search { padding: 8px 10px; border-bottom: 1px solid var(--border); display: flex; gap: 4px; flex-shrink: 0; }
+.rank-input  { flex: 1; font-size: 12px; padding: 5px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); }
+.rank-input::placeholder { color: var(--text-muted); }
+.rank-clear  { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 0 4px; cursor: pointer; }
+.rank-clear:hover { color: var(--text); }
 
 .group-section-header {
   padding: 8px 14px 4px; font-size: 11px; font-weight: 700; text-transform: uppercase;

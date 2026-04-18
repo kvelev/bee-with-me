@@ -20,6 +20,9 @@ export default {
   map: {
     trackers:      'Trackers',
     noTrackers:    'No active trackers',
+    searchRank:         'Search by rank…',
+    serialConnected:    'Gateway connected',
+    serialDisconnected: 'Gateway disconnected',
     mgrsGrid:      'MGRS Grid',
     latLon:        'Lat/Lon',
     trail:         'Trail',
@@ -160,8 +163,9 @@ export default {
     generating: 'Generating…',
   },
   sos: {
-    active:  '🚨 SOS ACTIVE —',
-    resolve: 'Resolve',
+    active:     '🚨 SOS ACTIVE —',
+    resolve:    'Resolve',
+    alertTitle: 'SOS Activated',
   },
   about: {
     description: 'Description',

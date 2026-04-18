@@ -42,6 +42,9 @@ export const resolveSOS       = (id, notes)        => api.post(`/locations/sos/$
 export const getHistory       = (deviceId, params) => api.get(`/locations/${deviceId}/history`, { params })
 export const getTrail         = (minutes = 30)     => api.get('/locations/trail', { params: { minutes } })
 
+// Serial
+export const getSerialStatus = () => api.get('/serial/status')
+
 // Export — returns raw blobs
 export const exportCSV     = (params) => api.get('/export/csv',     { params, responseType: 'blob' })
 export const exportGeoJSON = (params) => api.get('/export/geojson', { params, responseType: 'blob' })

@@ -37,7 +37,7 @@ async def list_groups(
     _: Annotated[asyncpg.Record, Depends(get_current_user)],
 ):
     rows = await conn.fetch("""
-        SELECT g.id, g.name, g.description, g.organization, g.color, g.created_at,
+        SELECT g.id, g.name, g.description, g.organization, g.color, g.is_active, g.created_at,
                COUNT(ug.user_id) AS member_count
         FROM groups g
         LEFT JOIN user_groups ug ON ug.group_id = g.id

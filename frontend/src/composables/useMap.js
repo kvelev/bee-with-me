@@ -1,4 +1,5 @@
 import { onMounted, onUnmounted, watch } from 'vue'
+import Overlay from 'ol/Overlay'
 import Map from 'ol/Map'
 import View from 'ol/View'
 import TileLayer from 'ol/layer/Tile'
@@ -11,7 +12,6 @@ import Point from 'ol/geom/Point'
 import LineString from 'ol/geom/LineString'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import { Circle, Fill, Stroke, Style, Text } from 'ol/style'
-import Overlay from 'ol/Overlay'
 import Graticule from 'ol/layer/Graticule'
 import ScaleLine from 'ol/control/ScaleLine'
 import { forward as toMGRS } from 'mgrs'
@@ -122,10 +122,12 @@ function makeCheckpointStyle(color, index, isLast, showNumbers) {
   })
 }
 
-export function useMap(mapRef, popupRef, positionList, trails, onCursorMGRS, groupsMap) {
+export function useMap(mapRef, positionList, trails, onCursorMGRS, groupsMap) {
   let map = null
   let basemapLayer = makeBasemapLayer('osm')
   let checkpointNumbersVisible = false
+  let mgrsLabelMode = false
+  let latLonGridVisible = false
 
   // Marker layer
   const source      = new VectorSource()
@@ -167,21 +169,36 @@ export function useMap(mapRef, popupRef, positionList, trails, onCursorMGRS, gro
       offsetY: -4,
     }),
     lonLabelFormatter: (lon) => {
+      if (mgrsLabelMode) {
+        try {
+          const center = map?.getView().getCenter()
+          if (center) {
+            const [, lat] = toLonLat(center)
+            const zoom = map.getView().getZoom() ?? 7
+            const acc = zoom >= 14 ? 2 : zoom >= 11 ? 1 : 0
+            return toMGRS([lon, lat], acc)
+          }
+        } catch { /* ignore */ }
+        return ''
+      }
       const abs = parseFloat(Math.abs(lon).toFixed(5)).toString()
-      const deg = `${abs}°${lon >= 0 ? 'E' : 'W'}`
-      try {
-        const center = map?.getView().getCenter()
-        if (center) {
-          const [, lat] = toLonLat(center)
-          const zone = toMGRS([lon, lat], 0).slice(0, 3)
-          return `${zone} ${deg}`
-        }
-      } catch { /* ignore */ }
-      return deg
+      return `${abs}°${lon >= 0 ? 'E' : 'W'}`
     },
     latLabelFormatter: (lat) => {
+      if (mgrsLabelMode) {
+        try {
+          const center = map?.getView().getCenter()
+          if (center) {
+            const [lon] = toLonLat(center)
+            const zoom = map.getView().getZoom() ?? 7
+            const acc = zoom >= 14 ? 2 : zoom >= 11 ? 1 : 0
+            return toMGRS([lon, lat], acc)
+          }
+        } catch { /* ignore */ }
+        return mgrsLatBand(lat)
+      }
       const abs = parseFloat(Math.abs(lat).toFixed(5)).toString()
-      return `${mgrsLatBand(lat)} ${abs}°${lat >= 0 ? 'N' : 'S'}`
+      return `${abs}°${lat >= 0 ? 'N' : 'S'}`
     },
     visible: false,
     zIndex: 4,
@@ -194,8 +211,21 @@ export function useMap(mapRef, popupRef, positionList, trails, onCursorMGRS, gro
     map.getLayers().insertAt(0, basemapLayer)
   }
 
+  function forceGraticuleRedraw() {
+    graticule.renderedExtent_ = null
+    map?.render()
+  }
+
   function setMGRSGrid(visible) {
-    graticule.setVisible(visible)
+    mgrsLabelMode = visible
+    graticule.setVisible(visible || latLonGridVisible)
+    forceGraticuleRedraw()
+  }
+
+  function setLatLonGrid(visible) {
+    latLonGridVisible = visible
+    graticule.setVisible(visible || mgrsLabelMode)
+    forceGraticuleRedraw()
   }
 
   function upsertFeature(pos) {
@@ -300,13 +330,6 @@ export function useMap(mapRef, popupRef, positionList, trails, onCursorMGRS, gro
   }
 
   onMounted(() => {
-    const popup = new Overlay({
-      element:     popupRef.value,
-      autoPan:     { animation: { duration: 200 } },
-      positioning: 'bottom-center',
-      offset:      [0, -12],
-    })
-
     // Hover tooltip element — created programmatically so it lives inside OL's viewport
     const tooltipEl = document.createElement('div')
     Object.assign(tooltipEl.style, {
@@ -335,7 +358,7 @@ export function useMap(mapRef, popupRef, positionList, trails, onCursorMGRS, gro
       target:   mapRef.value,
       layers:   [basemapLayer, graticule, trailLayer, checkpointLayer, vectorLayer],
       view:     new View({ center: fromLonLat([25.0, 42.5]), zoom: 7 }),
-      overlays: [popup, tooltip],
+      overlays: [tooltip],
       controls: [new ScaleLine({ units: 'metric', bar: false, minWidth: 100 })],
     })
 
@@ -346,7 +369,8 @@ export function useMap(mapRef, popupRef, positionList, trails, onCursorMGRS, gro
         hitTolerance: 5,
       })
       if (feature) {
-        const pos    = feature.get('pos')
+        const stored = feature.get('pos')
+        const pos    = positionList.value?.find(p => p.device_id === feature.getId()) ?? stored
         const isTeam = !!pos.displayLabel
         const sos    = pos.sos_active    ? '<span style="color:#ef4444;font-weight:700"> 🚨 SOS</span>' : ''
         const bat    = pos.battery_voltage != null ? `<br>🔋 ${pos.battery_voltage.toFixed(1)} V` : ''
@@ -376,10 +400,11 @@ export function useMap(mapRef, popupRef, positionList, trails, onCursorMGRS, gro
           const name  = pos.full_name || pos.device_name || `SN:${pos.dev_sn}`
           const rep   = pos.repeater_mode ? '<span style="color:#a78bfa"> ↩ Repeater</span>' : ''
           const phone = pos.phone ? `<br>📞 ${pos.phone}` : ''
+          const alt   = pos.altitude_m != null ? `<br>⛰ ${pos.altitude_m} m` : ''
           tooltipEl.innerHTML =
             `<strong>${name}</strong>${sos}${rep}` +
             `<br><span style="font-family:monospace;font-size:11px">${pos.mgrs ?? ''}</span>` +
-            bat + time + phone
+            alt + bat + time + phone
         }
         tooltipEl.style.display = 'block'
         tooltip.setPosition(evt.coordinate)
@@ -401,18 +426,6 @@ export function useMap(mapRef, popupRef, positionList, trails, onCursorMGRS, gro
       }
     })
 
-    map.on('click', (evt) => {
-      const feature = map.forEachFeatureAtPixel(evt.pixel, f => f, {
-        layerFilter: l => l === vectorLayer,
-      })
-      if (feature) {
-        popup.setPosition(feature.getGeometry().getCoordinates())
-        popupRef.value.__data__ = feature.get('pos')
-        popupRef.value.style.display = 'block'
-      } else {
-        popupRef.value.style.display = 'none'
-      }
-    })
   })
 
   watch(positionList, (list) => {
@@ -436,5 +449,5 @@ export function useMap(mapRef, popupRef, positionList, trails, onCursorMGRS, gro
     removeStaleFeatures(list.map(p => p.device_id))
   }
 
-  return { map: () => map, setBasemap, setMGRSGrid, setTrailVisible, setCheckpointNumbers, refreshMarkers }
+  return { map: () => map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, refreshMarkers }
 }
