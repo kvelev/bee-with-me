@@ -26,6 +26,7 @@ export default {
     mgrsGrid:      'MGRS Мрежа',
     trail:         'Маршрут',
     trailNumbers:  'Проследяване',
+    measure:       'Измери',
     modeIndividual:'Доброволци',
     modeGroups:    'Екипи',
     leader:        'Ръководител',

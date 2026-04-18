@@ -11,7 +11,8 @@ class Settings(BaseSettings):
     postgres_password: str = 'change_me'
 
     secret_key: str = 'change_me'
-    access_token_expire_minutes: int = 480
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 7
 
     serial_port: str = '/dev/ttyUSB0'
     serial_baud: int = 9600

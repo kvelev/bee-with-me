@@ -38,6 +38,14 @@
       <button v-if="trailOn" :class="['bm-btn', { active: trailNumbersOn }]" @click="toggleTrailNumbers">
         {{ t('map.trailNumbers') }}
       </button>
+      <button :class="['bm-btn', { active: measureOn }]" @click="toggleMeasure">
+        {{ t('map.measure') }}
+      </button>
+    </div>
+
+    <!-- Measure readout -->
+    <div v-if="measureReadout" class="measure-readout">
+      📏 {{ measureReadout.distKm.toFixed(2) }} km &nbsp;·&nbsp; {{ Math.round(measureReadout.bearing) }}°
     </div>
 
     <!-- Mode toggle (bottom-right of map, above tracker panel) -->
@@ -130,6 +138,8 @@ const mapEl   = ref(null)
 
 const activeBasemap  = ref('osm')
 const mgrsGridOn     = ref(false)
+const measureOn      = ref(false)
+const measureReadout = ref(null)  // { distKm, bearing } | null
 const trailOn        = ref(false)
 const trailNumbersOn = ref(false)
 const cursorCoords   = ref(null)   // { mgrs, lat, lon }
@@ -168,11 +178,12 @@ const groupsWithLeaders = computed(() => {
   return Object.values(groupMap).sort((a, b) => a.name.localeCompare(b.name))
 })
 
-const { map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, refreshMarkers } = useMap(
+const { map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, refreshMarkers } = useMap(
   mapEl,
   displayList,
   computed(() => store.trails),
   (coords) => { cursorCoords.value = coords },
+  (data)   => { measureReadout.value = data },
   groupsMap,
 )
 const { connect } = useWebSocket()
@@ -214,6 +225,10 @@ function toggleTrailNumbers() {
   trailNumbersOn.value = !trailNumbersOn.value
   setCheckpointNumbers(trailNumbersOn.value)
 }
+function toggleMeasure() {
+  measureOn.value = !measureOn.value
+  setMeasureMode(measureOn.value)
+}
 function focusDevice(pos) {
   const m = map()
   if (m) m.getView().animate({ center: fromLonLat([pos.longitude, pos.latitude]), zoom: 13, duration: 500 })
@@ -236,7 +251,7 @@ function batClass(v) {
 
 
 .serial-status {
-  position: absolute; bottom: 62px; left: 12px; z-index: 50;
+  position: absolute; top: 12px; right: 12px; z-index: 50;
   display: flex; align-items: center; gap: 6px;
   background: var(--bg-panel); border: 1px solid var(--border);
   border-radius: 4px; padding: 4px 10px; font-size: 11px; color: var(--text-muted);
@@ -250,11 +265,11 @@ function batClass(v) {
 .serial-ok .serial-dot { animation: sos-pulse-border .none; box-shadow: 0 0 4px currentColor; }
 
 .basemap-switcher {
-  position: absolute; bottom: 24px; left: 12px; z-index: 50;
+  position: absolute; bottom: 38px; left: 12px; z-index: 50;
   display: flex; gap: 4px; flex-wrap: wrap; max-width: 420px;
 }
 .mode-toggle {
-  position: absolute; bottom: 24px; right: 12px; z-index: 50;
+  position: absolute; bottom: 38px; right: 12px; z-index: 50;
   display: flex; gap: 2px;
 }
 .bm-btn {
@@ -304,6 +319,15 @@ function batClass(v) {
 .group-section-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .no-leader { padding: 6px 14px 10px; font-size: 12px; color: var(--text-muted); font-style: italic; }
 
+.measure-readout {
+  position: absolute; top: 56px; left: 50%; transform: translateX(-50%);
+  background: rgba(29,78,216,0.15); color: #60a5fa;
+  font-family: monospace; font-size: 13px; font-weight: 600;
+  padding: 5px 14px; border-radius: 6px; pointer-events: none;
+  border: 1px solid rgba(29,78,216,0.5); z-index: 50;
+  letter-spacing: .04em;
+}
+
 .mgrs-readout {
   position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
   background: rgba(15,15,20,0.82); color: #fff;
@@ -312,6 +336,8 @@ function batClass(v) {
   border: 1px solid rgba(255,255,255,0.12); z-index: 50;
   letter-spacing: .04em;
 }
+
+:deep(.ol-attribution) { display: none; }
 
 :deep(.ol-scale-line) {
   background: rgba(15,15,20,0.75);

@@ -17,6 +17,23 @@ import ScaleLine from 'ol/control/ScaleLine'
 import { forward as toMGRS } from 'mgrs'
 
 const DEFAULT_COLOR = '#3b82f6'
+const STALE_MS = 10 * 60 * 1000   // 10 minutes
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371
+  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180
+  const Δφ = (lat2 - lat1) * Math.PI / 180, Δλ = (lon2 - lon1) * Math.PI / 180
+  const a = Math.sin(Δφ/2)**2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2)**2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+function bearingDeg(lat1, lon1, lat2, lon2) {
+  const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180
+  const Δλ = (lon2 - lon1) * Math.PI / 180
+  const y = Math.sin(Δλ) * Math.cos(φ2)
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ)
+  return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360
+}
 
 export const BASEMAPS = [
   { id: 'osm',          label: 'Street' },
@@ -76,19 +93,23 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`
 }
 
-function makeMarkerStyle(color, isSOS, name, isTeam) {
-  const radius = isSOS ? 10 : isTeam ? 10 : 7
+function makeMarkerStyle(color, isSOS, name, isTeam, isStale) {
+  const radius     = isSOS ? 10 : isTeam ? 10 : 7
+  const fillColor  = isStale ? 'rgba(156,163,175,0.45)' : (isSOS ? '#ef4444' : color)
+  const strokeCol  = isStale ? 'rgba(255,255,255,0.35)' : '#fff'
+  const textFill   = isStale ? 'rgba(200,200,200,0.6)'  : '#fff'
+  const textStroke = isStale ? 'rgba(0,0,0,0.25)'       : '#000'
   return new Style({
     image: new Circle({
       radius,
-      fill:   new Fill({ color: isSOS ? '#ef4444' : color }),
-      stroke: new Stroke({ color: '#fff', width: isTeam ? 3 : 2 }),
+      fill:   new Fill({ color: fillColor }),
+      stroke: new Stroke({ color: strokeCol, width: isTeam ? 3 : 2 }),
     }),
     text: new Text({
       text:    name || '',
       offsetY: -(radius + 10),
-      fill:    new Fill({ color: '#fff' }),
-      stroke:  new Stroke({ color: '#000', width: 3 }),
+      fill:    new Fill({ color: textFill }),
+      stroke:  new Stroke({ color: textStroke, width: 3 }),
       font:    isTeam ? 'bold 13px system-ui' : '11px system-ui',
     }),
   })
@@ -122,12 +143,15 @@ function makeCheckpointStyle(color, index, isLast, showNumbers) {
   })
 }
 
-export function useMap(mapRef, positionList, trails, onCursorMGRS, groupsMap) {
+export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, groupsMap) {
   let map = null
   let basemapLayer = makeBasemapLayer('osm')
   let checkpointNumbersVisible = false
   let mgrsLabelMode = false
   let latLonGridVisible = false
+  let measureMode   = false
+  let measurePoints = []
+  let staleTimer    = null
 
   // Marker layer
   const source      = new VectorSource()
@@ -140,6 +164,10 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, groupsMap) {
   // Checkpoint dot layer
   const checkpointSource = new VectorSource()
   const checkpointLayer  = new VectorLayer({ source: checkpointSource, zIndex: 6, visible: false })
+
+  // Measure layer
+  const measureSource = new VectorSource()
+  const measureLayer  = new VectorLayer({ source: measureSource, zIndex: 20 })
 
   // MGRS latitude band letters C–X (8° bands starting at −80°)
   const MGRS_BANDS = 'CDEFGHJKLMNPQRSTUVWX'
@@ -229,10 +257,13 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, groupsMap) {
   }
 
   function upsertFeature(pos) {
-    const id    = pos.device_id
+    const id          = pos.device_id
     const leaderGroup = pos.groups?.find(g => g.is_leader)
-    const color = leaderGroup?.color ?? pos.groups?.[0]?.color ?? DEFAULT_COLOR
-    const isSOS = pos.sos_active
+    const color       = leaderGroup?.color ?? pos.groups?.[0]?.color ?? DEFAULT_COLOR
+    const isSOS       = pos.sos_active
+    const isStale     = pos.recorded_at
+      ? Date.now() - new Date(pos.recorded_at).getTime() > STALE_MS
+      : false
     const label = pos.displayLabel || pos.full_name || pos.device_name || String(pos.dev_sn ?? '')
 
     let feature = source.getFeatureById(id)
@@ -242,7 +273,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, groupsMap) {
       source.addFeature(feature)
     }
     feature.getGeometry().setCoordinates(fromLonLat([pos.longitude, pos.latitude]))
-    feature.setStyle(makeMarkerStyle(color, isSOS, label, !!pos.displayLabel))
+    feature.setStyle(makeMarkerStyle(color, isSOS, label, !!pos.displayLabel, isStale))
     feature.setProperties({ pos }, true)
   }
 
@@ -356,7 +387,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, groupsMap) {
 
     map = new Map({
       target:   mapRef.value,
-      layers:   [basemapLayer, graticule, trailLayer, checkpointLayer, vectorLayer],
+      layers:   [basemapLayer, graticule, trailLayer, checkpointLayer, vectorLayer, measureLayer],
       view:     new View({ center: fromLonLat([25.0, 42.5]), zoom: 7 }),
       overlays: [tooltip],
       controls: [new ScaleLine({ units: 'metric', bar: false, minWidth: 100 })],
@@ -426,6 +457,61 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, groupsMap) {
       }
     })
 
+    // Measure click handler
+    const ptStyle = (label) => new Style({
+      image: new Circle({
+        radius: 6,
+        fill:   new Fill({ color: '#1d4ed8' }),
+        stroke: new Stroke({ color: '#fff', width: 2 }),
+      }),
+      text: new Text({
+        text: label, offsetY: -16,
+        fill:   new Fill({ color: '#1d4ed8' }),
+        stroke: new Stroke({ color: '#000', width: 3 }),
+        font: 'bold 12px system-ui',
+      }),
+    })
+
+    map.on('click', (evt) => {
+      if (!measureMode) return
+      const [lon, lat] = toLonLat(evt.coordinate)
+
+      if (measurePoints.length >= 2) {
+        measurePoints = []
+        measureSource.clear()
+        onMeasure?.(null)
+      }
+
+      measurePoints.push({ lat, lon, coord: evt.coordinate })
+
+      const f = new Feature({ geometry: new Point(evt.coordinate) })
+      f.setStyle(ptStyle(measurePoints.length === 1 ? 'A' : 'B'))
+      measureSource.addFeature(f)
+
+      if (measurePoints.length === 2) {
+        const [a, b] = measurePoints
+        const line = new Feature({ geometry: new LineString([a.coord, b.coord]) })
+        line.setStyle(new Style({ stroke: new Stroke({ color: '#1d4ed8', width: 2, lineDash: [6, 4] }) }))
+        measureSource.addFeature(line)
+        onMeasure?.({ distKm: haversineKm(a.lat, a.lon, b.lat, b.lon), bearing: bearingDeg(a.lat, a.lon, b.lat, b.lon) })
+      }
+    })
+
+    // Re-evaluate stale state every minute without needing a new WS frame
+    staleTimer = setInterval(() => {
+      source.getFeatures().forEach(f => {
+        const pos = f.get('pos')
+        if (!pos) return
+        const leaderGroup = pos.groups?.find(g => g.is_leader)
+        const color   = leaderGroup?.color ?? pos.groups?.[0]?.color ?? DEFAULT_COLOR
+        const isStale = pos.recorded_at
+          ? Date.now() - new Date(pos.recorded_at).getTime() > STALE_MS
+          : false
+        const label = pos.displayLabel || pos.full_name || pos.device_name || String(pos.dev_sn ?? '')
+        f.setStyle(makeMarkerStyle(color, pos.sos_active, label, !!pos.displayLabel, isStale))
+      })
+    }, 60_000)
+
   })
 
   watch(positionList, (list) => {
@@ -442,12 +528,25 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, groupsMap) {
     removeStaleCheckpoints(Object.keys(trailMap))
   }, { deep: true })
 
-  onUnmounted(() => map?.setTarget(null))
+  onUnmounted(() => {
+    map?.setTarget(null)
+    clearInterval(staleTimer)
+  })
+
+  function setMeasureMode(on) {
+    measureMode = on
+    if (!on) {
+      measurePoints = []
+      measureSource.clear()
+      onMeasure?.(null)
+    }
+    if (map) map.getTargetElement().style.cursor = on ? 'crosshair' : ''
+  }
 
   function refreshMarkers(list) {
     list.forEach(upsertFeature)
     removeStaleFeatures(list.map(p => p.device_id))
   }
 
-  return { map: () => map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, refreshMarkers }
+  return { map: () => map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, refreshMarkers }
 }

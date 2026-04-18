@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.2.0] - 2026-04-18
+
+### Stale position indicator
+
+- Map markers automatically grey out after 10 minutes of no new frame from the device
+- Label text also fades so stale devices are visually distinct from live ones
+- Staleness is re-evaluated every 60 seconds client-side, with no backend changes needed
+
+### JWT refresh tokens
+
+- Access tokens are now short-lived (15 minutes default via `ACCESS_TOKEN_EXPIRE_MINUTES`)
+- Login response now includes a `refresh_token` (7-day lifetime, configurable via `REFRESH_TOKEN_EXPIRE_DAYS`)
+- New `POST /api/auth/refresh` endpoint issues a fresh access + refresh token pair (token rotation)
+- Axios interceptor automatically retries any 401 with a silent refresh before redirecting to login
+- Concurrent requests that hit 401 simultaneously are queued and retried after a single refresh, not re-triggered N times
+
+### Distance / bearing tool
+
+- New **Measure** button in the basemap controls row
+- When active the cursor becomes a crosshair; click once to set point A, again to set point B
+- A dashed amber line draws between the two points and a readout appears at the top of the map showing distance in km and bearing in degrees
+- Clicking a third time resets and starts a new measurement; toggling the button off clears everything
+
 ## [1.1.1] - 2026-04-18
 
 ### Bug fixes

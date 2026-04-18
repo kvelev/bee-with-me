@@ -2,17 +2,14 @@
   <div class="layout">
     <nav class="sidebar">
       <div class="sidebar-brand">
-        <img src="../assets/asp-logo-1.png" class="brand-logo" alt="ASP logo" />
+        <img :src="logoUrl" class="brand-logo" alt="ASP logo" />
         <span>Bee With Me</span>
       </div>
 
-      <RouterLink to="/map"     class="nav-item"><span>🗺</span> {{ t('nav.map') }}</RouterLink>
-      <RouterLink to="/users"   class="nav-item"><span>👤</span> {{ t('nav.users') }}</RouterLink>
-      <RouterLink to="/groups"  class="nav-item"><span>👥</span> {{ t('nav.groups') }}</RouterLink>
-      <RouterLink to="/devices" class="nav-item"><span>📡</span> {{ t('nav.devices') }}</RouterLink>
-      <RouterLink to="/export"  class="nav-item"><span>📤</span> {{ t('nav.export') }}</RouterLink>
-
-      <RouterLink to="/about" class="nav-item about-link"><span>ℹ️</span> {{ t('nav.about') }}</RouterLink>
+      <RouterLink
+        v-for="item in NAV_ITEMS" :key="item.to"
+        :to="item.to" class="nav-item"
+      ><span>{{ item.icon }}</span> {{ t(item.labelKey) }}</RouterLink>
 
       <div class="sidebar-footer">
         <span class="text-muted">{{ auth.user?.full_name }}</span>
@@ -41,6 +38,8 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
 import { LOCALES, setLocale } from '../i18n'
 import SOSBanner from './SOSBanner.vue'
+import { NAV_ITEMS } from '../nav-config.js'
+import logoUrl from '../assets/asp-logo-1.png'
 
 const { t, locale } = useI18n()
 const auth   = useAuthStore()

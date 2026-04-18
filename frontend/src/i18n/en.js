@@ -27,6 +27,7 @@ export default {
     latLon:        'Lat/Lon',
     trail:         'Trail',
     trailNumbers:  'Tracking',
+    measure:       'Measure',
     modeIndividual:'Volunteers',
     modeGroups:    'Teams',
     leader:        'Leader',
