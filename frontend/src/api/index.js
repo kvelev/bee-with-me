@@ -17,7 +17,8 @@ export const reactivateUser = (id)      => api.patch(`/users/${id}/reactivate`)
 export const deleteUser    = (id)       => api.delete(`/users/${id}`)
 
 // Groups
-export const getGroups    = ()              => api.get('/groups/')
+export const getGroups            = ()  => api.get('/groups/')
+export const getGroupsWithMembers = ()  => api.get('/groups/', { params: { include_members: true } })
 export const getGroup     = (id)            => api.get(`/groups/${id}`)
 export const createGroup  = (data)          => api.post('/groups/', data)
 export const updateGroup  = (id, data)      => api.put(`/groups/${id}`, data)

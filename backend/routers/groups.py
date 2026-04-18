@@ -2,7 +2,7 @@ from typing import Annotated
 from uuid import UUID
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from ..auth import get_current_user, require_role
@@ -35,15 +35,33 @@ class MemberAdd(BaseModel):
 async def list_groups(
     conn: Annotated[asyncpg.Connection, Depends(get_conn)],
     _: Annotated[asyncpg.Record, Depends(get_current_user)],
+    include_members: bool = Query(False),
 ):
-    rows = await conn.fetch("""
-        SELECT g.id, g.name, g.description, g.organization, g.color, g.is_active, g.created_at,
-               COUNT(ug.user_id) AS member_count
-        FROM groups g
-        LEFT JOIN user_groups ug ON ug.group_id = g.id
-        GROUP BY g.id
-        ORDER BY g.name
-    """)
+    if include_members:
+        rows = await conn.fetch("""
+            SELECT g.id, g.name, g.description, g.organization, g.color, g.is_active, g.created_at,
+                   COUNT(ug.user_id) AS member_count,
+                   COALESCE(
+                       json_agg(json_build_object(
+                           'id', u.id, 'full_name', u.full_name,
+                           'rank', u.rank, 'is_leader', ug.is_leader, 'is_active', u.is_active
+                       )) FILTER (WHERE u.id IS NOT NULL), '[]'
+                   ) AS members
+            FROM groups g
+            LEFT JOIN user_groups ug ON ug.group_id = g.id
+            LEFT JOIN users u ON u.id = ug.user_id
+            GROUP BY g.id
+            ORDER BY g.name
+        """)
+    else:
+        rows = await conn.fetch("""
+            SELECT g.id, g.name, g.description, g.organization, g.color, g.is_active, g.created_at,
+                   COUNT(ug.user_id) AS member_count
+            FROM groups g
+            LEFT JOIN user_groups ug ON ug.group_id = g.id
+            GROUP BY g.id
+            ORDER BY g.name
+        """)
     return [dict(r) for r in rows]
 
 

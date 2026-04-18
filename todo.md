@@ -7,6 +7,11 @@
  - CI/CD
  - build and compile
  - think about windows support?
- - finish the SOS mode of the device
  - harden security
-  
+
+1.2.0
+  - Stale position indicator — if a device hasn't sent a frame in e.g. 10 min, the marker should grey out or show a warning.    
+  Right now a dead device looks identical to a live one.
+  - JWT refresh tokens — the current setup issues a token that eventually expires and the user just gets kicked out silently.                                                                                                    
+  - Distance/bearing readout — click two markers (or marker + cursor) and show straight-line distance and bearing. High value
+  for field coordinators with no extra infrastructure.

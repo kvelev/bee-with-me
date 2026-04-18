@@ -11,12 +11,12 @@
     </div>
 
     <!-- Serial device status (bottom-left, above basemap controls) -->
-    <div v-if="serialStatus" class="serial-status" :class="serialStatus.connected ? 'serial-ok' : 'serial-off'">
+    <div v-if="store.serialStatus" class="serial-status" :class="store.serialStatus.connected ? 'serial-ok' : 'serial-off'">
       <span class="serial-dot" />
-      <span v-if="serialStatus.connected">
-        {{ t('map.serialConnected') }} · {{ serialStatus.port }} · {{ serialStatus.frames_received }} frames
+      <span v-if="store.serialStatus.connected">
+        {{ t('map.serialConnected') }} · {{ store.serialStatus.port }} · {{ store.serialStatus.frames_received }} frames
       </span>
-      <span v-else>{{ t('map.serialDisconnected') }} · {{ serialStatus.port }}</span>
+      <span v-else>{{ t('map.serialDisconnected') }} · {{ store.serialStatus.port }}</span>
     </div>
 
     <!-- Basemap + grid + trail controls (bottom-left) -->
@@ -121,16 +121,14 @@ import { fromLonLat } from 'ol/proj'
 import { useLocationsStore } from '../stores/locations'
 import { useWebSocket } from '../composables/useWebSocket'
 import { useMap, BASEMAPS } from '../composables/useMap'
-import { getGroups, getGroup } from '../api'
+import { getGroupsWithMembers, getSerialStatus } from '../api'
 import SOSToast from '../components/SOSToast.vue'
-import { getSerialStatus } from '../api'
 
 const { t } = useI18n()
 const store   = useLocationsStore()
 const mapEl   = ref(null)
 
 const activeBasemap  = ref('osm')
-const serialStatus   = ref(null)   // null = not yet fetched
 const mgrsGridOn     = ref(false)
 const trailOn        = ref(false)
 const trailNumbersOn = ref(false)
@@ -179,28 +177,15 @@ const { map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpo
 )
 const { connect } = useWebSocket()
 
-let serialPollTimer = null
-
-async function refreshSerialStatus() {
-  try {
-    const r = await getSerialStatus()
-    serialStatus.value = r.data
-  } catch { /* backend might be starting up */ }
-}
-
 onMounted(async () => {
   await Promise.all([store.fetchLive(), store.fetchSOS(), store.fetchTrail()])
   connect()
-  // Build group member cache for hover tooltips
-  const list    = await getGroups()
-  const details = await Promise.all(list.map(g => getGroup(g.id)))
-  groupsMap.value = Object.fromEntries(details.map(g => [g.id, g]))
-
-  refreshSerialStatus()
-  serialPollTimer = setInterval(refreshSerialStatus, 5000)
+  // Build group member cache for hover tooltips (single request instead of N+1)
+  const groups = await getGroupsWithMembers()
+  groupsMap.value = Object.fromEntries(groups.map(g => [g.id, g]))
+  // Seed serial status; WS pushes updates after this
+  try { store.applySerialStatus(await getSerialStatus()) } catch { /* port not configured */ }
 })
-
-onUnmounted(() => clearInterval(serialPollTimer))
 
 function switchBasemap(id) {
   activeBasemap.value = id

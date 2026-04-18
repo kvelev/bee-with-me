@@ -10,8 +10,8 @@ export const useLocationsStore = defineStore('locations', () => {
   const positions        = ref({})
   const sosAlerts        = ref([])
   const sosNotifications = ref([])   // [{id, device_id, name, timestamp}]
-  // device_id -> [{lat, lon, recorded_at (ISO string)}]
   const trails           = ref({})
+  const serialStatus     = ref(null)
   // devices whose SOS was manually resolved — suppress re-trigger until device clears SOS itself
   const resolvedSOS      = new Set()
 
@@ -66,6 +66,11 @@ export const useLocationsStore = defineStore('locations', () => {
     ]
   }
 
+  function applySerialStatus(data) {
+    const { type, ...s } = data
+    serialStatus.value = s
+  }
+
   function applySOSAlert(data) {
     const already = sosAlerts.value.some(a => a.device_id === data.device_id)
     if (!already) sosAlerts.value.push(data)
@@ -84,8 +89,8 @@ export const useLocationsStore = defineStore('locations', () => {
   }
 
   return {
-    positions, sosAlerts, sosNotifications, trails, positionList, hasSOS,
+    positions, sosAlerts, sosNotifications, trails, serialStatus, positionList, hasSOS,
     fetchLive, fetchSOS, fetchTrail,
-    applyLocationUpdate, applySOSAlert, resolveSOS, dismissSOSNotification,
+    applyLocationUpdate, applySOSAlert, applySerialStatus, resolveSOS, dismissSOSNotification,
   }
 })

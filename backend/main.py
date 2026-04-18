@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .auth import hash_password
 from .database import close_pool, get_pool, init_pool
-from .routers import auth, devices, export, groups, locations, users, ws, test, serial
+from .routers import auth, devices, export, groups, locations, users, ws, test, hardware_reader
 from .ws import manager
 
 logging.basicConfig(level=logging.INFO)
@@ -35,12 +35,12 @@ async def lifespan(app: FastAPI):
 
     notify_task = asyncio.create_task(manager.listen_notifications())
 
-    # Serial reader runs only when a real port is available
+    # Hardware reader runs only when a real port is available
     serial_task = None
     try:
-        from .serial.reader import run as serial_run
-        serial_task = asyncio.create_task(serial_run())
-        logger.info('Serial reader task started')
+        from .hardware_reader.reader import run as hardware_reader_run
+        serial_task = asyncio.create_task(hardware_reader_run())
+        logger.info('Hardware reader task started')
     except Exception as exc:
         logger.warning('Serial reader not started: %s', exc)
 
@@ -52,7 +52,7 @@ async def lifespan(app: FastAPI):
     await close_pool()
 
 
-app = FastAPI(title='Bee With Me API', version='1.1.0', lifespan=lifespan)
+app = FastAPI(title='Bee With Me API', version='1.1.1', lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -70,7 +70,7 @@ app.include_router(locations.router)
 app.include_router(export.router)
 app.include_router(ws.router)
 app.include_router(test.router)
-app.include_router(serial.router)
+app.include_router(hardware_reader.router)
 
 
 import os

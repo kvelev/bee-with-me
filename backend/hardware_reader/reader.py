@@ -4,7 +4,7 @@ Serial reader service.
 Reads frames from the USB LoRaWAN gateway, persists them to PostgreSQL,
 and fires pg_notify so the WebSocket layer pushes updates to connected clients.
 
-Run standalone:  python -m backend.serial.reader
+Run standalone:  python -m backend.hardware_reader.reader
 Or started as a background task by the FastAPI lifespan in main.py.
 """
 
@@ -32,6 +32,14 @@ status: dict = {
 }
 
 RECONNECT_DELAY = 5   # seconds between reconnect attempts
+
+
+async def _broadcast_status() -> None:
+    try:
+        from ..ws import manager
+        await manager.broadcast({'type': 'serial_status', **status})
+    except Exception:
+        pass
 
 
 def _dsn() -> str:
@@ -212,6 +220,7 @@ async def run() -> None:
             status['connected'] = True
             status['error']     = None
             logger.info('Serial reader connected on %s @ %d baud', port, baud)
+            await _broadcast_status()
 
             await _read_loop(reader, conn)
 
@@ -224,6 +233,7 @@ async def run() -> None:
             logger.warning('Serial reader error (%s) — retrying in %ds', msg, RECONNECT_DELAY)
             status['connected'] = False
             status['error']     = msg
+            await _broadcast_status()
 
         finally:
             if conn and not conn.is_closed():

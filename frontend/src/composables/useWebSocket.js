@@ -15,6 +15,7 @@ export function useWebSocket() {
       const msg = JSON.parse(event.data)
       if (msg.type === 'location_update') store.applyLocationUpdate(msg)
       if (msg.type === 'sos_alert')       store.applySOSAlert(msg)
+      if (msg.type === 'serial_status')   store.applySerialStatus(msg)
     }
 
     socket.onclose = () => {

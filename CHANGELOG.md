@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.1] - 2026-04-18
+
+### Bug fixes
+
+- **SOS re-appears after page refresh** — `GET /api/locations/live` now joins against `sos_alerts WHERE resolved_at IS NULL` and overrides `sos_active` to `FALSE` for devices whose SOS was already resolved by an operator. Previously a resolved SOS would re-appear on every page refresh because the raw `sos_active` flag in `location_events` still reflected the device's transmitting state.
+
+- **N+1 group fetch on map mount** — replaced the loop of individual `GET /api/groups/<id>` calls with a single `GET /api/groups/?include_members=true` endpoint that returns member lists inline via a `json_agg` join. Saves N round-trips on page load.
+
+- **Serial gateway status now pushed via WebSocket** — eliminated the 5-second HTTP poll for `/api/serial/status`. The serial reader now calls `manager.broadcast()` directly when it connects or disconnects; the frontend WebSocket handler updates the store. A single HTTP fetch on page mount still seeds the initial state before the first WS event arrives.
+
 ## [1.1.0] - 2026-04-18
 
 ### Map — MGRS grid labels

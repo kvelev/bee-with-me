@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from backend.serial.parser import BeeFrame, RepeaterFrame, crc16, parse_frame, _strip_and_verify
+from backend.hardware_reader.parser import BeeFrame, RepeaterFrame, crc16, parse_frame, _strip_and_verify
 
 
 # ── CRC helpers ───────────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ BEE_PAYLOAD = '30,2,1235,20,50,5,8,12,2024,A,42.14384090,24.74956150,5,12,200,0,
 def bee_frame() -> BeeFrame:
     raw = make_frame(BEE_PAYLOAD)
     # mgrs conversion requires the lib; patch it to isolate parser logic
-    with patch('backend.serial.parser._MGRS') as mock_mgrs:
+    with patch('backend.hardware_reader.parser._MGRS') as mock_mgrs:
         mock_mgrs.toMGRS.return_value = '35TLF1234567890'
         result = parse_frame(raw)
     assert isinstance(result, BeeFrame)
@@ -74,7 +74,7 @@ def test_bee_sos_off(bee_frame):
 def test_bee_sos_on():
     payload = '30,3,1235,20,50,5,8,12,2024,A,42.14384090,24.74956150,5,12,200,1,3.7'
     raw = make_frame(payload)
-    with patch('backend.serial.parser._MGRS') as mock_mgrs:
+    with patch('backend.hardware_reader.parser._MGRS') as mock_mgrs:
         mock_mgrs.toMGRS.return_value = '35TLF1234567890'
         frame = parse_frame(raw)
     assert isinstance(frame, BeeFrame)
@@ -94,7 +94,7 @@ def test_bee_invalid_gnss():
 def test_bee_2digit_year():
     payload = '30,5,1235,10,0,0,1,1,25,A,42.0,24.0,0,5,100,0,4.0'
     raw = make_frame(payload)
-    with patch('backend.serial.parser._MGRS') as mock_mgrs:
+    with patch('backend.hardware_reader.parser._MGRS') as mock_mgrs:
         mock_mgrs.toMGRS.return_value = '35TLF0000000000'
         frame = parse_frame(raw)
     assert isinstance(frame, BeeFrame)

@@ -26,7 +26,9 @@ async def live_positions(
             d.dev_sn, d.name AS device_name,
             le.mgrs, le.latitude, le.longitude,
             le.altitude_m, le.speed_knots, le.battery_voltage,
-            le.gnss_satellites, le.sos_active, le.repeater_mode,
+            le.gnss_satellites,
+            (le.sos_active AND sa.id IS NOT NULL) AS sos_active,
+            le.repeater_mode,
             le.recorded_at,
             COALESCE(
                 json_agg(json_build_object('id', g.id, 'name', g.name, 'color', g.color, 'is_leader', ug.is_leader))
@@ -37,8 +39,9 @@ async def live_positions(
         LEFT JOIN users u ON u.id = le.user_id
         LEFT JOIN user_groups ug ON ug.user_id = le.user_id
         LEFT JOIN groups g ON g.id = ug.group_id
+        LEFT JOIN sos_alerts sa ON sa.device_id = le.device_id AND sa.resolved_at IS NULL
         WHERE (le.user_id IS NULL OR u.is_active = TRUE)
-        GROUP BY le.id, le.device_id, le.user_id, u.full_name, u.rank, u.photo_url, u.phone, d.dev_sn, d.name
+        GROUP BY le.id, le.device_id, le.user_id, u.full_name, u.rank, u.photo_url, u.phone, d.dev_sn, d.name, sa.id
         ORDER BY le.device_id, le.recorded_at DESC
     """)
     return [dict(r) for r in rows]
