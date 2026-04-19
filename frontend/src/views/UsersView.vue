@@ -60,6 +60,11 @@
           </tr>
         </tbody>
       </table>
+      <div class="pagination" v-if="total > limit">
+        <span class="pagination-info">{{ offset + 1 }}–{{ Math.min(offset + limit, total) }} / {{ total }}</span>
+        <button class="secondary small" :disabled="offset === 0" @click="goToPage(offset - limit)">‹</button>
+        <button class="secondary small" :disabled="offset + limit >= total" @click="goToPage(offset + limit)">›</button>
+      </div>
     </div>
 
     <!-- Edit / Create modal -->
@@ -204,6 +209,9 @@ const { t } = useI18n()
 const BLOOD_TYPES = ['A+', 'A−', 'B+', 'B−', 'AB+', 'AB−', 'O+', 'O−']
 
 const users      = ref([])
+const total      = ref(0)
+const limit      = ref(50)
+const offset     = ref(0)
 const allDevices = ref([])
 const showModal  = ref(false)
 const editing    = ref(null)
@@ -214,18 +222,27 @@ const hasLogin    = ref(false)
 const importResult = ref(null)
 const photoFile  = ref(null)
 const photoPreview    = ref(null)
-const selectedDeviceId  = ref(null)   // device chosen in the form
-const originalDeviceId  = ref(null)   // device the user had when form opened
+const selectedDeviceId  = ref(null)
+const originalDeviceId  = ref(null)
 
 onMounted(load)
 
 async function load() {
-  const [raw, devs] = await Promise.all([getUsers(), getDevices()])
-  users.value = raw.map(u => ({
+  const [res, devs] = await Promise.all([
+    getUsers({ limit: limit.value, offset: offset.value }),
+    getDevices(),
+  ])
+  users.value = res.items.map(u => ({
     ...u,
     groups: typeof u.groups === 'string' ? JSON.parse(u.groups) : (u.groups ?? []),
   }))
+  total.value = res.total
   allDevices.value = devs.filter(d => d.is_active)
+}
+
+async function goToPage(newOffset) {
+  offset.value = Math.max(0, newOffset)
+  await load()
 }
 
 function initials(name) {
@@ -238,7 +255,7 @@ async function onImport(e) {
   e.target.value = ''
   try {
     importResult.value = await importUsers(file)
-    await loadData()
+    await load()
   } catch (err) {
     pageError.value = typeof err === 'string' ? err : t('users.importError')
   }
@@ -391,6 +408,9 @@ button.warning { background: rgba(234,179,8,.15); border-color: #ca8a04; color: 
 .status-off { color: var(--text-muted); font-size: 13px; }
 .error      { color: var(--danger); font-size: 13px; margin-bottom: 8px; }
 .badge-blood { background: #7c3aed; color: #fff; font-weight: 700; }
+.pagination { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
+.pagination-info { font-size: 13px; color: var(--text-muted); flex: 1; }
+button.small { padding: 4px 10px; font-size: 13px; }
 
 .avatar {
   width: 36px; height: 36px; border-radius: 50%;

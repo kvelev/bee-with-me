@@ -8,7 +8,7 @@ export const login = (username, password) => {
 export const getMe = () => api.get('/auth/me')
 
 // Users
-export const getUsers      = ()         => api.get('/users/')
+export const getUsers      = (params)   => api.get('/users/', { params })
 export const importUsers   = (file)     => {
   const fd = new FormData(); fd.append('file', file)
   return api.post('/users/import', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
@@ -21,8 +21,8 @@ export const reactivateUser = (id)      => api.patch(`/users/${id}/reactivate`)
 export const deleteUser    = (id)       => api.delete(`/users/${id}`)
 
 // Groups
-export const getGroups            = ()  => api.get('/groups/')
-export const getGroupsWithMembers = ()  => api.get('/groups/', { params: { include_members: true } })
+export const getGroups            = (params) => api.get('/groups/', { params })
+export const getGroupsWithMembers = (params) => api.get('/groups/', { params: { include_members: true, ...params } })
 export const getGroup     = (id)            => api.get(`/groups/${id}`)
 export const createGroup  = (data)          => api.post('/groups/', data)
 export const updateGroup  = (id, data)      => api.put(`/groups/${id}`, data)
@@ -49,6 +49,10 @@ export const getTrail         = (minutes = 30)     => api.get('/locations/trail'
 
 // Serial
 export const getSerialStatus = () => api.get('/serial/status')
+
+// Tiles
+export const startTileDownload = () => api.post('/tiles/bgmountains/download')
+export const getTileStatus      = () => api.get('/tiles/bgmountains/status')
 
 // Export — returns raw blobs
 export const exportCSV     = (params) => api.get('/export/csv',     { params, responseType: 'blob' })

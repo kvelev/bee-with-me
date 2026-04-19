@@ -41,6 +41,14 @@
       <button :class="['bm-btn', { active: measureOn }]" @click="toggleMeasure">
         {{ t('map.measure') }}
       </button>
+      <template v-if="activeBasemap === 'satellite'">
+        <span class="bm-row-break" />
+        <button
+          v-for="wl in WEATHER_LAYERS" :key="wl.id"
+          :class="['bm-btn', 'bm-btn-weather', { active: weatherLayerId === wl.id }]"
+          @click="toggleWeather(wl.id)"
+        >{{ t(`map.weather.${wl.id}`) }}</button>
+      </template>
     </div>
 
     <!-- Measure readout -->
@@ -119,18 +127,43 @@
         <div v-if="!groupsWithLeaders.length" class="no-trackers">{{ t('map.noTrackers') }}</div>
       </template>
     </aside>
+
+    <!-- Weather info panel -->
+    <div v-if="weatherLayerId && weatherInfo" class="weather-panel">
+      <div class="weather-header">
+        <img :src="`https://openweathermap.org/img/wn/${weatherInfo.icon}@2x.png`" class="weather-icon" alt="" />
+        <div>
+          <div class="weather-temp">{{ weatherInfo.temp }}°C <span class="weather-feels">{{ t('map.weatherFeels') }} {{ weatherInfo.feelsLike }}°C</span></div>
+          <div class="weather-desc">{{ weatherInfo.desc }}</div>
+        </div>
+      </div>
+      <div class="weather-rows">
+        <div class="weather-row"><span class="weather-label">{{ t('map.weatherWind') }}</span><span>{{ weatherInfo.windSpeed }} m/s {{ weatherInfo.windDir }}</span></div>
+        <div class="weather-row"><span class="weather-label">{{ t('map.weatherHumidity') }}</span><span>{{ weatherInfo.humidity }}%</span></div>
+        <div class="weather-row"><span class="weather-label">{{ t('map.weatherClouds') }}</span><span>{{ weatherInfo.clouds }}%</span></div>
+        <div v-if="weatherInfo.city" class="weather-row weather-city">{{ weatherInfo.city }}</div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { fromLonLat } from 'ol/proj'
+import { fromLonLat, toLonLat } from 'ol/proj'
 import { useLocationsStore } from '../stores/locations'
 import { useWebSocket } from '../composables/useWebSocket'
 import { useMap, BASEMAPS } from '../composables/useMap'
 import { getGroupsWithMembers, getSerialStatus } from '../api'
 import SOSToast from '../components/SOSToast.vue'
+
+const OWM_KEY = import.meta.env.VITE_OWM_API_KEY ?? ''
+const WEATHER_LAYERS = [
+  { id: 'clouds_new' },
+  { id: 'precipitation_new' },
+  { id: 'wind_new' },
+  { id: 'temp_new' },
+]
 
 const { t } = useI18n()
 const store   = useLocationsStore()
@@ -144,6 +177,9 @@ const trailOn        = ref(false)
 const trailNumbersOn = ref(false)
 const cursorCoords   = ref(null)   // { mgrs, lat, lon }
 const latLonOn       = ref(false)
+const weatherLayerId = ref(null)
+const weatherInfo    = ref(null)
+let   weatherTimer   = null
 const viewMode       = ref('individuals') // 'individuals' | 'groups'
 const rankFilter     = ref('')
 // id -> { id, name, color, members: [{id, full_name, rank, is_leader}] }
@@ -178,7 +214,7 @@ const groupsWithLeaders = computed(() => {
   return Object.values(groupMap).sort((a, b) => a.name.localeCompare(b.name))
 })
 
-const { map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, refreshMarkers } = useMap(
+const { map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, setWeatherLayer, refreshMarkers } = useMap(
   mapEl,
   displayList,
   computed(() => store.trails),
@@ -192,15 +228,28 @@ onMounted(async () => {
   await Promise.all([store.fetchLive(), store.fetchSOS(), store.fetchTrail()])
   connect()
   // Build group member cache for hover tooltips (single request instead of N+1)
-  const groups = await getGroupsWithMembers()
+  const { items: groups } = await getGroupsWithMembers({ limit: 500 })
   groupsMap.value = Object.fromEntries(groups.map(g => [g.id, g]))
   // Seed serial status; WS pushes updates after this
   try { store.applySerialStatus(await getSerialStatus()) } catch { /* port not configured */ }
+
+  const m = map()
+  if (m) m.on('moveend', scheduleWeatherFetch)
+})
+
+onUnmounted(() => {
+  clearTimeout(weatherTimer)
+  const m = map()
+  if (m) m.un('moveend', scheduleWeatherFetch)
 })
 
 function switchBasemap(id) {
   activeBasemap.value = id
   setBasemap(id)
+  if (id !== 'satellite' && weatherLayerId.value) {
+    weatherLayerId.value = null
+    setWeatherLayer(null)
+  }
 }
 watch(displayList, (list) => refreshMarkers(list), { deep: true })
 
@@ -228,6 +277,50 @@ function toggleTrailNumbers() {
 function toggleMeasure() {
   measureOn.value = !measureOn.value
   setMeasureMode(measureOn.value)
+}
+function toggleWeather(id) {
+  weatherLayerId.value = weatherLayerId.value === id ? null : id
+  const url = weatherLayerId.value
+    ? `https://tile.openweathermap.org/map/${weatherLayerId.value}/{z}/{x}/{y}.png?appid=${OWM_KEY}`
+    : null
+  setWeatherLayer(url)
+  if (weatherLayerId.value) fetchWeather()
+  else weatherInfo.value = null
+}
+
+function scheduleWeatherFetch() {
+  if (!weatherLayerId.value) return
+  clearTimeout(weatherTimer)
+  weatherTimer = setTimeout(fetchWeather, 700)
+}
+
+async function fetchWeather() {
+  if (!weatherLayerId.value) return
+  const m = map()
+  if (!m) return
+  const [lon, lat] = toLonLat(m.getView().getCenter())
+  try {
+    const r = await fetch(
+      `https://api.openweathermap.org/data/2.5/weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&appid=${OWM_KEY}&units=metric`
+    )
+    const d = await r.json()
+    weatherInfo.value = {
+      temp:      Math.round(d.main.temp),
+      feelsLike: Math.round(d.main.feels_like),
+      humidity:  d.main.humidity,
+      clouds:    d.clouds.all,
+      windSpeed: d.wind?.speed?.toFixed(1) ?? '—',
+      windDir:   windDirLabel(d.wind?.deg),
+      desc:      d.weather?.[0]?.description ?? '',
+      icon:      d.weather?.[0]?.icon ?? '01d',
+      city:      d.name ?? '',
+    }
+  } catch { /* network unavailable */ }
+}
+
+function windDirLabel(deg) {
+  if (deg == null) return ''
+  return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg / 45) % 8]
 }
 function focusDevice(pos) {
   const m = map()
@@ -278,6 +371,8 @@ function batClass(v) {
 }
 .bm-btn:hover  { color: var(--text); }
 .bm-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.bm-btn-weather.active { background: #0369a1; border-color: #0369a1; }
+.bm-row-break { flex-basis: 100%; height: 0; }
 
 .tracker-panel {
   width: 260px; background: var(--bg-panel); border-left: 1px solid var(--border);
@@ -353,4 +448,34 @@ function batClass(v) {
   font-size: 11px;
   font-family: monospace;
 }
+
+.weather-panel {
+  position: absolute;
+  bottom: 70px;
+  right: 272px;
+  z-index: 50;
+  background: rgba(10,12,18,0.9);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #fff;
+  min-width: 190px;
+  backdrop-filter: blur(4px);
+}
+.weather-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.weather-icon { width: 50px; height: 50px; flex-shrink: 0; }
+.weather-temp { font-size: 20px; font-weight: 700; line-height: 1.2; }
+.weather-feels { font-size: 11px; color: var(--text-muted); font-weight: 400; }
+.weather-desc { font-size: 12px; color: var(--text-muted); text-transform: capitalize; }
+.weather-rows { display: flex; flex-direction: column; gap: 4px; }
+.weather-row { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
+.weather-label { color: var(--text-muted); }
+.weather-city { color: var(--text-muted); font-size: 11px; margin-top: 4px; text-align: right; }
 </style>

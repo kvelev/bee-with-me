@@ -59,7 +59,9 @@ const error   = ref('')
 const filters = ref({ from: undefined, to: undefined, group_id: undefined, user_id: undefined })
 
 onMounted(async () => {
-  ;[groups.value, users.value] = await Promise.all([getGroups(), getUsers()])
+  const [gr, ur] = await Promise.all([getGroups(), getUsers({ limit: 500 })])
+  groups.value = gr.items
+  users.value  = ur.items
 })
 
 const exportFns = { csv: exportCSV, geojson: exportGeoJSON, pdf: exportPDF }

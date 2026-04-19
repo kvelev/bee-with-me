@@ -178,8 +178,8 @@ const availableUsers = computed(() =>
 onMounted(load)
 
 async function load() {
-  groups.value   = await getGroups()
-  allUsers.value = await getUsers()
+  groups.value   = (await getGroups()).items
+  allUsers.value = (await getUsers({ limit: 500 })).items
 }
 
 async function selectGroup(g) {

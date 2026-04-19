@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.3.0] - 2026-04-19
+
+### Offline map tiles — BG Mountains
+
+- New background tile download pipeline: admin can trigger a full z8–z18 tile download for all of Bulgaria (bbox 22.3–28.7°E, 41.2–44.3°N) from the About page
+- Tiles are stored at `tiles/bgmountains/` in the repo root and served by the backend via a FastAPI `StaticFiles` mount at `/tiles/bgmountains`
+- Vite dev proxy forwards `/tiles/` to the backend so the map works without CORS issues in development
+
+### Weather overlay
+
+- Four weather tile overlays available in **Satellite mode only**: Clouds, Rain, Wind, Temperature
+- Powered by OpenWeatherMap tile API v1.0; requires `VITE_OWM_API_KEY` in `.env`
+- Buttons appear as a second row in the basemap controls when Satellite is active; clicking the active button toggles the overlay off
+- Switching away from Satellite automatically removes the active weather overlay
+- **Weather info panel**: when an overlay is active, a floating card shows current conditions for the map centre — temperature, feels-like, wind speed and direction, humidity, cloud cover, and city name with OWM weather icon; updates 700 ms after every map pan
+- Panel uses `GET api.openweathermap.org/data/2.5/weather` with `units=metric`
+- i18n: EN + BG for all new labels
+
+### Database & backend
+
+- Added `pin VARCHAR(20)` column to `users` table (stores rescuer ID number as plaintext)
+- Added `is_radio_enthusiast BOOLEAN` and `radio_initials VARCHAR(20)` columns
+- New indexes: `idx_sos_alerts_triggered`, `idx_user_groups_group_id`, `idx_devices_user_id`
+- Daily background task deletes `location_events` older than `LOCATION_RETENTION_DAYS` (default 5, configurable via `.env`)
+- `location_retention_days` setting added to `config.py`
+
+### Pagination
+
+- `GET /api/users/` and `GET /api/groups/` now return `{items, total, limit, offset}` instead of a flat array
+- Default page size: 50 for users, 100 for groups; max 500
+- Volunteers page shows a prev/next pagination bar; all other views request `limit=500` for full lists
+
 ## [1.2.1] - 2026-04-18
 
 ### Volunteer import (XLS)

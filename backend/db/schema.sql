@@ -146,6 +146,9 @@ CREATE INDEX idx_location_events_user_time    ON location_events (user_id,   rec
 CREATE INDEX idx_location_events_sos          ON location_events (sos_active) WHERE sos_active = TRUE;
 CREATE INDEX idx_location_events_position     ON location_events USING GIST (position);
 CREATE INDEX idx_sos_alerts_open              ON sos_alerts (device_id) WHERE resolved_at IS NULL;
+CREATE INDEX idx_sos_alerts_triggered         ON sos_alerts (triggered_at DESC);
+CREATE INDEX idx_user_groups_group_id         ON user_groups (group_id);
+CREATE INDEX idx_devices_user_id              ON devices (user_id);
 
 -- ------------------------------------------------------------
 -- Auto-update updated_at

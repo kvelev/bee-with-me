@@ -15,6 +15,7 @@ import { Circle, Fill, Stroke, Style, Text } from 'ol/style'
 import Graticule from 'ol/layer/Graticule'
 import ScaleLine from 'ol/control/ScaleLine'
 import { forward as toMGRS } from 'mgrs'
+import { useSettings } from './useSettings'
 
 const DEFAULT_COLOR = '#3b82f6'
 const STALE_MS = 10 * 60 * 1000   // 10 minutes
@@ -45,6 +46,15 @@ export const BASEMAPS = [
 
 const TILE_SERVER = 'http://localhost:8080'
 
+const { bgMountainsOffline } = useSettings()
+
+function makeBgMountainsSource() {
+  if (bgMountainsOffline.value) {
+    return new XYZ({ url: '/tiles/bgmountains/{z}/{x}/{y}.png', attributions: '© BGMountains', maxZoom: 18 })
+  }
+  return new XYZ({ url: 'https://bgmtile.kade.si/{z}/{x}/{y}.png', attributions: '© BGMountains', crossOrigin: 'anonymous', maxZoom: 18 })
+}
+
 function makeBasemapLayer(id) {
   const sources = {
     osm: new OSM(),
@@ -60,11 +70,7 @@ function makeBasemapLayer(id) {
       url: 'https://{a-c}.tile.opentopomap.org/{z}/{x}/{y}.png',
       attributions: '© OpenTopoMap',
     }),
-    bgmountains: new XYZ({
-      url: 'https://bgmtile.kade.si/{z}/{x}/{y}.png',
-      attributions: '© BGMountains',
-      crossOrigin: 'anonymous',
-    }),
+    bgmountains: makeBgMountainsSource(),
   }
   return new TileLayer({ source: sources[id] ?? sources.osm })
 }
@@ -169,6 +175,9 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   const measureSource = new VectorSource()
   const measureLayer  = new VectorLayer({ source: measureSource, zIndex: 20 })
 
+  // Weather overlay layer — created/destroyed on demand
+  let activeWeatherLayer = null
+
   // MGRS latitude band letters C–X (8° bands starting at −80°)
   const MGRS_BANDS = 'CDEFGHJKLMNPQRSTUVWX'
   function mgrsLatBand(lat) {
@@ -232,12 +241,33 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     zIndex: 4,
   })
 
+  let activeBasemapId = 'osm'
+
+  function setWeatherLayer(url) {
+    if (activeWeatherLayer) {
+      map.removeLayer(activeWeatherLayer)
+      activeWeatherLayer = null
+    }
+    if (!url || !map) return
+    activeWeatherLayer = new TileLayer({
+      source: new XYZ({ url, crossOrigin: 'anonymous' }),
+      opacity: 0.7,
+      zIndex: 2,
+    })
+    map.addLayer(activeWeatherLayer)
+  }
+
   function setBasemap(id) {
     if (!map) return
+    activeBasemapId = id
     map.getLayers().removeAt(0)
     basemapLayer = makeBasemapLayer(id)
     map.getLayers().insertAt(0, basemapLayer)
   }
+
+  watch(bgMountainsOffline, () => {
+    if (activeBasemapId === 'bgmountains') setBasemap('bgmountains')
+  })
 
   function forceGraticuleRedraw() {
     graticule.renderedExtent_ = null
@@ -548,5 +578,5 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     removeStaleFeatures(list.map(p => p.device_id))
   }
 
-  return { map: () => map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, refreshMarkers }
+  return { map: () => map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, setWeatherLayer, refreshMarkers }
 }

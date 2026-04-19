@@ -36,7 +36,10 @@ async def list_groups(
     conn: Annotated[asyncpg.Connection, Depends(get_conn)],
     _: Annotated[asyncpg.Record, Depends(get_current_user)],
     include_members: bool = Query(False),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ):
+    total = await conn.fetchval('SELECT COUNT(*) FROM groups')
     if include_members:
         rows = await conn.fetch("""
             SELECT g.id, g.name, g.description, g.organization, g.color, g.is_active, g.created_at,
@@ -52,7 +55,8 @@ async def list_groups(
             LEFT JOIN users u ON u.id = ug.user_id
             GROUP BY g.id
             ORDER BY g.name
-        """)
+            LIMIT $1 OFFSET $2
+        """, limit, offset)
     else:
         rows = await conn.fetch("""
             SELECT g.id, g.name, g.description, g.organization, g.color, g.is_active, g.created_at,
@@ -61,8 +65,9 @@ async def list_groups(
             LEFT JOIN user_groups ug ON ug.group_id = g.id
             GROUP BY g.id
             ORDER BY g.name
-        """)
-    return [dict(r) for r in rows]
+            LIMIT $1 OFFSET $2
+        """, limit, offset)
+    return {'items': [dict(r) for r in rows], 'total': total, 'limit': limit, 'offset': offset}
 
 
 @router.post('/', status_code=status.HTTP_201_CREATED)

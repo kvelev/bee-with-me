@@ -80,7 +80,9 @@ const formError = ref('')
 onMounted(load)
 
 async function load() {
-  ;[devices.value, users.value] = await Promise.all([getDevices(), getUsers()])
+  const [devs, ur] = await Promise.all([getDevices(), getUsers({ limit: 500 })])
+  devices.value = devs
+  users.value   = ur.items
 }
 
 function openForm(d) {

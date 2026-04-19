@@ -8,7 +8,7 @@ from uuid import UUID
 
 import asyncpg
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
 from pydantic import BaseModel
 
 from ..auth import get_current_user, hash_password, require_role
@@ -57,7 +57,10 @@ class UserUpdate(BaseModel):
 async def list_users(
     conn: Annotated[asyncpg.Connection, Depends(get_conn)],
     _: Annotated[asyncpg.Record, Depends(get_current_user)],
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ):
+    total = await conn.fetchval('SELECT COUNT(*) FROM users')
     rows = await conn.fetch("""
         SELECT u.id, u.username, u.full_name, u.first_name, u.last_name,
                u.email, u.phone, u.rank, u.blood_type, u.photo_url,
@@ -72,8 +75,9 @@ async def list_users(
         LEFT JOIN groups g ON g.id = ug.group_id
         GROUP BY u.id
         ORDER BY u.full_name
-    """)
-    return [dict(r) for r in rows]
+        LIMIT $1 OFFSET $2
+    """, limit, offset)
+    return {'items': [dict(r) for r in rows], 'total': total, 'limit': limit, 'offset': offset}
 
 
 @router.post('/', status_code=status.HTTP_201_CREATED)
