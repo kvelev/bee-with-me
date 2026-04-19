@@ -128,6 +128,9 @@
       </template>
     </aside>
 
+    <!-- Wind particle canvas -->
+    <canvas v-if="weatherLayerId === 'wind_new'" ref="windCanvas" class="wind-canvas" />
+
     <!-- Weather info panel -->
     <div v-if="weatherLayerId && weatherInfo" class="weather-panel">
       <div class="weather-header">
@@ -138,17 +141,23 @@
         </div>
       </div>
       <div class="weather-rows">
-        <div class="weather-row"><span class="weather-label">{{ t('map.weatherWind') }}</span><span>{{ weatherInfo.windSpeed }} m/s {{ weatherInfo.windDir }}</span></div>
+        <div class="weather-row"><span class="weather-label">{{ t('map.weatherWind') }}</span><span>{{ weatherInfo.windSpeed.toFixed(1) }} m/s {{ weatherInfo.windDir }}</span></div>
         <div class="weather-row"><span class="weather-label">{{ t('map.weatherHumidity') }}</span><span>{{ weatherInfo.humidity }}%</span></div>
         <div class="weather-row"><span class="weather-label">{{ t('map.weatherClouds') }}</span><span>{{ weatherInfo.clouds }}%</span></div>
         <div v-if="weatherInfo.city" class="weather-row weather-city">{{ weatherInfo.city }}</div>
+      </div>
+      <div v-if="activeWeatherLayer" class="weather-legend">
+        <div class="legend-bar" :style="{ background: activeWeatherLayer.gradient }" />
+        <div class="legend-stops">
+          <span v-for="s in activeWeatherLayer.stops" :key="s">{{ s }}</span>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import { useLocationsStore } from '../stores/locations'
@@ -159,10 +168,26 @@ import SOSToast from '../components/SOSToast.vue'
 
 const OWM_KEY = import.meta.env.VITE_OWM_API_KEY ?? ''
 const WEATHER_LAYERS = [
-  { id: 'clouds_new' },
-  { id: 'precipitation_new' },
-  { id: 'wind_new' },
-  { id: 'temp_new' },
+  {
+    id: 'clouds_new',
+    gradient: 'linear-gradient(to right, rgba(255,255,255,0.05), #aaa, #666)',
+    stops: ['0%', '50%', '100%'],
+  },
+  {
+    id: 'precipitation_new',
+    gradient: 'linear-gradient(to right, #a0d8ef, #4169e1, #0000cd, #6600cc)',
+    stops: ['0', '1', '5', '20 mm/h'],
+  },
+  {
+    id: 'wind_new',
+    gradient: 'linear-gradient(to right, #2c45e8, #54b5e6, #7bcb6b, #e8e04a, #e87b3b, #e83b2c)',
+    stops: ['0', '5', '15', '30 m/s'],
+  },
+  {
+    id: 'temp_new',
+    gradient: 'linear-gradient(to right, #8000ff, #0000ff, #00ccff, #00ff88, #ffff00, #ff8000, #ff0000)',
+    stops: ['-40°', '0°', '20°', '40°C'],
+  },
 ]
 
 const { t } = useI18n()
@@ -177,9 +202,10 @@ const trailOn        = ref(false)
 const trailNumbersOn = ref(false)
 const cursorCoords   = ref(null)   // { mgrs, lat, lon }
 const latLonOn       = ref(false)
-const weatherLayerId = ref(null)
-const weatherInfo    = ref(null)
-let   weatherTimer   = null
+const weatherLayerId  = ref(null)
+const weatherInfo     = ref(null)
+let   weatherTimer    = null
+const activeWeatherLayer = computed(() => WEATHER_LAYERS.find(l => l.id === weatherLayerId.value) ?? null)
 const viewMode       = ref('individuals') // 'individuals' | 'groups'
 const rankFilter     = ref('')
 // id -> { id, name, color, members: [{id, full_name, rank, is_leader}] }
@@ -239,6 +265,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   clearTimeout(weatherTimer)
+  stopWindAnim()
   const m = map()
   if (m) m.un('moveend', scheduleWeatherFetch)
 })
@@ -284,14 +311,17 @@ function toggleWeather(id) {
     ? `https://tile.openweathermap.org/map/${weatherLayerId.value}/{z}/{x}/{y}.png?appid=${OWM_KEY}`
     : null
   setWeatherLayer(url)
-  if (weatherLayerId.value) fetchWeather()
-  else weatherInfo.value = null
+  if (!weatherLayerId.value) weatherInfo.value = null
+  else if (weatherLayerId.value !== 'wind_new') fetchWeather()
 }
 
 function scheduleWeatherFetch() {
   if (!weatherLayerId.value) return
   clearTimeout(weatherTimer)
-  weatherTimer = setTimeout(fetchWeather, 700)
+  weatherTimer = setTimeout(
+    () => weatherLayerId.value === 'wind_new' ? fetchWindField() : fetchWeather(),
+    700
+  )
 }
 
 async function fetchWeather() {
@@ -309,7 +339,8 @@ async function fetchWeather() {
       feelsLike: Math.round(d.main.feels_like),
       humidity:  d.main.humidity,
       clouds:    d.clouds.all,
-      windSpeed: d.wind?.speed?.toFixed(1) ?? '—',
+      windSpeed: d.wind?.speed ?? 0,
+      windDeg:   d.wind?.deg ?? 0,
       windDir:   windDirLabel(d.wind?.deg),
       desc:      d.weather?.[0]?.description ?? '',
       icon:      d.weather?.[0]?.icon ?? '01d',
@@ -322,6 +353,182 @@ function windDirLabel(deg) {
   if (deg == null) return ''
   return ['N','NE','E','SE','S','SW','W','NW'][Math.round(deg / 45) % 8]
 }
+
+// ── Wind particle animation ──────────────────────────────────────────────────
+const windCanvas     = ref(null)
+const PARTICLE_COUNT = 180
+const TRAIL_LEN      = 10
+const SPEED_SCALE    = 45      // px/s per m/s
+const GRID_COLS      = 14
+const GRID_ROWS      = 9
+let   windParticles  = []
+let   windAnimFrame  = null
+let   windLastTime   = null
+let   windField      = []      // [{lat,lon,vxNorm,vyNorm,speed}]
+let   windGrid       = null    // GRID_ROWS × GRID_COLS [{vx,vy}] in px/s
+
+// Fetch wind vectors for all cities in the current viewport (single API call)
+// Requires OWM plan that includes data/2.5/box/city. Falls back to single-point if unavailable.
+async function fetchWindField() {
+  const canvas = windCanvas.value
+  const m = map()
+  if (!canvas || !m) return
+  const size   = m.getSize()
+  const extent = m.getView().calculateExtent(size)
+  const pad    = (extent[2] - extent[0]) * 0.15
+  const [minLon, minLat] = toLonLat([extent[0] - pad, extent[1] - pad])
+  const [maxLon, maxLat] = toLonLat([extent[2] + pad, extent[3] + pad])
+  const zoom = Math.max(3, Math.min(14, Math.floor(m.getView().getZoom() ?? 7)))
+  let usedMultiPoint = false
+  try {
+    const r = await fetch(
+      `https://api.openweathermap.org/data/2.5/box/city?bbox=${minLon.toFixed(2)},${minLat.toFixed(2)},${maxLon.toFixed(2)},${maxLat.toFixed(2)},${zoom}&appid=${OWM_KEY}&units=metric&cnt=50`
+    )
+    const d = await r.json()
+    if (r.ok && Array.isArray(d.list) && d.list.length) {
+      windField = d.list
+        .filter(c => c.wind?.speed > 0)
+        .map(c => {
+          const rad = (c.wind.deg ?? 0) * Math.PI / 180
+          return { lat: c.coord.lat, lon: c.coord.lon,
+                   vxNorm: -Math.sin(rad), vyNorm: Math.cos(rad), speed: c.wind.speed }
+        })
+      buildWindGrid(canvas, m)
+      const [cLon, cLat] = toLonLat(m.getView().getCenter())
+      let nearest = d.list[0], minD = Infinity
+      for (const c of d.list) {
+        const dd = (c.coord.lon - cLon) ** 2 + (c.coord.lat - cLat) ** 2
+        if (dd < minD) { minD = dd; nearest = c }
+      }
+      weatherInfo.value = {
+        temp:      Math.round(nearest.main.temp),
+        feelsLike: Math.round(nearest.main.feels_like),
+        humidity:  nearest.main.humidity,
+        clouds:    nearest.clouds?.all ?? 0,
+        windSpeed: nearest.wind?.speed ?? 0,
+        windDeg:   nearest.wind?.deg ?? 0,
+        windDir:   windDirLabel(nearest.wind?.deg),
+        desc:      nearest.weather?.[0]?.description ?? '',
+        icon:      nearest.weather?.[0]?.icon ?? '01d',
+        city:      nearest.name ?? '',
+      }
+      usedMultiPoint = true
+    }
+  } catch { /* fall through */ }
+
+  if (!usedMultiPoint) {
+    await fetchWeather()
+    if (weatherInfo.value) {
+      const rad = (weatherInfo.value.windDeg ?? 0) * Math.PI / 180
+      windField = [{ lat: 0, lon: 0,
+        vxNorm: -Math.sin(rad), vyNorm: Math.cos(rad), speed: weatherInfo.value.windSpeed }]
+      buildWindGrid(canvas, m)
+    }
+  }
+}
+
+// Build an interpolated wind grid (IDW) so per-particle lookups are O(1)
+function buildWindGrid(canvas, m) {
+  if (!windField.length) return
+  const { width, height } = canvas
+  windGrid = Array.from({ length: GRID_ROWS }, (_, gy) =>
+    Array.from({ length: GRID_COLS }, (_, gx) => {
+      const px = (gx + 0.5) * width  / GRID_COLS
+      const py = (gy + 0.5) * height / GRID_ROWS
+      const coord = m.getCoordinateFromPixel([px, py])
+      if (!coord) return { vx: 0, vy: 0 }
+      const [lon, lat] = toLonLat(coord)
+      let sx = 0, sy = 0, sw = 0
+      for (const pt of windField) {
+        const d2 = (pt.lon - lon) ** 2 + (pt.lat - lat) ** 2
+        if (d2 < 1e-6) return { vx: pt.vxNorm * pt.speed * SPEED_SCALE, vy: pt.vyNorm * pt.speed * SPEED_SCALE }
+        const w = 1 / d2
+        sx += pt.vxNorm * pt.speed * w
+        sy += pt.vyNorm * pt.speed * w
+        sw += w
+      }
+      return sw > 0 ? { vx: sx / sw * SPEED_SCALE, vy: sy / sw * SPEED_SCALE } : { vx: 0, vy: 0 }
+    })
+  )
+}
+
+function getWindAt(px, py, w, h) {
+  if (!windGrid) return { vx: 0, vy: 0 }
+  const gx = Math.max(0, Math.min(GRID_COLS - 1, Math.floor(px / w * GRID_COLS)))
+  const gy = Math.max(0, Math.min(GRID_ROWS - 1, Math.floor(py / h * GRID_ROWS)))
+  return windGrid[gy][gx]
+}
+
+function mkParticle(w, h) {
+  return { x: Math.random() * w, y: Math.random() * h,
+           trail: [], age: Math.random() * 100, maxAge: 90 + Math.random() * 130 }
+}
+
+function startWindAnim() {
+  const canvas = windCanvas.value
+  if (!canvas) return
+  const rect = canvas.parentElement.getBoundingClientRect()
+  canvas.width  = rect.width - 260
+  canvas.height = rect.height
+  windLastTime  = null
+  windParticles = Array.from({ length: PARTICLE_COUNT }, () => mkParticle(canvas.width, canvas.height))
+  windAnimFrame = requestAnimationFrame(runWindAnim)
+}
+
+function stopWindAnim() {
+  if (windAnimFrame) cancelAnimationFrame(windAnimFrame)
+  windAnimFrame = null
+  windParticles = []
+  windLastTime  = null
+  windField     = []
+  windGrid      = null
+}
+
+function runWindAnim(ts) {
+  const canvas = windCanvas.value
+  if (!canvas || weatherLayerId.value !== 'wind_new') { stopWindAnim(); return }
+  const ctx = canvas.getContext('2d')
+  const { width, height } = canvas
+  if (!windLastTime) windLastTime = ts
+  const dt = Math.min((ts - windLastTime) / 1000, 0.05)
+  windLastTime = ts
+  ctx.clearRect(0, 0, width, height)
+  for (const p of windParticles) {
+    p.trail.push({ x: p.x, y: p.y })
+    if (p.trail.length > TRAIL_LEN) p.trail.shift()
+    const wind = getWindAt(p.x, p.y, width, height)
+    p.x   += wind.vx * dt
+    p.y   += wind.vy * dt
+    p.age += dt * 60
+    const oob = p.x < -20 || p.x > width + 20 || p.y < -20 || p.y > height + 20
+    if (p.age > p.maxAge || oob) {
+      Object.assign(p, mkParticle(width, height))
+      continue
+    }
+    if (p.trail.length < 2) continue
+    const grad = ctx.createLinearGradient(p.trail[0].x, p.trail[0].y, p.x, p.y)
+    grad.addColorStop(0, 'rgba(180,220,255,0)')
+    grad.addColorStop(1, 'rgba(210,238,255,0.75)')
+    ctx.beginPath()
+    ctx.moveTo(p.trail[0].x, p.trail[0].y)
+    for (const pt of p.trail) ctx.lineTo(pt.x, pt.y)
+    ctx.lineTo(p.x, p.y)
+    ctx.strokeStyle = grad
+    ctx.lineWidth   = 1.2
+    ctx.lineCap     = 'round'
+    ctx.stroke()
+  }
+  windAnimFrame = requestAnimationFrame(runWindAnim)
+}
+
+watch(weatherLayerId, async (id) => {
+  stopWindAnim()
+  if (id === 'wind_new') {
+    await nextTick()
+    startWindAnim()
+    fetchWindField()
+  }
+})
 function focusDevice(pos) {
   const m = map()
   if (m) m.getView().animate({ center: fromLonLat([pos.longitude, pos.latitude]), zoom: 13, duration: 500 })
@@ -416,11 +623,12 @@ function batClass(v) {
 
 .measure-readout {
   position: absolute; top: 56px; left: 50%; transform: translateX(-50%);
-  background: rgba(29,78,216,0.15); color: #60a5fa;
+  background: rgba(15,30,100,0.92); color: #93c5fd;
   font-family: monospace; font-size: 13px; font-weight: 600;
   padding: 5px 14px; border-radius: 6px; pointer-events: none;
-  border: 1px solid rgba(29,78,216,0.5); z-index: 50;
+  border: 1px solid rgba(99,155,255,0.6); z-index: 50;
   letter-spacing: .04em;
+  backdrop-filter: blur(4px);
 }
 
 .mgrs-readout {
@@ -447,6 +655,15 @@ function batClass(v) {
   border-color: #fff;
   font-size: 11px;
   font-family: monospace;
+}
+
+.wind-canvas {
+  position: absolute;
+  top: 0; left: 0;
+  width: calc(100% - 260px);
+  height: 100%;
+  pointer-events: none;
+  z-index: 20;
 }
 
 .weather-panel {
@@ -478,4 +695,7 @@ function batClass(v) {
 .weather-row { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
 .weather-label { color: var(--text-muted); }
 .weather-city { color: var(--text-muted); font-size: 11px; margin-top: 4px; text-align: right; }
+.weather-legend { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.08); }
+.legend-bar { height: 8px; border-radius: 4px; width: 100%; }
+.legend-stops { display: flex; justify-content: space-between; margin-top: 3px; font-size: 10px; color: var(--text-muted); }
 </style>

@@ -251,7 +251,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     if (!url || !map) return
     activeWeatherLayer = new TileLayer({
       source: new XYZ({ url, crossOrigin: 'anonymous' }),
-      opacity: 0.7,
+      opacity: 1.0,
       zIndex: 2,
     })
     map.addLayer(activeWeatherLayer)

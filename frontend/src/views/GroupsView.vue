@@ -73,17 +73,32 @@
         <div class="form-group">
           <label>{{ t('groups.members') }}</label>
           <div class="member-add-row">
-            <select v-model="memberToAdd.user_id" class="member-select">
-              <option value="">— {{ t('groups.form.person') }} —</option>
-              <option
-                v-for="u in availableUsers"
-                :key="u.id" :value="u.id"
-              >{{ u.full_name }}{{ u.rank ? ` (${u.rank})` : '' }}</option>
-            </select>
-            <label class="leader-check">
-              <input type="checkbox" v-model="memberToAdd.is_leader" />
-              {{ t('groups.form.isLeader') }}
-            </label>
+            <div class="member-search-wrap">
+              <input
+                v-model="memberSearch"
+                @focus="showMemberDropdown = true"
+                @blur="onMemberSearchBlur"
+                :placeholder="`${t('groups.form.person')}…`"
+                class="member-search-input"
+                autocomplete="off"
+              />
+              <div v-if="showMemberDropdown && filteredAvailableUsers.length" class="member-dropdown">
+                <div
+                  v-for="u in filteredAvailableUsers" :key="u.id"
+                  class="member-dropdown-item"
+                  @mousedown.prevent="selectMemberFromSearch(u)"
+                >{{ u.full_name }}{{ u.rank ? ` (${u.rank})` : '' }}</div>
+              </div>
+              <div v-if="showMemberDropdown && !filteredAvailableUsers.length && memberSearch" class="member-dropdown">
+                <div class="member-dropdown-empty">{{ t('groups.form.noAvailable') }}</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              :class="['leader-toggle', { active: memberToAdd.is_leader }]"
+              @click="memberToAdd.is_leader = !memberToAdd.is_leader"
+              :title="t('groups.form.isLeader')"
+            >★</button>
             <button type="button" class="secondary" @click="addInlineMember" :disabled="!memberToAdd.user_id">+</button>
           </div>
           <div v-if="pendingMembers.length" class="pending-member-list">
@@ -166,14 +181,33 @@ const memberCandidates  = ref([])
 const candidateChecked  = reactive({})   // uid -> boolean
 const leaderCandidateId = ref(null)
 const formError      = ref('')
-const pendingMembers = ref([])   // staged for create; live for edit
-const memberToAdd    = ref({ user_id: '', is_leader: false })
-const memberError    = ref('')
+const pendingMembers     = ref([])
+const memberToAdd        = ref({ user_id: '', is_leader: false })
+const memberError        = ref('')
+const memberSearch       = ref('')
+const showMemberDropdown = ref(false)
 
-// Users not yet in the pending list
 const availableUsers = computed(() =>
   allUsers.value.filter(u => !pendingMembers.value.some(m => m.user_id === u.id))
 )
+
+const filteredAvailableUsers = computed(() => {
+  const q = memberSearch.value.trim().toLowerCase()
+  if (!q) return availableUsers.value
+  return availableUsers.value.filter(u =>
+    u.full_name.toLowerCase().includes(q) || u.rank?.toLowerCase().includes(q)
+  )
+})
+
+function selectMemberFromSearch(user) {
+  memberToAdd.value.user_id = user.id
+  memberSearch.value = user.full_name + (user.rank ? ` (${user.rank})` : '')
+  showMemberDropdown.value = false
+}
+
+function onMemberSearchBlur() {
+  setTimeout(() => { showMemberDropdown.value = false }, 150)
+}
 
 onMounted(load)
 
@@ -190,6 +224,7 @@ async function openForm(g) {
   editingGroup.value   = g
   formError.value      = ''
   memberToAdd.value    = { user_id: '', is_leader: false }
+  memberSearch.value   = ''
   form.value = g
     ? { name: g.name, description: g.description, organization: g.organization, color: g.color }
     : { color: '#3388ff' }
@@ -213,6 +248,7 @@ function addInlineMember() {
     is_leader: memberToAdd.value.is_leader,
   })
   memberToAdd.value = { user_id: '', is_leader: false }
+  memberSearch.value = ''
 }
 
 function removePendingMember(idx) {
@@ -320,8 +356,18 @@ button.warning { background: rgba(234,179,8,.15); border-color: #ca8a04; color: 
 .member-add-row {
   display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
 }
-.member-select { flex: 1; }
-.leader-check  { display: flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; color: var(--text-muted); cursor: pointer; }
+.member-search-wrap  { flex: 1; position: relative; }
+.member-search-input { width: 100%; }
+.member-dropdown {
+  position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 300;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 6px;
+  max-height: 200px; overflow-y: auto; box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+}
+.member-dropdown-item {
+  padding: 7px 10px; font-size: 13px; cursor: pointer;
+}
+.member-dropdown-item:hover { background: var(--bg-card); }
+.member-dropdown-empty { padding: 8px 10px; font-size: 13px; color: var(--text-muted); }
 
 .pending-member-list { display: flex; flex-direction: column; gap: 4px; }
 .candidate-list { display: flex; flex-direction: column; gap: 4px; max-height: 280px; overflow-y: auto; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
