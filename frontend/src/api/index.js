@@ -38,7 +38,9 @@ export const getDevices    = ()             => api.get('/devices/')
 export const createDevice  = (data)         => api.post('/devices/', data)
 export const updateDevice  = (id, data)     => api.put(`/devices/${id}`, data)
 export const assignDevice  = (id, userId)   => api.put(`/devices/${id}/assign`, { user_id: userId })
-export const deleteDevice  = (id)           => api.delete(`/devices/${id}`)
+export const deleteDevice      = (id) => api.delete(`/devices/${id}`)
+export const reactivateDevice  = (id) => api.post(`/devices/${id}/reactivate`)
+export const permanentDeleteDevice = (id) => api.delete(`/devices/${id}/permanent`)
 
 // Locations
 export const getLivePositions = ()                 => api.get('/locations/live')

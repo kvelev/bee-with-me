@@ -152,6 +152,8 @@ export default {
     inactive:   'Неактивно',
     edit:       'Редактирай',
     deactivate: 'Деактивирай',
+    reactivate: 'Активирай',
+    delete:     'Изтрий',
     form: {
       title_add:  'Регистрирай Устройство',
       title_edit: 'Редактирай Устройство',

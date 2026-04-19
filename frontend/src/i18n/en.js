@@ -153,6 +153,8 @@ export default {
     inactive:   'Inactive',
     edit:       'Edit',
     deactivate: 'Deactivate',
+    reactivate: 'Reactivate',
+    delete:     'Delete',
     form: {
       title_add:  'Register Device',
       title_edit: 'Edit Device',

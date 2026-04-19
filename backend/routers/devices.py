@@ -115,3 +115,29 @@ async def deactivate_device(
     _: Annotated[asyncpg.Record, Depends(require_role('admin'))],
 ):
     await conn.execute('UPDATE devices SET is_active = FALSE WHERE id = $1', device_id)
+
+
+@router.post('/{device_id}/reactivate', status_code=status.HTTP_204_NO_CONTENT)
+async def reactivate_device(
+    device_id: UUID,
+    conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+    _: Annotated[asyncpg.Record, Depends(require_role('admin'))],
+):
+    await conn.execute('UPDATE devices SET is_active = TRUE WHERE id = $1', device_id)
+
+
+@router.delete('/{device_id}/permanent', status_code=status.HTTP_204_NO_CONTENT)
+async def delete_device_permanent(
+    device_id: UUID,
+    conn: Annotated[asyncpg.Connection, Depends(get_conn)],
+    _: Annotated[asyncpg.Record, Depends(require_role('admin'))],
+):
+    async with conn.transaction():
+        await conn.execute('DELETE FROM sos_alerts       WHERE device_id = $1', device_id)
+        await conn.execute('DELETE FROM location_events  WHERE device_id = $1', device_id)
+        await conn.execute('DELETE FROM repeater_events  WHERE device_id = $1', device_id)
+        deleted = await conn.fetchval(
+            'DELETE FROM devices WHERE id = $1 RETURNING id', device_id
+        )
+    if deleted is None:
+        raise HTTPException(status_code=404, detail='Device not found')

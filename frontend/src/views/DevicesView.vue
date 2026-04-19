@@ -23,7 +23,9 @@
             <td><span :class="d.is_active ? 'status-on' : 'status-off'">{{ d.is_active ? t('devices.active') : t('devices.inactive') }}</span></td>
             <td class="actions">
               <button class="secondary" @click="openForm(d)">{{ t('devices.edit') }}</button>
-              <button class="danger"    @click="deactivate(d)">{{ t('devices.deactivate') }}</button>
+              <button v-if="d.is_active"  class="warning" @click="deactivate(d)">{{ t('devices.deactivate') }}</button>
+              <button v-else              class="secondary" @click="reactivate(d)">{{ t('devices.reactivate') }}</button>
+              <button class="danger"      @click="remove(d)">{{ t('devices.delete') }}</button>
             </td>
           </tr>
         </tbody>
@@ -66,7 +68,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { getDevices, createDevice, updateDevice, deleteDevice, getUsers } from '../api'
+import { getDevices, createDevice, updateDevice, deleteDevice, reactivateDevice, permanentDeleteDevice, getUsers } from '../api'
 
 const { t } = useI18n()
 
@@ -105,14 +107,26 @@ async function save() {
 }
 
 async function deactivate(d) {
-  if (!confirm(`Deactivate device ${d.dev_sn}?`)) return
+  if (!confirm(`Deactivate device SN:${d.dev_sn}?`)) return
   await deleteDevice(d.id)
+  await load()
+}
+
+async function reactivate(d) {
+  await reactivateDevice(d.id)
+  await load()
+}
+
+async function remove(d) {
+  if (!confirm(`Permanently delete device SN:${d.dev_sn}? This also deletes all its location history and cannot be undone.`)) return
+  await permanentDeleteDevice(d.id)
   await load()
 }
 </script>
 
 <style scoped>
 .page    { padding: 24px; flex: 1; }
+button.warning { background: rgba(234,179,8,.15); border-color: #ca8a04; color: #ca8a04; }
 .actions { display: flex; gap: 8px; }
 .error   { color: var(--danger); font-size: 13px; margin-bottom: 8px; }
 code     { font-family: monospace; background: var(--bg-card); padding: 2px 6px; border-radius: 4px; }
