@@ -54,6 +54,8 @@ async def _run_download() -> None:
                         _status['done'] += 1
                         if os.path.exists(out_path):
                             _status['skipped'] += 1
+                            if _status['skipped'] % 100 == 0:
+                                await asyncio.sleep(0)
                             continue
                         try:
                             resp = await client.get(SOURCE_URL.format(z=z, x=x, y=y))

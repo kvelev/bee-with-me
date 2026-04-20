@@ -76,7 +76,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
 import { useSettings } from '../composables/useSettings'
@@ -85,6 +85,10 @@ import { startTileDownload, getTileStatus } from '../api'
 const { t } = useI18n()
 const authStore = useAuthStore()
 const { bgMountainsOffline } = useSettings()
+
+onMounted(async () => {
+  if (!authStore.user) await authStore.fetchMe()
+})
 
 const tileStatus = ref(null)
 let pollTimer = null
