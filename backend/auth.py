@@ -24,9 +24,8 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(user_id: str, role: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
     return jwt.encode(
-        {'sub': user_id, 'role': role, 'exp': expire, 'typ': 'access'},
+        {'sub': user_id, 'role': role, 'typ': 'access'},
         settings.secret_key,
         algorithm=ALGORITHM,
     )
@@ -65,7 +64,8 @@ async def get_current_user(
         headers={'WWW-Authenticate': 'Bearer'},
     )
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM],
+                             options={'verify_exp': False})
         user_id: str = payload.get('sub')
         if user_id is None:
             raise credentials_error
