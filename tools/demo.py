@@ -76,7 +76,7 @@ def login(username: str = 'admin', password: str = 'admin') -> dict:
 def get_existing_users(headers: dict) -> dict:
     r = httpx.get(f'{BASE}/users/', headers=headers)
     r.raise_for_status()
-    return {u['username']: u for u in r.json() if u.get('username')}
+    return {u['username']: u for u in r.json()['items'] if u.get('username')}
 
 
 def get_or_create_users(headers: dict) -> dict:
@@ -120,7 +120,7 @@ def get_or_create_devices(headers: dict, user_ids: dict) -> dict:
 
 
 def get_or_create_groups(headers: dict, user_ids: dict) -> None:
-    existing = {g['name'] for g in httpx.get(f'{BASE}/groups/', headers=headers).json()}
+    existing = {g['name'] for g in httpx.get(f'{BASE}/groups/', headers=headers).json()['items']}
     for g in DEMO_GROUPS:
         if g['name'] in existing:
             print(f'  Using existing group: {g["name"]}')
