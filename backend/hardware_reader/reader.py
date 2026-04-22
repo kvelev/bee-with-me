@@ -134,7 +134,7 @@ async def _handle_bee(frame: BeeFrame, conn: asyncpg.Connection) -> None:
         'gnss_satellites': frame.gnss_satellites,
         'sos_active':      frame.sos_active,
         'repeater_mode':   frame.repeater_mode,
-        'recorded_at':     frame.recorded_at.isoformat(),
+        'recorded_at':     datetime.now(timezone.utc).isoformat(),
         'groups':          groups,
     })
     await conn.execute("SELECT pg_notify('location_update', $1)", payload)
