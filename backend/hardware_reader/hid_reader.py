@@ -84,7 +84,11 @@ async def run() -> None:
                     chunk = bytes(b for b in data if b != 0).decode('ascii', errors='replace')
                     logger.info('HID decoded chunk: %r', chunk)
                     buf += chunk
-                    logger.debug('HID buffer: %r', buf)
+                    # Discard any stale partial frame when a new one starts mid-buffer
+                    second = buf.find('##', 2)
+                    if second != -1:
+                        logger.warning('HID discarding partial frame: %r', buf[:second])
+                        buf = buf[second:]
                     # Extract complete frames
                     while '\n' in buf:
                         line, buf = buf.split('\n', 1)
