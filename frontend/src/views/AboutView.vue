@@ -19,7 +19,7 @@
       <div class="about-section">
         <h3>{{ t('about.contact') }}</h3>
         <p>Konstantin Velev<br>Phone: 0877389417<br>Email: konsvelev@gmail.com</p>
-        <p style="margin-top:8px">Kiril Penev</p><br>Phone: 0883545571<br>Email: k.penev@outlook.com</p>
+        <p style="margin-top:8px">Kiril Penev<br>Phone: 0883545571<br>Email: k.penev@outlook.com</p>
       </div>
 
       <div class="about-section">
