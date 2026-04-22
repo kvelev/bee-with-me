@@ -39,12 +39,13 @@ def _vid_pid() -> tuple[int, int]:
 
 async def _process_frame(raw: str, conn: asyncpg.Connection) -> None:
     frame = parse_frame(raw)
+    logger.info('HID parse result: %s', frame)
     if isinstance(frame, BeeFrame):
         await _handle_bee(frame, conn)
     elif isinstance(frame, RepeaterFrame):
         await _handle_repeater(frame, conn)
     else:
-        logger.debug('HID unparseable frame: %r', raw)
+        logger.warning('HID unparseable frame: %r', raw)
 
 
 async def run() -> None:
@@ -78,14 +79,18 @@ async def run() -> None:
                 if data:
                     status['packets_received'] += 1
                     status['last_packet_at']    = datetime.now(timezone.utc).isoformat()
+                    logger.info('HID raw packet #%d: %s', status['packets_received'], list(data))
                     # Strip null padding and decode
                     chunk = bytes(b for b in data if b != 0).decode('ascii', errors='replace')
+                    logger.info('HID decoded chunk: %r', chunk)
                     buf += chunk
+                    logger.debug('HID buffer: %r', buf)
                     # Extract complete frames
                     while '\n' in buf:
                         line, buf = buf.split('\n', 1)
                         line = line.strip()
                         if line:
+                            logger.info('HID frame extracted: %r', line)
                             await _process_frame(line, conn)
                 await asyncio.sleep(READ_INTERVAL)
 
