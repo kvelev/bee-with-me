@@ -59,6 +59,8 @@ def crc16(data: bytes, poly: int = 0xACAC) -> int:
 
 def _strip_and_verify(raw: str) -> str | None:
     """Return the payload (between ## and @CRC) if CRC passes, else None."""
+    import logging
+    _log = logging.getLogger(__name__)
     raw = raw.strip()
     if not raw.startswith('##') or '@' not in raw:
         return None
@@ -67,7 +69,9 @@ def _strip_and_verify(raw: str) -> str | None:
         expected = int(crc_str)   # device sends CRC as decimal
     except ValueError:
         return None
-    if crc16(payload.encode('ascii', errors='replace')) != expected:
+    computed = crc16(payload.encode('ascii', errors='replace'))
+    _log.info('CRC check: expected=%d computed=%d match=%s', expected, computed, expected == computed)
+    if computed != expected:
         return None
     return payload
 
