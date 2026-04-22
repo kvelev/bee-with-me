@@ -2,7 +2,8 @@
 HID device reader service.
 
 Reads raw 64-byte packets from a USB HID device (VID/PID from .env).
-Extend _handle_packet() with a parser once the device protocol is known.
+The device sends the same bee protocol as the LoRaWAN serial gateway;
+frames are ASCII text (##...@CRC\r\n) spread across one or more HID packets.
 """
 
 from __future__ import annotations
@@ -10,6 +11,11 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone
+
+import asyncpg
+
+from .parser import BeeFrame, RepeaterFrame, parse_frame
+from .reader import _handle_bee, _handle_repeater, _dsn
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +28,8 @@ status: dict = {
     'error':            None,
 }
 
-READ_INTERVAL  = 0.2   # seconds between polls
-RECONNECT_DELAY = 5    # seconds between reconnect attempts
+READ_INTERVAL   = 0.02   # seconds between polls (50 Hz)
+RECONNECT_DELAY = 5      # seconds between reconnect attempts
 
 
 def _vid_pid() -> tuple[int, int]:
@@ -31,9 +37,14 @@ def _vid_pid() -> tuple[int, int]:
     return settings.hid_vendor_id, settings.hid_product_id
 
 
-def _handle_packet(data: list[int]) -> None:
-    """Process a raw HID packet. Replace with real parsing when protocol is known."""
-    logger.debug('HID packet (%d bytes): %s', len(data), data)
+async def _process_frame(raw: str, conn: asyncpg.Connection) -> None:
+    frame = parse_frame(raw)
+    if isinstance(frame, BeeFrame):
+        await _handle_bee(frame, conn)
+    elif isinstance(frame, RepeaterFrame):
+        await _handle_repeater(frame, conn)
+    else:
+        logger.debug('HID unparseable frame: %r', raw)
 
 
 async def run() -> None:
@@ -51,7 +62,10 @@ async def run() -> None:
 
     while True:
         dev = None
+        conn = None
+        buf = ''
         try:
+            conn = await asyncpg.connect(_dsn())
             dev = hid.device()
             dev.open(vid, pid)
             dev.set_nonblocking(True)
@@ -64,7 +78,15 @@ async def run() -> None:
                 if data:
                     status['packets_received'] += 1
                     status['last_packet_at']    = datetime.now(timezone.utc).isoformat()
-                    _handle_packet(data)
+                    # Strip null padding and decode
+                    chunk = bytes(b for b in data if b != 0).decode('ascii', errors='replace')
+                    buf += chunk
+                    # Extract complete frames
+                    while '\n' in buf:
+                        line, buf = buf.split('\n', 1)
+                        line = line.strip()
+                        if line:
+                            await _process_frame(line, conn)
                 await asyncio.sleep(READ_INTERVAL)
 
         except asyncio.CancelledError:
@@ -83,6 +105,8 @@ async def run() -> None:
                     dev.close()
                 except Exception:
                     pass
+            if conn and not conn.is_closed():
+                await conn.close()
 
         await asyncio.sleep(RECONNECT_DELAY)
 
