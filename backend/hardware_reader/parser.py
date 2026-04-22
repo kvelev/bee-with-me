@@ -62,9 +62,9 @@ def _strip_and_verify(raw: str) -> str | None:
     raw = raw.strip()
     if not raw.startswith('##') or '@' not in raw:
         return None
-    payload, crc_hex = raw[2:].rsplit('@', 1)
+    payload, crc_str = raw[2:].rsplit('@', 1)
     try:
-        expected = int(crc_hex, 16)
+        expected = int(crc_str)   # device sends CRC as decimal
     except ValueError:
         return None
     if crc16(payload.encode('ascii', errors='replace')) != expected:
@@ -75,29 +75,29 @@ def _strip_and_verify(raw: str) -> str | None:
 # ── Field parsers ─────────────────────────────────────────────────────────────
 
 def _parse_bee(fields: list[str]) -> BeeFrame | None:
-    # ##30,MsgId,DevSN,Hour,Min,Sec,Day,Mon,Year,GNSSStatus,Lat,Lng,
-    #   Speed,Satellites,Altitude,Flags,BattVol
-    if len(fields) < 17:
+    # ##30,MsgId,DevSN,Hour,Min,Sec,?,?,Day,Mon,Year,GNSSStatus,Lat,Lng,
+    #   Speed,Course,Satellites,Altitude,Flags,BattVol[,RSSI,SNR,...]
+    if len(fields) < 20:
         return None
     try:
-        year = int(fields[8])
+        year = int(fields[10])
         if year < 100:
             year += 2000
         recorded_at = datetime(
             year=year,
-            month=int(fields[7]),
-            day=int(fields[6]),
+            month=int(fields[9]),
+            day=int(fields[8]),
             hour=int(fields[3]),
             minute=int(fields[4]),
             second=int(fields[5]),
             tzinfo=timezone.utc,
         )
         # GNSSStatus: ASCII 'A' or Cyrillic 'А' both mean valid
-        gnss_valid = fields[9].strip() in ('A', '\u0410')
-        lat = float(fields[10])
-        lng = float(fields[11])
+        gnss_valid = fields[11].strip() in ('A', 'А')
+        lat = float(fields[12])
+        lng = float(fields[13])
         mgrs_str = _MGRS.toMGRS(lat, lng) if gnss_valid else ''
-        flags = int(fields[15])
+        flags = int(fields[18])
         return BeeFrame(
             msg_id=int(fields[1]),
             dev_sn=int(fields[2]),
@@ -106,11 +106,11 @@ def _parse_bee(fields: list[str]) -> BeeFrame | None:
             latitude=lat,
             longitude=lng,
             mgrs=mgrs_str,
-            speed_knots=float(fields[12]),
-            course_deg=None,  # not present in frame despite spec mention
-            gnss_satellites=int(fields[13]),
-            altitude_m=int(fields[14]),
-            battery_voltage=float(fields[16]),
+            speed_knots=float(fields[14]),
+            course_deg=int(fields[15]),
+            gnss_satellites=int(fields[16]),
+            altitude_m=int(fields[17]),
+            battery_voltage=float(fields[19]),
             sos_active=bool(flags & 0x02),
             repeater_mode=bool(flags & 0x01),
             raw_flags=flags,
