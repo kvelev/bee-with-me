@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
     notify_task  = asyncio.create_task(manager.listen_notifications())
     cleanup_task = asyncio.create_task(_cleanup_old_locations())
 
-    # Hardware reader runs only when a real port is available
+    # Serial (LoRaWAN) reader — runs only when a real port is available
     serial_task = None
     try:
         from .hardware_reader.reader import run as hardware_reader_run
@@ -63,12 +63,23 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning('Serial reader not started: %s', exc)
 
+    # HID device reader — runs only when the device is connected
+    hid_task = None
+    try:
+        from .hardware_reader.hid_reader import run as hid_reader_run
+        hid_task = asyncio.create_task(hid_reader_run())
+        logger.info('HID reader task started')
+    except Exception as exc:
+        logger.warning('HID reader not started: %s', exc)
+
     yield
 
     notify_task.cancel()
     cleanup_task.cancel()
     if serial_task:
         serial_task.cancel()
+    if hid_task:
+        hid_task.cancel()
     await close_pool()
 
 

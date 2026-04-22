@@ -38,6 +38,9 @@ data/
 # Offline map tiles (large binary files)
 /tiles/
 
+#LoraWAN info
+/lorawan/*
+
 # Environment — never commit secrets
 .env
 

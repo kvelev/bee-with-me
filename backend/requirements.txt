@@ -7,6 +7,7 @@ python-multipart>=0.0.9
 uvicorn[standard]>=0.29
 asyncpg>=0.29
 pyserial-asyncio>=0.6
+hidapi>=0.14
 mgrs>=1.4
 packaging>=24.0
 python-dotenv>=1.0

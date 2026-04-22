@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     serial_port: str = '/dev/ttyUSB0'
     serial_baud: int = 9600
 
+    hid_vendor_id:  int = 0x0ACD
+    hid_product_id: int = 0xFAAF
+
     location_retention_days: int = 90
 
 
