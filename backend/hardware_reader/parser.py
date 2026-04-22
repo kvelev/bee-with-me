@@ -111,8 +111,8 @@ def _parse_bee(fields: list[str]) -> BeeFrame | None:
             gnss_satellites=int(fields[13]),
             altitude_m=int(fields[14]),
             battery_voltage=float(fields[16]),
-            sos_active=bool(flags & 0x01),
-            repeater_mode=bool(flags & 0x02),
+            sos_active=bool(flags & 0x02),
+            repeater_mode=bool(flags & 0x01),
             raw_flags=flags,
         )
     except (ValueError, IndexError):
