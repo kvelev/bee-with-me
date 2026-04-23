@@ -166,33 +166,44 @@ The Volunteers page has an **Import XLS** button. The file must be `.xls` or `.x
 backend/
   main.py              FastAPI app, lifespan, static mounts
   auth.py              JWT issue/verify, bcrypt password hashing
-  config.py            Settings via pydantic-settings + .env
+  config.py            pydantic-settings; reads from .env
   database.py          asyncpg connection pool
   ws.py                WebSocket manager; pg_notify → broadcast
-  hardware_reader/     Serial + HID readers; frame parser (CRC 0xACAC)
+  hardware_reader/
+    reader.py          Async serial loop (pyserial-asyncio)
+    hid_reader.py      USB HID reader (50 Hz polling, frame reassembly)
+    parser.py          Bee protocol frame parser; CRC-16 poly 0xACAC
   routers/
-    auth.py            POST /api/auth/login, /refresh
+    auth.py            POST /api/auth/login, /refresh, GET /me
     users.py           CRUD + photo upload + XLS import
     groups.py          CRUD + member management
-    devices.py         CRUD
-    locations.py       Live positions, location history
+    devices.py         CRUD + reactivate + permanent delete
+    locations.py       Live positions, SOS alerts, location history
     export.py          CSV / GeoJSON / PDF export
-    sos.py             SOS alert list + resolve
+    hardware_reader.py GET /api/serial/status
+    tiles.py           Tile download trigger + progress SSE
+    ws.py              GET /ws WebSocket endpoint
+    test.py            POST /api/test/simulate (dev only)
   db/
     schema.sql         Full PostgreSQL + PostGIS schema
+  tests/               pytest suite (mocked DB, no real Postgres needed)
 frontend/
   src/
-    stores/            Pinia stores (auth, locations)
-    composables/       useMap.js (OpenLayers), useWebSocket.js
-    views/             Page components (Map, Users, Groups, Devices, Export, About)
-    components/        AppLayout, SosToast
+    stores/            Pinia stores — auth.js, locations.js
+    composables/       useMap.js (OpenLayers), useWebSocket.js, useSettings.js
+    views/             Login, Map, Users, Groups, Devices, Export, About
+    components/        AppLayout, SOSToast, SOSBanner
+    router/            Vue Router — index.js
     i18n/              en.js, bg.js (vue-i18n v9)
-    api/               Axios client with JWT refresh interceptor
+    api/               Axios client (client.js) with JWT refresh interceptor
     nav-config.js      Navigation items with icons
 docker/
-  docker-compose.yml   PostgreSQL 16 + PostGIS
+  docker-compose.yaml  PostgreSQL 16 + PostGIS; tileserver-gl
+lorawan/
+  main.py              Standalone LoRaWAN bridge utility
 tools/
-  demo.py              Simulation script — injects fake location frames
+  demo.py              Simulation script — injects fake frames via HTTP
+  download_tiles.py    Tile download pipeline (z8–z18, Bulgaria bbox)
 ```
 
 ---
