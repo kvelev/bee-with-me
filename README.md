@@ -18,7 +18,7 @@ Offline people-tracking application for LoRaWAN-based rescue and volunteer opera
 - **Teams** — group volunteers into colour-coded teams; each team can have a designated leader.
 - **Devices** — register RescuerBee devices by serial number and assign them to volunteers.
 - **Export** — export location history to CSV, GeoJSON or PDF report with date/person/team filters.
-- **JWT authentication** — short-lived access tokens (15 min) with silent refresh via 7-day refresh tokens.
+- **JWT authentication** — long-lived access tokens (intranet deployment) with silent refresh via 7-day refresh tokens.
 
 ---
 
@@ -43,9 +43,10 @@ Edit `.env`:
 ```env
 POSTGRES_PASSWORD=your_password
 SECRET_KEY=a_long_random_string   # used for JWT signing
-SERIAL_PORT=/dev/ttyUSB0          # USB path of the LoRaWAN gateway
-SERIAL_BAUD=115200
-ACCESS_TOKEN_EXPIRE_MINUTES=15
+SERIAL_PORT=/dev/ttyUSB0          # USB path of the LoRaWAN serial gateway
+SERIAL_BAUD=9600
+HID_VENDOR_ID=0x0ACD              # USB HID gateway VID (hex)
+HID_PRODUCT_ID=0xFAAF             # USB HID gateway PID (hex)
 REFRESH_TOKEN_EXPIRE_DAYS=7
 ```
 
@@ -103,7 +104,10 @@ A default admin account is created on first start if no users exist.
 
 ## Hardware
 
-**Topology:** one USB LoRaWAN gateway plugs into the server and receives radio transmissions from all field RescuerBee devices. There is no per-device USB connection — all frames arrive on a single serial port and are demultiplexed by `DevSN`.
+**Topology:** a USB gateway plugs into the server and receives radio transmissions from all field RescuerBee devices. There is no per-device USB connection — all frames arrive on a single port and are demultiplexed by `DevSN`. Two gateway types are supported:
+
+- **Serial (LoRaWAN)** — async serial loop via `pyserial-asyncio`; configure `SERIAL_PORT` and `SERIAL_BAUD` in `.env`
+- **USB HID** — reads raw 64-byte HID packets; configure `HID_VENDOR_ID` and `HID_PRODUCT_ID` in `.env`. Both readers can run simultaneously.
 
 **Before a device appears on the map**, an admin must register it in the Devices page with the matching serial number (`DevSN`). Until that row exists the reader discards the frame with a warning. Assigning the device to a volunteer links name, rank and team to the position.
 
@@ -165,7 +169,7 @@ backend/
   config.py            Settings via pydantic-settings + .env
   database.py          asyncpg connection pool
   ws.py                WebSocket manager; pg_notify → broadcast
-  hardware_reader/     Asyncio serial loop; frame parser (CRC 0xACAC)
+  hardware_reader/     Serial + HID readers; frame parser (CRC 0xACAC)
   routers/
     auth.py            POST /api/auth/login, /refresh
     users.py           CRUD + photo upload + XLS import

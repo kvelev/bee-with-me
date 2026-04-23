@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.4.0] - 2026-04-23
+
+### HID device reader
+
+- New `hardware_reader/hid_reader.py` reads raw 64-byte packets from a USB HID device using the same bee protocol as the LoRaWAN serial gateway
+- Device VID/PID are configurable via `HID_VENDOR_ID` / `HID_PRODUCT_ID` in `.env` (defaults: `0x0ACD` / `0xFAAF`)
+- Reconnects automatically every 5 seconds on error; polls at 50 Hz
+- Handles frame reassembly across packet boundaries and discards stale partial frames when a new `##` header is detected mid-buffer
+- HID reader runs alongside the serial reader; either, both, or neither can be active depending on connected hardware
+
+### Device management
+
+- **Reactivate** — deactivated devices now show a Reactivate button instead of Deactivate; backed by new `POST /api/devices/{id}/reactivate`
+- **Permanent delete** — new Delete button (with confirmation) permanently removes a device and all its location history, SOS alerts and repeater events in a single transaction; backed by `DELETE /api/devices/{id}/permanent`
+- Deactivate button is now amber (warning) to distinguish it from the red permanent delete
+
+### Groups — member search
+
+- Replaced the flat `<select>` dropdown for adding members with a searchable autocomplete input
+- Filters available users by name or rank as you type; shows a "no results" hint when nothing matches
+- Leader toggle is now a star (★) button instead of a checkbox
+
+### Weather — colour legends
+
+- Each weather overlay now shows a gradient colour legend with labelled stops at the bottom of the weather info panel (Clouds, Rain, Wind, Temperature) - still PoC
+
+
 ## [1.3.0] - 2026-04-19
 
 ### Offline map tiles — BG Mountains
