@@ -194,7 +194,7 @@ async def _read_loop(reader: asyncio.StreamReader, conn: asyncpg.Connection) -> 
 
 # ── Main run loop (reconnects on failure) ─────────────────────────────────────
 
-async def run() -> None:
+"""async def run() -> None:
     # Support standalone execution
     try:
         from dotenv import load_dotenv
@@ -246,3 +246,4 @@ async def run() -> None:
 
 if __name__ == '__main__':
     asyncio.run(run())
+"""

@@ -4,10 +4,20 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Union
 
+from enum import IntEnum
+
 import mgrs as mgrs_lib
 
 _MGRS = mgrs_lib.MGRS()
 
+
+# ── Rescuer Location (RL) Commands ─────────────────────────────────────────────
+
+class RLCommands(IntEnum):
+    CONFIRM = 1
+    BEE = 30
+    REPEATER = 20
+    
 
 # ── Data classes ─────────────────────────────────────────────────────────────
 
@@ -28,6 +38,7 @@ class BeeFrame:
     sos_active: bool
     repeater_mode: bool
     raw_flags: int
+    event_id: int
 
 
 @dataclass
@@ -40,10 +51,10 @@ class RepeaterFrame:
 Frame = Union[BeeFrame, RepeaterFrame]
 
 
-# ── CRC-16 (polynomial 0xACAC) ────────────────────────────────────────────────
+# ── CRC-16 (polynomial 0x1021, init 0xFFFF) ────────────────────────────────────────────────
 
-def crc16(data: bytes, poly: int = 0xACAC) -> int:
-    crc = 0x0000
+def crc16(data: bytes, poly: int = 0x1021, init: int = 0xFFFF) -> int:
+    crc = init
     for byte in data:
         crc ^= byte << 8
         for _ in range(8):
@@ -58,30 +69,28 @@ def crc16(data: bytes, poly: int = 0xACAC) -> int:
 # ── Frame validation ──────────────────────────────────────────────────────────
 
 def _strip_and_verify(raw: str) -> str | None:
-    """Return the payload (between ## and @CRC) if CRC passes, else None."""
+    """Return the payload (Computed from ## (inclusive) to @ (exclusive)) if CRC passes, else None."""
     import logging
     _log = logging.getLogger(__name__)
     raw = raw.strip()
     if not raw.startswith('##') or '@' not in raw:
         return None
-    payload, crc_str = raw[2:].rsplit('@', 1)
+    payload, crc_str = raw.rsplit('@', 1)
     try:
         expected = int(crc_str)   # device sends CRC as decimal
     except ValueError:
         return None
     computed = crc16(payload.encode('ascii', errors='replace'))
     _log.info('CRC check: expected=%d computed=%d match=%s', expected, computed, expected == computed)
-    # TODO: CRC algorithm mismatch — bypassed until correct algo is identified
-    # if computed != expected:
-    #     return None
-    return payload
+    
+    return None if computed != expected else payload.removeprefix('##')
 
 
 # ── Field parsers ─────────────────────────────────────────────────────────────
 
 def _parse_bee(fields: list[str]) -> BeeFrame | None:
-    # ##30,MsgId,DevSN,Hour,Min,Sec,?,?,Day,Mon,Year,GNSSStatus,Lat,Lng,
-    #   Speed,Course,Satellites,Altitude,Flags,BattVol[,RSSI,SNR,...]
+    # ##30,MsgId,DevSN,Hour,Min,Sec,Day,Mon,Year,GNSSStatus,Lat,Lng,
+    #   Speed,Course,Satellites,Altitude,Flags,BattVol,MothRxBeeRSSI,MothRxBeeSNR,BeeRxMothRSSI,BeeRxMothSNR,EventID
     if len(fields) < 20:
         return None
     try:
@@ -119,6 +128,7 @@ def _parse_bee(fields: list[str]) -> BeeFrame | None:
             sos_active=bool(flags & 0x02),
             repeater_mode=bool(flags & 0x01),
             raw_flags=flags,
+            event_id=int(fields[24])
         )
     except (ValueError, IndexError):
         return None
@@ -137,6 +147,12 @@ def _parse_repeater(fields: list[str]) -> RepeaterFrame | None:
     except (ValueError, IndexError):
         return None
 
+# ── Confirm message builder ──────────────────────────────────────────────────
+
+def make_confirm(msgid: int) -> str:
+    base = f"##{RLCommands.CONFIRM},{msgid}"
+    crc = crc16(base.encode("ascii"))
+    return f"{base}@{crc}\r\n"
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
@@ -148,8 +164,9 @@ def parse_frame(raw: str) -> Frame | None:
     if not fields or not fields[0].isdigit():
         return None
     cmd = int(fields[0])
-    if cmd == 30:
-        return _parse_bee(fields)
-    if cmd == 20:
-        return _parse_repeater(fields)
+    match cmd:
+        case RLCommands.BEE:
+            return _parse_bee(fields)
+        case RLCommands.REPEATER:
+            return _parse_repeater(fields)
     return None
