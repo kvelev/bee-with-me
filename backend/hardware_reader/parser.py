@@ -46,6 +46,7 @@ class RepeaterFrame:
     msg_id: int
     dev_sn: int
     battery_voltage: float
+    event_id: int
 
 
 Frame = Union[BeeFrame, RepeaterFrame]
@@ -89,9 +90,9 @@ def _strip_and_verify(raw: str) -> str | None:
 # ── Field parsers ─────────────────────────────────────────────────────────────
 
 def _parse_bee(fields: list[str]) -> BeeFrame | None:
-    # ##30,MsgId,DevSN,Hour,Min,Sec,Day,Mon,Year,GNSSStatus,Lat,Lng,
-    #   Speed,Course,Satellites,Altitude,Flags,BattVol,MothRxBeeRSSI,MothRxBeeSNR,BeeRxMothRSSI,BeeRxMothSNR,EventID
-    if len(fields) < 20:
+    # ##30,MsgId,DevSN,HWVer,SWVer,Hour,Min,Sec,Day,Mon,Year,GNSSStatus,Lat,Lng,
+    #   Speed,Course,Satellites,Altitude,Flags,BattVol,CurrMothRxBeeRSSI,CurrMothRxBeeSNR,PrevBeeRxMothRSSI,PrevBeeRxMothSNR,EventID
+    if len(fields) < 24:
         return None
     try:
         year = int(fields[10])
@@ -101,9 +102,9 @@ def _parse_bee(fields: list[str]) -> BeeFrame | None:
             year=year,
             month=int(fields[9]),
             day=int(fields[8]),
-            hour=int(fields[3]),
-            minute=int(fields[4]),
-            second=int(fields[5]),
+            hour=int(fields[5]),
+            minute=int(fields[6]),
+            second=int(fields[7]),
             tzinfo=timezone.utc,
         )
         # GNSSStatus: ASCII 'A' or Cyrillic 'А' both mean valid
@@ -135,14 +136,15 @@ def _parse_bee(fields: list[str]) -> BeeFrame | None:
 
 
 def _parse_repeater(fields: list[str]) -> RepeaterFrame | None:
-    # ##20,MsgId,DevSN,BattVol
-    if len(fields) < 4:
+    # ##20,MsgId,DevSN,HWVer,SWVer,BattVol,CurrMRxDevRSSI,CurrMRxDevSNR,PrevDevRxMRSSI,PrevDevRxMSNR,EventID
+    if len(fields) < 10:
         return None
     try:
         return RepeaterFrame(
             msg_id=int(fields[1]),
             dev_sn=int(fields[2]),
-            battery_voltage=float(fields[3]),
+            battery_voltage=float(fields[5]),
+            event_id=int(fields[10])
         )
     except (ValueError, IndexError):
         return None

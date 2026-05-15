@@ -59,7 +59,8 @@ async def _send_data(dev, text: str):
 # ──── Process frame ─────────────────────────────────────────────────────
 
 EVENT_TIMEOUT = 15.0  # секунди
-bee_last_events = {} # { "SN123": (event_id, timestamp) }
+bee_last_events = {}  # { "SN123": (event_id, timestamp) }
+repeater_last_events = {}  # { "SN123": (event_id, timestamp) }
 
 async def _process_frame(raw: str, conn: asyncpg.Connection) -> str | None:
     frame = parse_frame(raw)
@@ -80,10 +81,19 @@ async def _process_frame(raw: str, conn: asyncpg.Connection) -> str | None:
             bee_last_events[frame.dev_sn] = (frame.event_id, now) # update only if not repeated
             await _handle_bee(frame, conn)
         else:
-            logger.info('Repeated BeeFrame ignored for %s', frame.dev_sn)
+            logger.info('Repeated BeeFrame ignored for dev_sn=%s', frame.dev_sn)
 
     elif isinstance(frame, RepeaterFrame):
-        await _handle_repeater(frame, conn)
+        now = time.monotonic()
+        last_id, last_time = repeater_last_events.get(frame.dev_sn, (None, 0))
+
+        is_repeated = (frame.event_id == last_id) and (now - last_time < EVENT_TIMEOUT)
+
+        if not is_repeated:
+            repeater_last_events[frame.dev_sn] = (frame.event_id, now) # update only if not repeated
+            await _handle_repeater(frame, conn)
+        else:
+            logger.info('Repeated RepeaterFrame ignored for dev_sn=%s', frame.dev_sn)
 
     return make_confirm(frame.msg_id)
 
