@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, field_validator
 
 
 class Settings(BaseSettings):
@@ -20,6 +21,18 @@ class Settings(BaseSettings):
     hid_product_id: int = 0xFAAF
 
     location_retention_days: int = 90
+
+    @field_validator("hid_vendor_id", "hid_product_id", mode="before")
+    def parse_int(cls, v):
+        if isinstance(v, str):
+            return int(v, 16) if v.startswith("0x") else int(v)
+        return v
+
+    @field_validator("hid_vendor_id", "hid_product_id")
+    def validate_range(cls, v, info):
+        if not (0 <= v <= 0xFFFF):
+            raise ValueError(f"{info.field_name} must be 0–65535")
+        return v
 
 
 settings = Settings()

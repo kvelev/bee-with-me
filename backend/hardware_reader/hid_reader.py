@@ -10,11 +10,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 
 import asyncpg
 
-from .parser import BeeFrame, RepeaterFrame, parse_frame
+from .parser import BeeFrame, RepeaterFrame, parse_frame, make_confirm
 from .reader import _handle_bee, _handle_repeater, _dsn
 
 logger = logging.getLogger(__name__)
@@ -31,21 +32,70 @@ status: dict = {
 READ_INTERVAL   = 0.02   # seconds between polls (50 Hz)
 RECONNECT_DELAY = 5      # seconds between reconnect attempts
 
+HID_BUFFER_SIZE = 64     # bytes per packet
+
+
 
 def _vid_pid() -> tuple[int, int]:
     from ..config import settings
     return settings.hid_vendor_id, settings.hid_product_id
 
 
-async def _process_frame(raw: str, conn: asyncpg.Connection) -> None:
+# ── Send Data ────────────────────────────────────────────────────────
+
+async def _send_data(dev, text: str):
+    data = text.encode('utf-8')
+
+    chunk_size = HID_BUFFER_SIZE - 1  # 64 - 1 byte report ID
+    for i in range(0, len(data), chunk_size):
+        chunk = data[i:i+chunk_size]
+        report = bytes([0x00]) + chunk
+
+        # padding to 64 bytes
+        report += bytes(HID_BUFFER_SIZE - len(report))
+
+        dev.write(report)
+
+# ──── Process frame ─────────────────────────────────────────────────────
+
+EVENT_TIMEOUT = 15.0  # секунди
+bee_last_events = {}  # { "SN123": (event_id, timestamp) }
+repeater_last_events = {}  # { "SN123": (event_id, timestamp) }
+
+async def _process_frame(raw: str, conn: asyncpg.Connection) -> str | None:
     frame = parse_frame(raw)
-    logger.info('HID parse result: %s', frame)
-    if isinstance(frame, BeeFrame):
-        await _handle_bee(frame, conn)
-    elif isinstance(frame, RepeaterFrame):
-        await _handle_repeater(frame, conn)
-    else:
+
+    if not frame:
         logger.warning('HID unparseable frame: %r', raw)
+        return None
+
+    logger.info('HID parse result: %s', frame)
+
+    if isinstance(frame, BeeFrame):
+        now = time.monotonic()
+        last_id, last_time = bee_last_events.get(frame.dev_sn, (None, 0))
+
+        is_repeated = (frame.event_id == last_id) and (now - last_time < EVENT_TIMEOUT)
+
+        if not is_repeated:
+            bee_last_events[frame.dev_sn] = (frame.event_id, now) # update only if not repeated
+            await _handle_bee(frame, conn)
+        else:
+            logger.info('Repeated BeeFrame ignored for dev_sn=%s', frame.dev_sn)
+
+    elif isinstance(frame, RepeaterFrame):
+        now = time.monotonic()
+        last_id, last_time = repeater_last_events.get(frame.dev_sn, (None, 0))
+
+        is_repeated = (frame.event_id == last_id) and (now - last_time < EVENT_TIMEOUT)
+
+        if not is_repeated:
+            repeater_last_events[frame.dev_sn] = (frame.event_id, now) # update only if not repeated
+            await _handle_repeater(frame, conn)
+        else:
+            logger.info('Repeated RepeaterFrame ignored for dev_sn=%s', frame.dev_sn)
+
+    return make_confirm(frame.msg_id)
 
 
 async def run() -> None:
@@ -75,7 +125,7 @@ async def run() -> None:
             logger.info('HID device opened VID=%s PID=%s', hex(vid), hex(pid))
 
             while True:
-                data = dev.read(64)
+                data = dev.read(HID_BUFFER_SIZE)
                 if data:
                     status['packets_received'] += 1
                     status['last_packet_at']    = datetime.now(timezone.utc).isoformat()
@@ -95,7 +145,10 @@ async def run() -> None:
                         line = line.strip()
                         if line:
                             logger.info('HID frame extracted: %r', line)
-                            await _process_frame(line, conn)
+                            confirm = await _process_frame(line, conn)
+                            if confirm:
+                                logger.info('HID confirm to send: %s', confirm)
+                                await _send_data(dev, confirm)
                 await asyncio.sleep(READ_INTERVAL)
 
         except asyncio.CancelledError:
