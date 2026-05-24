@@ -26,7 +26,11 @@
 
     <main class="main-content">
       <SOSBanner />
-      <RouterView />
+      <RouterView v-slot="{ Component }">
+        <KeepAlive include="MapView">
+          <component :is="Component" />
+        </KeepAlive>
+      </RouterView>
     </main>
   </div>
 </template>

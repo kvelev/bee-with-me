@@ -67,16 +67,40 @@
           </div>
         </div>
 
-        <button :disabled="tileStatus?.running" @click="startDownload" style="margin-top:12px">
+        <button :disabled="tileStatus?.running" @click="openPasswordPrompt" style="margin-top:12px">
           {{ tileStatus?.running ? t('about.offlineMapsDownloading') : t('about.offlineMapsDownload') }}
         </button>
+      </div>
+    </div>
+
+    <div v-if="passwordPromptOpen" class="modal-backdrop" @click.self="closePasswordPrompt">
+      <div class="modal-card">
+        <h3 class="modal-title">{{ t('about.offlineMapsPasswordTitle') }}</h3>
+        <p class="modal-desc">{{ t('about.offlineMapsPasswordDesc') }}</p>
+        <input
+          ref="passwordInputEl"
+          v-model="passwordInput"
+          type="password"
+          class="modal-input"
+          :placeholder="t('about.offlineMapsPasswordPlaceholder')"
+          @keyup.enter="submitPassword"
+        />
+        <div v-if="passwordError" class="modal-error">{{ passwordError }}</div>
+        <div class="modal-actions">
+          <button type="button" class="secondary" @click="closePasswordPrompt">
+            {{ t('common.cancel') }}
+          </button>
+          <button type="button" @click="submitPassword" :disabled="!passwordInput">
+            {{ t('about.offlineMapsDownload') }}
+          </button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
 import { useSettings } from '../composables/useSettings'
@@ -93,14 +117,41 @@ onMounted(async () => {
 const tileStatus = ref(null)
 let pollTimer = null
 
+const passwordPromptOpen = ref(false)
+const passwordInput      = ref('')
+const passwordError      = ref('')
+const passwordInputEl    = ref(null)
+
 const progressPct = computed(() => {
   if (!tileStatus.value?.total) return 0
   return Math.round(tileStatus.value.done / tileStatus.value.total * 100)
 })
 
-async function startDownload() {
-  await startTileDownload()
-  pollStatus()
+function openPasswordPrompt() {
+  passwordInput.value = ''
+  passwordError.value = ''
+  passwordPromptOpen.value = true
+  nextTick(() => passwordInputEl.value?.focus())
+}
+
+function closePasswordPrompt() {
+  passwordPromptOpen.value = false
+}
+
+async function submitPassword() {
+  if (!passwordInput.value) return
+  passwordError.value = ''
+  try {
+    await startTileDownload(passwordInput.value)
+    passwordPromptOpen.value = false
+    pollStatus()
+  } catch (e) {
+    if (e.response?.status === 403) {
+      passwordError.value = t('about.offlineMapsPasswordWrong')
+    } else {
+      passwordError.value = e.response?.data?.detail ?? String(e)
+    }
+  }
 }
 
 async function pollStatus() {
@@ -164,4 +215,30 @@ onUnmounted(() => clearTimeout(pollTimer))
 .mode-pills { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; flex-shrink: 0; }
 .mode-pill  { padding: 5px 16px; font-size: 13px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; }
 .mode-pill-active { background: var(--primary, #3b82f6); color: #fff; font-weight: 600; }
+
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(0,0,0,0.55); backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-card {
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 24px; width: min(420px, 90vw);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+}
+.modal-title { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
+.modal-desc  { margin: 0 0 14px; font-size: 13px; color: var(--text-muted); }
+.modal-input {
+  width: 100%; padding: 8px 10px; font-size: 14px;
+  background: var(--bg-card); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px;
+  box-sizing: border-box;
+}
+.modal-input:focus { outline: none; border-color: var(--accent); }
+.modal-error {
+  margin-top: 8px; font-size: 12px; color: var(--danger);
+}
+.modal-actions {
+  margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;
+}
 </style>

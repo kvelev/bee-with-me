@@ -53,7 +53,7 @@ export const getTrail         = (minutes = 30)     => api.get('/locations/trail'
 export const getSerialStatus = () => api.get('/serial/status')
 
 // Tiles
-export const startTileDownload = () => api.post('/tiles/bgmountains/download')
+export const startTileDownload = (password) => api.post('/tiles/bgmountains/download', { password })
 export const getTileStatus      = () => api.get('/tiles/bgmountains/status')
 
 // Export — returns raw blobs

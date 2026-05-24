@@ -22,6 +22,8 @@ class Settings(BaseSettings):
 
     location_retention_days: int = 90
 
+    offline_maps_password: str = 'change_me'
+
     @field_validator("hid_vendor_id", "hid_product_id", mode="before")
     def parse_int(cls, v):
         if isinstance(v, str):

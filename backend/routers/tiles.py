@@ -2,10 +2,14 @@ import asyncio
 import math
 import os
 
+import hmac
+
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel
 
 from ..auth import require_role
+from ..config import settings
 
 router = APIRouter(prefix='/api/tiles', tags=['tiles'])
 
@@ -77,11 +81,18 @@ async def _run_download() -> None:
         _status['running'] = False
 
 
+class DownloadRequest(BaseModel):
+    password: str = ''
+
+
 @router.post('/bgmountains/download')
 async def start_download(
+    body: DownloadRequest,
     background_tasks: BackgroundTasks,
     _=Depends(require_role('admin')),
 ):
+    if not hmac.compare_digest(body.password, settings.offline_maps_password):
+        raise HTTPException(status_code=403, detail='Invalid password')
     if _status['running']:
         raise HTTPException(status_code=409, detail='Download already in progress')
     background_tasks.add_task(_run_download)

@@ -41,6 +41,12 @@
       <button :class="['bm-btn', { active: measureOn }]" @click="toggleMeasure">
         {{ t('map.measure') }}
       </button>
+      <button :class="['bm-btn', { active: hqMode }]" @click="toggleHQMode">
+        {{ hqLocation ? t('map.hqMove') : t('map.hqSet') }}
+      </button>
+      <button v-if="hqLocation" class="bm-btn bm-btn-danger" @click="clearHQ">
+        {{ t('map.hqClear') }}
+      </button>
       <template v-if="activeBasemap === 'satellite'">
         <span class="bm-row-break" />
         <button
@@ -158,6 +164,8 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+
+defineOptions({ name: 'MapView' })
 import { useI18n } from 'vue-i18n'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import { useLocationsStore } from '../stores/locations'
@@ -240,13 +248,33 @@ const groupsWithLeaders = computed(() => {
   return Object.values(groupMap).sort((a, b) => a.name.localeCompare(b.name))
 })
 
-const { map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, setWeatherLayer, refreshMarkers } = useMap(
+const HQ_STORAGE_KEY = 'bwm.hq'
+const hqLocation = ref(loadHQ())
+const hqMode     = ref(false)
+
+function loadHQ() {
+  try {
+    const raw = localStorage.getItem(HQ_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (typeof parsed?.lat !== 'number' || typeof parsed?.lon !== 'number') return null
+    return parsed
+  } catch { return null }
+}
+
+const { map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, setWeatherLayer, refreshMarkers, setHQ, setHQPlacementMode } = useMap(
   mapEl,
   displayList,
   computed(() => store.trails),
   (coords) => { cursorCoords.value = coords },
   (data)   => { measureReadout.value = data },
   groupsMap,
+  (coords) => {
+    hqLocation.value = coords
+    localStorage.setItem(HQ_STORAGE_KEY, JSON.stringify(coords))
+    hqMode.value = false
+    setHQPlacementMode(false)
+  },
 )
 const { connect } = useWebSocket()
 
@@ -261,7 +289,11 @@ onMounted(async () => {
 
   const m = map()
   if (m) m.on('moveend', scheduleWeatherFetch)
+
+  if (hqLocation.value) setHQ(hqLocation.value)
 })
+
+watch(hqLocation, (loc) => setHQ(loc))
 
 onUnmounted(() => {
   clearTimeout(weatherTimer)
@@ -303,7 +335,27 @@ function toggleTrailNumbers() {
 }
 function toggleMeasure() {
   measureOn.value = !measureOn.value
+  if (measureOn.value && hqMode.value) {
+    hqMode.value = false
+    setHQPlacementMode(false)
+  }
   setMeasureMode(measureOn.value)
+}
+function toggleHQMode() {
+  hqMode.value = !hqMode.value
+  if (hqMode.value && measureOn.value) {
+    measureOn.value = false
+    setMeasureMode(false)
+  }
+  setHQPlacementMode(hqMode.value)
+}
+function clearHQ() {
+  hqLocation.value = null
+  localStorage.removeItem(HQ_STORAGE_KEY)
+  if (hqMode.value) {
+    hqMode.value = false
+    setHQPlacementMode(false)
+  }
 }
 function toggleWeather(id) {
   weatherLayerId.value = weatherLayerId.value === id ? null : id
@@ -579,6 +631,8 @@ function batClass(v) {
 .bm-btn:hover  { color: var(--text); }
 .bm-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 .bm-btn-weather.active { background: #0369a1; border-color: #0369a1; }
+.bm-btn-danger { color: #f87171; border-color: rgba(248,113,113,0.35); }
+.bm-btn-danger:hover { background: rgba(248,113,113,0.1); color: #fca5a5; }
 .bm-row-break { flex-basis: 100%; height: 0; }
 
 .tracker-panel {

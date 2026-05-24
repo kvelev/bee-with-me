@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.5.0] - 2026-05-24
+
+### Map — persistent state across page navigation
+
+- Wrapped `RouterView` in `<KeepAlive include="MapView">` so the OpenLayers map, trail line, checkpoint dots, basemap choice, zoom/center and all toggles survive when you leave `/map` and come back
+- WebSocket stays connected while you're on other pages, so the trail keeps growing in the background
+
+### Headquarters (ЩАБ) marker
+
+- New **Set HQ / Move HQ / Clear HQ** buttons in the basemap controls row
+- Click "Set HQ" → click anywhere on the map to place a yellow cross marker labelled `ЩАБ`
+- HQ position is persisted in `localStorage` (per-browser) and re-rendered on subsequent visits
+- Mutually exclusive with Measure mode (placing HQ turns Measure off and vice-versa)
+
+### Trail — checkpoint timestamps
+
+- Existing "Trail #" toggle now labels each checkpoint dot with its local recorded time (`HH:MM:SS`) instead of a sequential index
+- Falls back to the index if `recorded_at` is unavailable
+
+### Tracker labels
+
+- Marker name labels are now always rendered in bold 13 px (was 11 px regular)
+- Stale devices no longer dim the text — only the dot fades grey, so the name stays readable on any basemap
+
+### Bulgarian translations
+
+- Renamed every occurrence of `командир` → `отговорник на екип` (group leader UI strings)
+
+### Offline-maps download — password gate
+
+- `POST /api/tiles/bgmountains/download` now requires a `password` field in the JSON body, verified against the new `OFFLINE_MAPS_PASSWORD` setting from `.env` (compared with `hmac.compare_digest`)
+- About page shows a password modal before the download starts; wrong password is reported inline, the modal stays open
+- Admin role check is still in place — the password is an additional gate, not a replacement
+- New i18n keys: `about.offlineMapsPasswordTitle`, `…Desc`, `…Placeholder`, `…Wrong` (EN + BG)
+
 ## [1.4.0] - 2026-04-23
 
 ### HID device reader

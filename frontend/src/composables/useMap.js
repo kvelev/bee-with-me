@@ -12,6 +12,7 @@ import Point from 'ol/geom/Point'
 import LineString from 'ol/geom/LineString'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import { Circle, Fill, Stroke, Style, Text } from 'ol/style'
+import RegularShape from 'ol/style/RegularShape'
 import Graticule from 'ol/layer/Graticule'
 import ScaleLine from 'ol/control/ScaleLine'
 import { forward as toMGRS } from 'mgrs'
@@ -103,8 +104,6 @@ function makeMarkerStyle(color, isSOS, name, isTeam, isStale) {
   const radius     = isSOS ? 10 : isTeam ? 10 : 7
   const fillColor  = isStale ? 'rgba(156,163,175,0.45)' : (isSOS ? '#ef4444' : color)
   const strokeCol  = isStale ? 'rgba(255,255,255,0.35)' : '#fff'
-  const textFill   = isStale ? 'rgba(200,200,200,0.6)'  : '#fff'
-  const textStroke = isStale ? 'rgba(0,0,0,0.25)'       : '#000'
   return new Style({
     image: new Circle({
       radius,
@@ -114,9 +113,9 @@ function makeMarkerStyle(color, isSOS, name, isTeam, isStale) {
     text: new Text({
       text:    name || '',
       offsetY: -(radius + 10),
-      fill:    new Fill({ color: textFill }),
-      stroke:  new Stroke({ color: textStroke, width: 3 }),
-      font:    isTeam ? 'bold 13px system-ui' : '11px system-ui',
+      fill:    new Fill({ color: '#fff' }),
+      stroke:  new Stroke({ color: '#000', width: 3 }),
+      font:    isTeam ? 'bold 14px system-ui' : 'bold 13px system-ui',
     }),
   })
 }
@@ -131,15 +130,25 @@ function makeTrailStyle(color) {
   })
 }
 
-function makeCheckpointStyle(color, index, isLast, showNumbers) {
+function formatCheckpointTime(recordedAt) {
+  if (!recordedAt) return ''
+  const d = new Date(recordedAt)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
+function makeCheckpointStyle(color, index, isLast, showLabels, recordedAt) {
+  const label = showLabels
+    ? (formatCheckpointTime(recordedAt) || String(index + 1))
+    : ''
   return new Style({
     image: new Circle({
       radius: isLast ? 6 : 4,
       fill:   new Fill({ color: isLast ? color : hexToRgba(color, 0.6) }),
       stroke: new Stroke({ color: '#fff', width: isLast ? 2 : 1 }),
     }),
-    text: showNumbers ? new Text({
-      text:         String(index + 1),
+    text: showLabels ? new Text({
+      text:         label,
       font:         `bold ${isLast ? 10 : 9}px system-ui`,
       fill:         new Fill({ color: '#fff' }),
       stroke:       new Stroke({ color: '#000', width: 2 }),
@@ -149,7 +158,7 @@ function makeCheckpointStyle(color, index, isLast, showNumbers) {
   })
 }
 
-export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, groupsMap) {
+export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, groupsMap, onHQPlaced) {
   let map = null
   let basemapLayer = makeBasemapLayer('osm')
   let checkpointNumbersVisible = false
@@ -158,6 +167,8 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   let measureMode   = false
   let measurePoints = []
   let staleTimer    = null
+  let hqPlacementMode = false
+  let hqLabel = 'ЩАБ'
 
   // Marker layer
   const source      = new VectorSource()
@@ -174,6 +185,10 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   // Measure layer
   const measureSource = new VectorSource()
   const measureLayer  = new VectorLayer({ source: measureSource, zIndex: 20 })
+
+  // HQ layer
+  const hqSource = new VectorSource()
+  const hqLayer  = new VectorLayer({ source: hqSource, zIndex: 15 })
 
   // Weather overlay layer — created/destroyed on demand
   let activeWeatherLayer = null
@@ -359,7 +374,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     points.forEach((p, i) => {
       const isLast = i === points.length - 1
       const f = new Feature({ geometry: new Point(fromLonLat([p.lon, p.lat])) })
-      f.setStyle(makeCheckpointStyle(color, i, isLast, checkpointNumbersVisible))
+      f.setStyle(makeCheckpointStyle(color, i, isLast, checkpointNumbersVisible, p.recorded_at))
       f.set('deviceId', deviceId)
       f.set('recordedAt', p.recorded_at)
       f.set('cpIndex', i)
@@ -385,7 +400,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     checkpointNumbersVisible = visible
     checkpointSource.getFeatures().forEach(f => {
       f.setStyle(makeCheckpointStyle(
-        f.get('cpColor'), f.get('cpIndex'), f.get('cpIsLast'), visible,
+        f.get('cpColor'), f.get('cpIndex'), f.get('cpIsLast'), visible, f.get('recordedAt'),
       ))
     })
   }
@@ -417,7 +432,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
 
     map = new Map({
       target:   mapRef.value,
-      layers:   [basemapLayer, graticule, trailLayer, checkpointLayer, vectorLayer, measureLayer],
+      layers:   [basemapLayer, graticule, trailLayer, checkpointLayer, hqLayer, vectorLayer, measureLayer],
       view:     new View({ center: fromLonLat([25.0, 42.5]), zoom: 7 }),
       overlays: [tooltip],
       controls: [new ScaleLine({ units: 'metric', bar: false, minWidth: 100 })],
@@ -503,6 +518,11 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     })
 
     map.on('click', (evt) => {
+      if (hqPlacementMode) {
+        const [lon, lat] = toLonLat(evt.coordinate)
+        onHQPlaced?.({ lat, lon })
+        return
+      }
       if (!measureMode) return
       const [lon, lat] = toLonLat(evt.coordinate)
 
@@ -573,10 +593,45 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     if (map) map.getTargetElement().style.cursor = on ? 'crosshair' : ''
   }
 
+  function makeHQStyle(label) {
+    return new Style({
+      image: new RegularShape({
+        points:  4,
+        radius:  15,
+        radius2: 4,
+        angle:   0,
+        fill:    new Fill({ color: '#fbbf24' }),
+        stroke:  new Stroke({ color: '#000', width: 2 }),
+      }),
+      text: new Text({
+        text:    label || 'ЩАБ',
+        offsetY: -22,
+        font:    'bold 13px system-ui',
+        fill:    new Fill({ color: '#fbbf24' }),
+        stroke:  new Stroke({ color: '#000', width: 3 }),
+      }),
+    })
+  }
+
+  function setHQ(loc, label) {
+    hqLabel = label || hqLabel
+    hqSource.clear()
+    if (!loc) return
+    const f = new Feature({ geometry: new Point(fromLonLat([loc.lon, loc.lat])) })
+    f.setId('hq')
+    f.setStyle(makeHQStyle(hqLabel))
+    hqSource.addFeature(f)
+  }
+
+  function setHQPlacementMode(on) {
+    hqPlacementMode = on
+    if (map) map.getTargetElement().style.cursor = on ? 'crosshair' : ''
+  }
+
   function refreshMarkers(list) {
     list.forEach(upsertFeature)
     removeStaleFeatures(list.map(p => p.device_id))
   }
 
-  return { map: () => map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, setWeatherLayer, refreshMarkers }
+  return { map: () => map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, setWeatherLayer, refreshMarkers, setHQ, setHQPlacementMode }
 }

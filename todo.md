@@ -16,3 +16,6 @@
 - [ ] access tokens never expire (currently on purpose)
 - [ ] CRC check has no integrity check
 - [ ] endpoints accessible to any user not just admin (are we going to have other users?)
+- [ ] the headquarters location is stored in localstorage (per browser), instead it should be stored in the database
+- [ ] drop redundant columns: latitude/longitude/mgrs duplicate what's in the geometry. should save a lot of db rows
+- [ ] fetchtrail () should only fetch a device if the row is in view, should make the json smaller
