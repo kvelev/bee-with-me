@@ -20,6 +20,10 @@ export default {
   map: {
     trackers:      'Trackers',
     noTrackers:    'No active trackers',
+    noFix:         'no fix',
+    silenceNotice: 'No contact with {n} tracker(s) for over 10 min',
+    silenceLost:   '{n} over 30 min',
+    feedLost:      'Live feed lost — showing data as of {time}, reconnecting…',
     searchRank:         'Search by rank…',
     serialConnected:    'Gateway connected',
     serialDisconnected: 'Gateway disconnected',
@@ -188,6 +192,8 @@ export default {
   sos: {
     active:     '🚨 SOS ACTIVE —',
     resolve:    'Resolve',
+    resolving:     'Resolving…',
+    resolveFailed: 'Could not resolve — check the connection and try again',
     alertTitle: 'SOS Activated',
   },
   about: {

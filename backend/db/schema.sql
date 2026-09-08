@@ -109,7 +109,10 @@ CREATE TABLE location_events (
     battery_voltage  REAL,
     sos_active       BOOLEAN      NOT NULL DEFAULT FALSE,
     repeater_mode    BOOLEAN      NOT NULL DEFAULT FALSE,
-    raw_flags        SMALLINT
+    raw_flags        SMALLINT,
+    -- FALSE = device reported GNSSStatus=V (in radio contact, no satellite fix). The
+    -- position columns then carry the last known fix so the row stays mappable.
+    gnss_valid       BOOLEAN      NOT NULL DEFAULT TRUE
 );
 
 -- ------------------------------------------------------------

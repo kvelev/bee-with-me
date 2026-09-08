@@ -3,6 +3,12 @@
   <div class="map-layout">
     <div ref="mapEl" class="map-container" />
 
+    <!-- The map never goes blank, but it must never claim to be live when it isn't. -->
+    <div v-if="!store.wsConnected" class="stale-feed-banner">
+      <span class="stale-feed-dot" />
+      {{ t('map.feedLost', { time: lastSyncLabel }) }}
+    </div>
+
     <!-- Cursor coordinate readout -->
     <div v-if="cursorCoords && (mgrsGridOn || latLonOn)" class="mgrs-readout">
       <span v-if="mgrsGridOn">{{ cursorCoords.mgrs }}</span>
@@ -80,6 +86,18 @@
         <span>{{ t('map.trackers') }} ({{ displayList.length }})</span>
         <span v-if="store.hasSOS" class="badge badge-sos sos-pulse">SOS</span>
       </div>
+
+      <!-- Devices we've stopped hearing from. Deliberately quiet: no pulse, no sound, no red —
+           this is a "look at this" notice, not the SOS alarm. -->
+      <div v-if="store.silentList.length" class="silence-notice">
+        <span class="silence-dot" />
+        <span class="silence-text">
+          {{ t('map.silenceNotice', { n: store.silentList.length }) }}
+          <template v-if="store.lostList.length">
+            · {{ t('map.silenceLost', { n: store.lostList.length }) }}
+          </template>
+        </span>
+      </div>
       <div class="rank-search">
         <input
           v-model="rankFilter"
@@ -94,16 +112,24 @@
         <div
           v-for="pos in displayList" :key="pos.device_id"
           class="tracker-row"
-          :class="{ 'tracker-sos': pos.sos_active }"
+          :class="[`fresh-${freshnessOf(pos, nowTick)}`, { 'tracker-sos': pos.sos_active }]"
           @click="focusDevice(pos)"
         >
           <div class="tracker-dot" :style="{ background: pos.groups?.[0]?.color ?? '#3b82f6' }" />
           <div class="tracker-info">
             <div class="tracker-name">{{ pos.full_name || pos.device_name || pos.dev_sn }}</div>
-            <div class="tracker-mgrs">{{ pos.mgrs }}</div>
+            <div class="tracker-mgrs">
+              {{ pos.mgrs }}
+              <span v-if="pos.gnss_valid === false" class="no-fix-tag">{{ t('map.noFix') }}</span>
+            </div>
           </div>
-          <div class="tracker-bat" :class="batClass(pos.battery_voltage)">
-            {{ pos.battery_voltage?.toFixed(1) ?? '—' }}V
+          <div class="tracker-meta">
+            <div class="tracker-age" :class="`age-${freshnessOf(pos, nowTick)}`">
+              {{ formatAge(ageMs(pos, nowTick)) }}
+            </div>
+            <div class="tracker-bat" :class="batClass(pos.battery_voltage)">
+              {{ pos.battery_voltage?.toFixed(1) ?? '—' }}V
+            </div>
           </div>
         </div>
         <div v-if="!displayList.length" class="no-trackers">{{ t('map.noTrackers') }}</div>
@@ -172,6 +198,7 @@ import { useLocationsStore } from '../stores/locations'
 import { useWebSocket } from '../composables/useWebSocket'
 import { useMap, BASEMAPS } from '../composables/useMap'
 import { getGroupsWithMembers, getSerialStatus } from '../api'
+import { ageMs, formatAge, freshnessOf, byUrgency } from '../lib/freshness'
 import SOSToast from '../components/SOSToast.vue'
 
 const OWM_KEY = import.meta.env.VITE_OWM_API_KEY ?? ''
@@ -219,10 +246,27 @@ const rankFilter     = ref('')
 // id -> { id, name, color, members: [{id, full_name, rank, is_leader}] }
 const groupsMap      = ref({})
 
+// Drives every relative age in the panel. Without it the ages would only refresh when some
+// other device happens to report, so a panel full of silent trackers would freeze its own
+// clock — exactly when the ages matter most.
+const nowTick = ref(Date.now())
+let tickTimer = null
+
+const lastSyncLabel = computed(() => {
+  if (!store.lastSyncAt) return '—'
+  return new Date(store.lastSyncAt).toLocaleTimeString([], {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+})
+
 const rankFiltered = computed(() => {
   const q = rankFilter.value.trim().toLowerCase()
-  if (!q) return store.positionList
-  return store.positionList.filter(pos => pos.rank?.toLowerCase().includes(q))
+  const list = !q
+    ? store.positionList
+    : store.positionList.filter(pos => pos.rank?.toLowerCase().includes(q))
+  // Worst-first: SOS, then longest out of contact. What needs attention surfaces itself
+  // rather than waiting to be scrolled to.
+  return [...list].sort((a, b) => byUrgency(a, b, nowTick.value))
 })
 
 // In teams mode show only leaders, labelled by team name
@@ -291,12 +335,15 @@ onMounted(async () => {
   if (m) m.on('moveend', scheduleWeatherFetch)
 
   if (hqLocation.value) setHQ(hqLocation.value)
+
+  tickTimer = setInterval(() => { nowTick.value = Date.now() }, 10_000)
 })
 
 watch(hqLocation, (loc) => setHQ(loc))
 
 onUnmounted(() => {
   clearTimeout(weatherTimer)
+  clearInterval(tickTimer)
   stopWindAnim()
   const m = map()
   if (m) m.un('moveend', scheduleWeatherFetch)
@@ -652,6 +699,87 @@ function batClass(v) {
 .tracker-row:hover { background: var(--bg-card); }
 .tracker-sos    { border-left: 3px solid var(--danger); }
 .tracker-leader { background: rgba(255,200,0,0.04); }
+/* Freshness: the row dims as contact ages, so a silent tracker reads differently from a
+   live one even before you look at the age figure. */
+.tracker-row.fresh-stale .tracker-name,
+.tracker-row.fresh-stale .tracker-mgrs { opacity: .72; }
+.tracker-row.fresh-lost  .tracker-name,
+.tracker-row.fresh-lost  .tracker-mgrs { opacity: .45; }
+.tracker-row.fresh-stale { border-left: 3px solid rgba(234,179,8,.55); }
+.tracker-row.fresh-lost  { border-left: 3px solid rgba(156,163,175,.5); }
+.tracker-row.tracker-sos { border-left: 3px solid var(--danger); }
+
+.tracker-meta { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.tracker-age {
+  font-size: 11px;
+  font-family: monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  min-width: 34px;
+  text-align: right;
+}
+.age-stale { color: #eab308; font-weight: 600; }
+.age-lost  { color: var(--danger); font-weight: 600; }
+
+.no-fix-tag {
+  font-family: system-ui;
+  font-size: 9.5px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: #facc15;
+  border: 1px solid rgba(250,204,21,.5);
+  border-radius: 3px;
+  padding: 0 3px;
+  margin-left: 5px;
+  vertical-align: 1px;
+}
+
+/* Quiet by design — this is not the SOS alarm and must not read like one. */
+.silence-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(234,179,8,.09);
+  border-top: 1px solid rgba(234,179,8,.25);
+  border-bottom: 1px solid rgba(234,179,8,.25);
+  font-size: 12px;
+  color: #eab308;
+}
+.silence-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #eab308; flex-shrink: 0;
+}
+.silence-text { line-height: 1.35; }
+
+.stale-feed-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 15px;
+  border-radius: 20px;
+  background: rgba(120,53,15,.94);
+  border: 1px solid rgba(234,179,8,.5);
+  color: #fde68a;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 3px 14px rgba(0,0,0,.4);
+}
+.stale-feed-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #eab308; flex-shrink: 0;
+  animation: feed-blink 1.6s ease-in-out infinite;
+}
+@keyframes feed-blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) {
+  .stale-feed-dot { animation: none; }
+}
+
 .tracker-dot  { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .tracker-info { flex: 1; min-width: 0; }
 .tracker-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

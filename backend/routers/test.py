@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 import mgrs as mgrs_lib
 
-from ..auth import get_current_user
+from ..auth import require_role
 from ..database import get_conn
 
 router = APIRouter(prefix='/api/test', tags=['test'])
@@ -38,7 +38,7 @@ class SimulateRequest(BaseModel):
 async def simulate(
     body: SimulateRequest,
     conn: asyncpg.Connection = Depends(get_conn),
-    _=Depends(get_current_user),
+    _=Depends(require_role('admin')),
 ):
     device = await conn.fetchrow(
         'SELECT id, user_id FROM devices WHERE id = $1 AND is_active = TRUE',
@@ -119,9 +119,11 @@ async def simulate(
         'speed_knots':     speed,
         'battery_voltage': bat,
         'gnss_satellites': sats,
+        'gnss_valid':      True,
         'sos_active':      body.sos_active,
         'repeater_mode':   False,
         'recorded_at':     now.isoformat(),
+        'received_at':     now.isoformat(),
         'groups':          groups,
     })
     await conn.execute("SELECT pg_notify('location_update', $1)", payload)
@@ -137,7 +139,7 @@ async def simulate(
 @router.get('/devices')
 async def list_devices_for_test(
     conn: asyncpg.Connection = Depends(get_conn),
-    _=Depends(get_current_user),
+    _=Depends(require_role('admin')),
 ):
     """Quick helper to get device IDs for use in simulate."""
     rows = await conn.fetch("""

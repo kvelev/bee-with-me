@@ -24,8 +24,9 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def create_access_token(user_id: str, role: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
     return jwt.encode(
-        {'sub': user_id, 'role': role, 'typ': 'access'},
+        {'sub': user_id, 'role': role, 'typ': 'access', 'exp': expire},
         settings.secret_key,
         algorithm=ALGORITHM,
     )
@@ -64,10 +65,14 @@ async def get_current_user(
         headers={'WWW-Authenticate': 'Bearer'},
     )
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM],
-                             options={'verify_exp': False})
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
         user_id: str = payload.get('sub')
         if user_id is None:
+            raise credentials_error
+        # Legacy tokens were issued without an expiry and would otherwise never age out.
+        # python-jose skips the expiry check when the claim is absent, so reject explicitly —
+        # the client's refresh flow exchanges these for a bounded token on the next 401.
+        if 'exp' not in payload:
             raise credentials_error
     except JWTError:
         raise credentials_error

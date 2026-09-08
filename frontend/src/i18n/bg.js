@@ -20,6 +20,10 @@ export default {
   map: {
     trackers:      'Тракери',
     noTrackers:    'Няма активни тракери',
+    noFix:         'без GPS',
+    silenceNotice: 'Няма връзка с {n} тракер(а) над 10 мин',
+    silenceLost:   '{n} над 30 мин',
+    feedLost:      'Връзката на живо е прекъсната — данни към {time}, свързване…',
     searchRank:         'Търсене по звание…',
     serialConnected:    'Gateway свързан',
     serialDisconnected: 'Gateway изключен',
@@ -187,6 +191,8 @@ export default {
   sos: {
     active:     '🚨 SOS АКТИВЕН —',
     resolve:    'Разреши',
+    resolving:     'Отмяна…',
+    resolveFailed: 'Неуспешно отменяне — проверете връзката и опитайте отново',
     alertTitle: 'SOS Активиран',
   },
   about: {

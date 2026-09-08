@@ -17,9 +17,9 @@ import Graticule from 'ol/layer/Graticule'
 import ScaleLine from 'ol/control/ScaleLine'
 import { forward as toMGRS } from 'mgrs'
 import { useSettings } from './useSettings'
+import { freshnessOf, LIVE, LOST } from '../lib/freshness'
 
 const DEFAULT_COLOR = '#3b82f6'
-const STALE_MS = 10 * 60 * 1000   // 10 minutes
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371
@@ -100,15 +100,29 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${alpha})`
 }
 
-function makeMarkerStyle(color, isSOS, name, isTeam, isStale) {
-  const radius     = isSOS ? 10 : isTeam ? 10 : 7
-  const fillColor  = isStale ? 'rgba(156,163,175,0.45)' : (isSOS ? '#ef4444' : color)
-  const strokeCol  = isStale ? 'rgba(255,255,255,0.35)' : '#fff'
-  return new Style({
+function makeMarkerStyle(color, isSOS, name, isTeam, freshness, noFix) {
+  const radius   = isSOS ? 10 : isTeam ? 10 : 7
+  const isStale  = freshness !== LIVE
+  const isLost   = freshness === LOST
+  // Lost contact fades further than merely stale, so "we haven't heard from them in half an
+  // hour" is distinguishable from "they're a few minutes overdue" at a glance.
+  const fillColor = isSOS ? '#ef4444'
+    : isLost  ? 'rgba(156,163,175,0.22)'
+    : isStale ? 'rgba(156,163,175,0.45)'
+    : color
+  const strokeCol = isStale ? 'rgba(255,255,255,0.35)' : '#fff'
+
+  const style = new Style({
     image: new Circle({
       radius,
       fill:   new Fill({ color: fillColor }),
-      stroke: new Stroke({ color: strokeCol, width: isTeam ? 3 : 2 }),
+      // Dashed ring = in radio contact but no satellite fix: the position shown is the last
+      // known one, not where they are now.
+      stroke: new Stroke({
+        color:    noFix ? '#facc15' : strokeCol,
+        width:    isTeam ? 3 : 2,
+        lineDash: noFix ? [3, 2] : undefined,
+      }),
     }),
     text: new Text({
       text:    name || '',
@@ -118,6 +132,7 @@ function makeMarkerStyle(color, isSOS, name, isTeam, isStale) {
       font:    isTeam ? 'bold 14px system-ui' : 'bold 13px system-ui',
     }),
   })
+  return style
 }
 
 function makeTrailStyle(color) {
@@ -306,9 +321,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     const leaderGroup = pos.groups?.find(g => g.is_leader)
     const color       = leaderGroup?.color ?? pos.groups?.[0]?.color ?? DEFAULT_COLOR
     const isSOS       = pos.sos_active
-    const isStale     = pos.recorded_at
-      ? Date.now() - new Date(pos.recorded_at).getTime() > STALE_MS
-      : false
+    const freshness   = freshnessOf(pos)
     const label = pos.displayLabel || pos.full_name || pos.device_name || String(pos.dev_sn ?? '')
 
     let feature = source.getFeatureById(id)
@@ -318,7 +331,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
       source.addFeature(feature)
     }
     feature.getGeometry().setCoordinates(fromLonLat([pos.longitude, pos.latitude]))
-    feature.setStyle(makeMarkerStyle(color, isSOS, label, !!pos.displayLabel, isStale))
+    feature.setStyle(makeMarkerStyle(color, isSOS, label, !!pos.displayLabel, freshness, pos.gnss_valid === false))
     feature.setProperties({ pos }, true)
   }
 
@@ -374,7 +387,9 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     points.forEach((p, i) => {
       const isLast = i === points.length - 1
       const f = new Feature({ geometry: new Point(fromLonLat([p.lon, p.lat])) })
-      f.setStyle(makeCheckpointStyle(color, i, isLast, checkpointNumbersVisible, p.recorded_at))
+      // Label with the server clock, same as every other time the operator sees — a device
+      // with a skewed GNSS clock would otherwise stamp checkpoints with times that never were.
+      f.setStyle(makeCheckpointStyle(color, i, isLast, checkpointNumbersVisible, p.received_at ?? p.recorded_at))
       f.set('deviceId', deviceId)
       f.set('recordedAt', p.recorded_at)
       f.set('cpIndex', i)
@@ -554,11 +569,11 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
         if (!pos) return
         const leaderGroup = pos.groups?.find(g => g.is_leader)
         const color   = leaderGroup?.color ?? pos.groups?.[0]?.color ?? DEFAULT_COLOR
-        const isStale = pos.recorded_at
-          ? Date.now() - new Date(pos.recorded_at).getTime() > STALE_MS
-          : false
         const label = pos.displayLabel || pos.full_name || pos.device_name || String(pos.dev_sn ?? '')
-        f.setStyle(makeMarkerStyle(color, pos.sos_active, label, !!pos.displayLabel, isStale))
+        f.setStyle(makeMarkerStyle(
+          color, pos.sos_active, label, !!pos.displayLabel,
+          freshnessOf(pos), pos.gnss_valid === false,
+        ))
       })
     }, 60_000)
 

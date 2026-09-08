@@ -1,5 +1,83 @@
 # Changelog
 
+## [1.7.0] - 2026-09-08
+
+Field-readiness work from the operational audit. The theme throughout: the map must never
+go blank, and must never claim to be live when it isn't.
+
+### SOS could not be cleared from the UI
+
+Two independent causes, both fixed:
+
+- The alert was **re-opened by the very next frame**. A device asserts SOS until it is
+  physically cleared on the hardware, and `_ensure_sos_alert` only checked "is there an
+  unresolved alert?" — so resolving one caused a fresh alert to be created milliseconds
+  later. SOS alerts are now **edge-triggered**: only a FALSE→TRUE transition (compared
+  against the device's previous stored frame) opens one.
+- The `sos_alert` WebSocket payload carried **only `device_id`** — no alert `id`. The
+  banner pushed that partial object into its list, so Resolve posted to
+  `/sos/undefined/resolve`, got a 422, and the rejection was swallowed with no feedback.
+  The payload now carries `id`, `dev_sn`, `full_name`, `rank` and `triggered_at`;
+  `applySOSAlert` merges instead of skipping; and the button reports failures instead of
+  appearing dead.
+- Live updates now broadcast the **effective** SOS state (is there an unresolved alert)
+  rather than the raw wire flag, so the map and `/api/locations/live` agree and a resolved
+  alert stays resolved across reloads.
+
+### Freshness is now honest — one clock, three states
+
+- `recorded_at` (device GNSS clock) and `received_at` (server clock) are **carried
+  separately end to end** and no longer conflated. Every freshness decision, trail prune
+  and checkpoint label uses the server clock; a device with a skewed clock can no longer
+  render itself permanently fresh, nor change its own trail timestamps on reload.
+- Trackers are classified **LIVE / STALE (>10 min) / LOST (>30 min)**, with relative age
+  on every panel row, progressive dimming, and worst-first sorting so whatever needs
+  attention rises to the top on its own.
+- A **silence notice** in the tracker panel when devices stop reporting. Deliberately
+  quiet — no pulse, no sound, no red — it is a "look at this", not the SOS alarm.
+- Ages tick on their own timer, so a panel full of silent trackers can't freeze its own
+  clock at exactly the moment that matters.
+
+### The display survives sleep, reloads and backend restarts
+
+- Last known positions are snapshotted to `localStorage`, so a reload paints the previous
+  picture immediately instead of an empty map. Restored positions keep their original
+  timestamps and so render with their true age — cached, never passed off as live.
+- A **"live feed lost — showing data as of HH:MM:SS"** banner whenever the WebSocket is
+  down.
+- A 45-second reconciliation poll runs independently of WebSocket health, so a half-open
+  socket or a dead server-side listener self-heals instead of silently freezing the map.
+
+### Devices in contact without a GPS fix are no longer invisible
+
+- Frames with `GNSSStatus=V` used to be discarded entirely. They are now recorded
+  (`location_events.gnss_valid`) anchored to the last known fix, and rendered with a
+  dashed amber ring plus a "no fix" tag. "In a gully / indoors / buried" is now
+  distinguishable from "battery dead or out of range" — they call for opposite responses.
+- No-fix frames deliberately do **not** extend the trail; they prove contact, not movement.
+
+### Availability and safety
+
+- `restart: unless-stopped` on both compose services — the database comes back by itself
+  after a reboot or power loss.
+- `scripts/backup.sh` / `scripts/backup.ps1`: timestamped `pg_dump` with retention and
+  documented restore. Run after every operation, onto a separate disk.
+- Retention cleanup now runs shortly after boot and then daily; previously it slept 24h
+  first and so never ran at all on a laptop powered down between operations.
+- `GET /api/locations/live` is bounded to the last 24h (`LIVE_POSITION_MAX_AGE_HOURS`), so
+  trackers from a previous operation stop appearing as ghosts among live rescuers.
+- `POST /api/test/simulate`, which writes **fabricated** positions, is now admin-only and
+  gated behind `ENABLE_TEST_ENDPOINTS` (default **off**).
+- Access tokens now carry an expiry and are verified; expiry verification had been
+  explicitly disabled, making a token lifted from a lost laptop a permanent credential.
+- Loud startup warnings for shipped-default `SECRET_KEY` / `OFFLINE_MAPS_PASSWORD`, and
+  whenever the simulator is enabled. Warns rather than refusing to boot — a hard failure
+  while setting up for a callout is worse than an insecure key.
+- `course_deg` is finally persisted; it was parsed off the wire and dropped on insert.
+- Corrected the DB-reset runbook: `pgdata` is a bind mount, so `docker compose down -v`
+  never cleared it and `schema.sql` never re-ran. Startup migrations are now documented as
+  the required path for schema changes.
+
 ## [1.6.0] - 2026-09-08
 
 ### Recover from sleep/wake and connection drops without a manual restart

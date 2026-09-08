@@ -13,6 +13,15 @@ class Settings(BaseSettings):
 
     secret_key: str = 'change_me'
     refresh_token_expire_days: int = 7
+    access_token_expire_minutes: int = 60
+
+    # Dev-only simulation endpoints (POST /api/test/simulate) write fabricated positions
+    # into location_events. Off by default so a field deployment can't be polluted.
+    enable_test_endpoints: bool = False
+
+    # GET /api/locations/live ignores devices whose last fix is older than this, so
+    # trackers from a previous operation don't linger on the map as ghosts.
+    live_position_max_age_hours: int = 24
 
     serial_port: str = '/dev/ttyUSB0'
     serial_baud: int = 9600

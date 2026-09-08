@@ -2,6 +2,9 @@ services:
   db:
     image: postgis/postgis:16-3.4
     platform: linux/amd64
+    # Comes back by itself after a reboot, a power loss, or a Docker Desktop restart —
+    # discovering the database is down is not something you want to do during a callout.
+    restart: unless-stopped
     env_file: ../.env
     volumes:
       - ../backend/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
@@ -11,6 +14,7 @@ services:
 
   tiles:
     image: maptiler/tileserver-gl:latest
+    restart: unless-stopped
     volumes:
       - ../tiles:/data
     ports:
