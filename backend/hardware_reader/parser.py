@@ -92,7 +92,7 @@ def _strip_and_verify(raw: str) -> str | None:
 def _parse_bee(fields: list[str]) -> BeeFrame | None:
     # ##30,MsgId,DevSN,HWVer,SWVer,Hour,Min,Sec,Day,Mon,Year,GNSSStatus,Lat,Lng,
     #   Speed,Course,Satellites,Altitude,Flags,BattVol,CurrMothRxBeeRSSI,CurrMothRxBeeSNR,PrevBeeRxMothRSSI,PrevBeeRxMothSNR,EventID
-    if len(fields) < 24:
+    if len(fields) < 25:   # indices 0..24 — EventID at [24] is the last required field
         return None
     try:
         year = int(fields[10])
@@ -137,7 +137,7 @@ def _parse_bee(fields: list[str]) -> BeeFrame | None:
 
 def _parse_repeater(fields: list[str]) -> RepeaterFrame | None:
     # ##20,MsgId,DevSN,HWVer,SWVer,BattVol,CurrMRxDevRSSI,CurrMRxDevSNR,PrevDevRxMRSSI,PrevDevRxMSNR,EventID
-    if len(fields) < 10:
+    if len(fields) < 11:   # indices 0..10 — EventID at [10] is the last required field
         return None
     try:
         return RepeaterFrame(

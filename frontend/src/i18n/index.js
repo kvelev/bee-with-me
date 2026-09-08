@@ -2,7 +2,18 @@ import { createI18n } from 'vue-i18n'
 import en from './en'
 import bg from './bg'
 
-const saved = localStorage.getItem('locale') || 'en'
+// Runs at import time, so an unguarded throw here white-screens the whole app before it
+// renders. localStorage is unavailable or throws in private windows and with site data
+// blocked — falling back to English is always better than not booting.
+function savedLocale() {
+  try {
+    return localStorage.getItem('locale') || 'en'
+  } catch {
+    return 'en'
+  }
+}
+
+const saved = savedLocale()
 
 export const i18n = createI18n({
   legacy: false,
@@ -18,5 +29,7 @@ export const LOCALES = [
 
 export function setLocale(code) {
   i18n.global.locale.value = code
-  localStorage.setItem('locale', code)
+  try {
+    localStorage.setItem('locale', code)
+  } catch { /* not persisted this session — the switch itself still works */ }
 }

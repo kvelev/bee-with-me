@@ -136,33 +136,52 @@ Things that commonly trip up a fresh Windows box:
 
 ### Serial protocol
 
+**Full reference: [`docs/PROTOCOL.md`](docs/PROTOCOL.md)** — field tables, worked examples,
+and a debugging checklist. Summary:
+
 Every frame is wrapped as:
 
 ```
-##<payload>@<CRC16-hex>\r\n
+##<payload>@<CRC>\r\n
 ```
 
-CRC polynomial: `0xACAC`, computed over the payload bytes.
+CRC is **CRC-16/CCITT-FALSE** (poly `0x1021`, init `0xFFFF`), computed over `##<payload>`
+with the marker **included**, and transmitted as a **decimal** integer — not hex. Getting
+either detail wrong means every frame fails CRC and is silently discarded.
 
-#### Cmd=30 — RescuerBee location
+#### Cmd=30 — RescuerBee location (25 fields)
 
 ```
-##30,MsgId,DevSN,Hour,Min,Sec,Day,Mon,Year,GNSSStatus,Lat,Lng,Speed,Satellites,Altitude,Flags,BattVol@<CRC>
+##30,MsgId,DevSN,HWVer,SWVer,Hour,Min,Sec,Day,Mon,Year,GNSSStatus,Lat,Lng,Speed,Course,
+    Satellites,Altitude,Flags,BattVol,CurrMothRxBeeRSSI,CurrMothRxBeeSNR,
+    PrevBeeRxMothRSSI,PrevBeeRxMothSNR,EventID@<CRC>
 ```
 
 | Field | Notes |
 |---|---|
-| GNSSStatus | `A` = valid fix, `V` = no fix (frames with V are dropped) |
-| Flags | Bit 0 = SOS active, Bit 1 = repeater mode |
+| GNSSStatus | `A` = valid fix, `V` = no fix. V frames are **recorded** (flagged `gnss_valid = FALSE`, anchored to the last known fix) — they prove the device is powered and in contact |
+| Flags | Bit 0 (`0x01`) = repeater mode, Bit 1 (`0x02`) = SOS active |
 | BattVol | Volts, e.g. `3.85` |
+| RSSI / SNR ×4 | Link quality both directions — currently parsed past and discarded |
+| EventID | Drives the duplicate filter (15 s window) |
 
-#### Cmd=20 — RescuerRepeater heartbeat
+#### Cmd=20 — RescuerRepeater heartbeat (11 fields)
 
 ```
-##20,MsgId,DevSN,BattVol@<CRC>
+##20,MsgId,DevSN,HWVer,SWVer,BattVol,CurrMRxDevRSSI,CurrMRxDevSNR,
+    PrevDevRxMRSSI,PrevDevRxMSNR,EventID@<CRC>
 ```
 
-Battery voltage only; stored in `repeater_events`, not shown on map.
+Battery voltage only; stored in `repeater_events`, not shown on the map.
+
+#### Cmd=1 — ACK (server → device)
+
+```
+##1,MsgId@<CRC>
+```
+
+Sent **after** a frame is handled successfully, so an unpersisted frame stays
+unacknowledged and may be retransmitted.
 
 ---
 
@@ -193,9 +212,9 @@ backend/
   database.py          asyncpg connection pool
   ws.py                WebSocket manager; pg_notify → broadcast
   hardware_reader/
-    reader.py          Async serial loop (pyserial-asyncio)
-    hid_reader.py      USB HID reader (50 Hz polling, frame reassembly)
-    parser.py          Bee protocol frame parser; CRC-16 poly 0xACAC
+    reader.py          DB handlers + serial loop (run() currently disabled)
+    hid_reader.py      USB HID reader — the active path (50 Hz, frame reassembly, ACK)
+    parser.py          Bee protocol frame parser; CRC-16/CCITT-FALSE (0x1021/0xFFFF)
   routers/
     auth.py            POST /api/auth/login, /refresh, GET /me
     users.py           CRUD + photo upload + XLS import

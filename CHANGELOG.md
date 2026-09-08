@@ -1,5 +1,61 @@
 # Changelog
 
+## [1.7.1] - 2026-09-08
+
+### Test suites green for the first time
+
+Both suites had drifted far enough from the code that a red run was normal — which meant a
+genuine regression would not have stood out. **Backend 11 failed / 4 errors / 23 passed →
+59 passed. Frontend 8 → 32 passed.** No product behaviour was changed to achieve this; the
+tests were wrong, not the code.
+
+- **`test_parser.py` rewritten against the real wire format.** It had encoded a superseded
+  protocol — CRC computed *without* the `##` marker and rendered as hex, 17-field bee
+  frames — so every frame it constructed was rejected and all 15 parser tests failed. Now
+  32 tests covering the actual 25-field Cmd=30 / 11-field Cmd=20 format, with the CRC
+  algorithm pinned by CRC-16/CCITT-FALSE's published check value
+  (`crc16(b'123456789') == 0x29B1`), real MGRS conversion instead of a mock, flag-bit
+  parametrisation, ACK round-tripping, and truncation/garbage rejection.
+- `test_api_users.py` updated for the paginated response envelope and the
+  `first_name`/`last_name`/`phone` fields that replaced `full_name` on create.
+- `test_api_simulate.py` given the third `fetchrow` the endpoint gained (volunteer lookup).
+- Vitest now runs with a working `localStorage`: Node 22+ ships an inert native global that
+  Vitest's jsdom environment declines to override, so any module touching storage at import
+  time failed to collect. Shimmed in `vitest.setup.js`.
+
+### Protocol documentation corrected
+
+`CLAUDE.md` described hardware that no longer exists, which is a trap for anyone debugging
+the radio link mid-incident:
+
+- CRC documented as poly `0xACAC` over the payload → actually **CRC-16/CCITT-FALSE**
+  (`0x1021`, init `0xFFFF`) over `##`-inclusive payload, transmitted as **decimal**
+- Cmd=30 documented with 17 fields → actually **25** (adds HWVer, SWVer, Course, four
+  RSSI/SNR values, EventID); Cmd=20 documented with 4 → actually **11**
+- **Flag bits were backwards**: documented as bit 0 = SOS, bit 1 = repeater; the code reads
+  bit 0 (`0x01`) = repeater, bit 1 (`0x02`) = SOS
+- Documented "frames with GNSSStatus=V are silently dropped" — no longer true as of 1.7.0
+- Added the Cmd=1 ACK frame, the data-flow diagram corrected to the HID path, and a note
+  that the Devices page's "Active" badge means only `is_active`, never "has ever transmitted"
+
+### Fixed
+
+- Off-by-one length guards in `_parse_bee` (`< 24` → `< 25`) and `_parse_repeater`
+  (`< 10` → `< 11`). Behaviour-neutral — both paths already rejected the frame, one via the
+  guard and one via a caught `IndexError` — but the intent was wrong and untestable.
+- `i18n/index.js` no longer calls `localStorage` unguarded at import time, which would
+  white-screen the entire app before first render in a private window or with site data
+  blocked.
+
+### Known gap documented, not fixed
+
+`_parse_bee` accepts Cyrillic `А` (U+0410) for GNSSStatus, but **that branch is unreachable
+in production**: both readers `.decode('ascii', errors='replace')`, destroying the byte
+before the parser sees it, so such a device reads as "no fix" on every frame. Fixing it
+means changing the decode on the hot path (and the matching encode in `_strip_and_verify`)
+to something byte-preserving — a change that should be made against real hardware rather
+than guessed at. Pinned by `test_cyrillic_a_cannot_survive_the_readers_ascii_decode`.
+
 ## [1.7.0] - 2026-09-08
 
 Field-readiness work from the operational audit. The theme throughout: the map must never

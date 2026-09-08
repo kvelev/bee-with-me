@@ -39,8 +39,10 @@ def test_simulate_success(client, mock_conn):
     event_id = uuid.uuid4()
 
     mock_conn.fetchrow = AsyncMock(side_effect=[
-        {'id': did, 'user_id': uid},              # device lookup
-        {'id': event_id},                          # INSERT RETURNING id
+        {'id': did, 'user_id': uid},               # device lookup
+        {'id': event_id},                          # INSERT ... RETURNING id
+        {'full_name': 'Alpha', 'rank': 'Sgt',      # assigned volunteer, for the notify payload
+         'photo_url': None, 'phone': None, 'is_active': True},
     ])
     mock_conn.execute = AsyncMock(return_value=None)
 
@@ -65,6 +67,8 @@ def test_simulate_random_coords_in_bulgaria(client, mock_conn):
     mock_conn.fetchrow = AsyncMock(side_effect=[
         {'id': did, 'user_id': uid},
         {'id': event_id},
+        {'full_name': 'Alpha', 'rank': 'Sgt',
+         'photo_url': None, 'phone': None, 'is_active': True},
     ])
     mock_conn.execute = AsyncMock(return_value=None)
 
