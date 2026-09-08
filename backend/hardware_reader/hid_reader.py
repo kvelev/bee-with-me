@@ -41,6 +41,28 @@ def _vid_pid() -> tuple[int, int]:
     return settings.hid_vendor_id, settings.hid_product_id
 
 
+async def _broadcast_status() -> None:
+    try:
+        from ..ws import manager
+        await manager.broadcast({'type': 'serial_status', **public_status()})
+    except Exception:
+        pass
+
+
+def public_status() -> dict:
+    """Status shaped like the legacy serial-reader status, for the /api/serial/status
+    endpoint and the WebSocket 'serial_status' broadcast the frontend already listens for."""
+    vid, pid = status['vid'], status['pid']
+    return {
+        'connected':       status['connected'],
+        'port':            f'HID {vid}:{pid}' if vid else None,
+        'baud':            None,
+        'last_frame_at':   status['last_packet_at'],
+        'frames_received': status['packets_received'],
+        'error':           status['error'],
+    }
+
+
 # ── Send Data ────────────────────────────────────────────────────────
 
 async def _send_data(dev, text: str):
@@ -105,8 +127,6 @@ async def run() -> None:
     except ImportError:
         pass
 
-    import hid
-
     vid, pid = _vid_pid()
     status['vid'] = hex(vid)
     status['pid'] = hex(pid)
@@ -116,13 +136,22 @@ async def run() -> None:
         conn = None
         buf = ''
         try:
+            import hid  # deferred: surfaces missing/broken hidapi install as a retried status error instead of an unhandled task exception
+
             conn = await asyncpg.connect(_dsn())
             dev = hid.device()
-            dev.open(vid, pid)
+            try:
+                dev.open(vid, pid)
+            except OSError as exc:
+                raise OSError(
+                    f'{exc} — is the device plugged in and no other program (or driver) '
+                    f'holding it open? On Windows check Device Manager > Human Interface Devices.'
+                ) from exc
             dev.set_nonblocking(True)
             status['connected'] = True
             status['error']     = None
             logger.info('HID device opened VID=%s PID=%s', hex(vid), hex(pid))
+            await _broadcast_status()
 
             while True:
                 data = dev.read(HID_BUFFER_SIZE)
@@ -160,6 +189,7 @@ async def run() -> None:
             logger.warning('HID reader error (%s) — retrying in %ds', msg, RECONNECT_DELAY)
             status['connected'] = False
             status['error']     = msg
+            await _broadcast_status()
 
         finally:
             if dev is not None:

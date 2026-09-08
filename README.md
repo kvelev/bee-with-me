@@ -104,12 +104,35 @@ A default admin account is created on first start if no users exist.
 
 ## Hardware
 
-**Topology:** a USB gateway plugs into the server and receives radio transmissions from all field RescuerBee devices. There is no per-device USB connection — all frames arrive on a single port and are demultiplexed by `DevSN`. Two gateway types are supported:
+**Topology:** a USB gateway plugs into the server and receives radio transmissions from all field RescuerBee devices. There is no per-device USB connection — all frames arrive on a single port and are demultiplexed by `DevSN`.
 
-- **Serial (LoRaWAN)** — async serial loop via `pyserial-asyncio`; configure `SERIAL_PORT` and `SERIAL_BAUD` in `.env`
-- **USB HID** — reads raw 64-byte HID packets; configure `HID_VENDOR_ID` and `HID_PRODUCT_ID` in `.env`. Both readers can run simultaneously.
+- **USB HID** (active) — reads raw 64-byte HID packets from the gateway; configure `HID_VENDOR_ID` and `HID_PRODUCT_ID` in `.env`. This is the reader currently wired up in `main.py`.
+- **Serial (LoRaWAN)** — `backend/hardware_reader/reader.py` has the frame-handling logic for a plain serial gateway, but its `run()` loop is currently commented out, so `SERIAL_PORT`/`SERIAL_BAUD` have no effect until it's re-enabled.
+
+Check `GET /api/serial/status` (or the banner on the map view) to confirm the HID reader is actually connected — it reports `connected`, the VID:PID, and frames received.
 
 **Before a device appears on the map**, an admin must register it in the Devices page with the matching serial number (`DevSN`). Until that row exists the reader discards the frame with a warning. Assigning the device to a volunteer links name, rank and team to the position.
+
+### Windows
+
+The USB gateway is a standard HID-class device, so **no vendor driver is needed** — Windows' inbox HID driver handles it automatically (unlike serial/FTDI gateways, which sometimes need a CDC driver installed). To confirm Windows sees it: Device Manager → look for it under **"Human Interface Devices"**. If it instead shows up under "Other devices" with a warning icon, Windows hasn't matched it to the HID class driver and `hid.device().open()` will fail — try a different USB port/cable before anything else.
+
+Setup is otherwise the same as macOS/Linux:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r backend\requirements.txt
+uvicorn backend.main:app --reload
+```
+
+`pip install -r backend/requirements.txt` pulls prebuilt wheels for `hidapi` and `mgrs` on Windows (win_amd64), so no C compiler / Visual Studio Build Tools should be required for a supported Python version (3.10–3.13 as of writing).
+
+Things that commonly trip up a fresh Windows box:
+
+- **Device shows "connected" only in one app at a time.** HID devices can normally be opened by multiple processes, but if a vendor configuration tool (or a previous crashed run) is still holding it open, `dev.open()` raises `OSError`. Close other tools accessing the gateway and retry — the reader auto-reconnects every 5s.
+- **Find the VID/PID** if you don't already have them: Device Manager → the device → Properties → Details tab → "Hardware Ids" shows `VID_xxxx&PID_xxxx`. Put those hex values into `HID_VENDOR_ID` / `HID_PRODUCT_ID` in `.env` (e.g. `0x0ACD`).
+- **Uploads/tiles paths** (`backend/uploads`, `tiles/bgmountains`) are resolved relative to the `backend/` package location, not the current working directory, so starting the server from a shortcut or a different folder won't break photo uploads or offline map tiles.
 
 ### Serial protocol
 

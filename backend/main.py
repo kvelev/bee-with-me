@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,6 +15,16 @@ from .ws import manager
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+UPLOADS_DIR = Path(__file__).resolve().parent / 'uploads'
+
+
+def _log_task_failure(task: asyncio.Task, name: str) -> None:
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.error('%s task crashed: %s', name, exc, exc_info=exc)
 
 
 async def _cleanup_old_locations() -> None:
@@ -59,6 +70,7 @@ async def lifespan(app: FastAPI):
     try:
         from .hardware_reader.reader import run as hardware_reader_run
         serial_task = asyncio.create_task(hardware_reader_run())
+        serial_task.add_done_callback(lambda t: _log_task_failure(t, 'Serial reader'))
         logger.info('Hardware reader task started')
     except Exception as exc:
         logger.warning('Serial reader not started: %s', exc)
@@ -68,6 +80,7 @@ async def lifespan(app: FastAPI):
     try:
         from .hardware_reader.hid_reader import run as hid_reader_run
         hid_task = asyncio.create_task(hid_reader_run())
+        hid_task.add_done_callback(lambda t: _log_task_failure(t, 'HID reader'))
         logger.info('HID reader task started')
     except Exception as exc:
         logger.warning('HID reader not started: %s', exc)
@@ -105,12 +118,11 @@ app.include_router(hardware_reader.router)
 app.include_router(tiles.router)
 
 
-import os
-os.makedirs('backend/uploads', exist_ok=True)
-app.mount('/uploads', StaticFiles(directory='backend/uploads'), name='uploads')
+UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount('/uploads', StaticFiles(directory=str(UPLOADS_DIR)), name='uploads')
 
-os.makedirs('tiles/bgmountains', exist_ok=True)
-app.mount('/tiles/bgmountains', StaticFiles(directory='tiles/bgmountains'), name='tiles_bgmountains')
+Path(tiles.TILE_DIR).mkdir(parents=True, exist_ok=True)
+app.mount('/tiles/bgmountains', StaticFiles(directory=tiles.TILE_DIR), name='tiles_bgmountains')
 
 
 @app.get('/health')

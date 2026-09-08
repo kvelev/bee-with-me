@@ -3,6 +3,7 @@ import os
 import re
 import uuid
 import xml.etree.ElementTree as ET
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
@@ -16,7 +17,7 @@ from ..database import get_conn
 
 router = APIRouter(prefix='/api/users', tags=['users'])
 
-UPLOAD_DIR = 'backend/uploads'
+UPLOAD_DIR = str(Path(__file__).resolve().parent.parent / 'uploads')
 ALLOWED_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
 
 

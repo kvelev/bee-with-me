@@ -3,6 +3,7 @@ import math
 import os
 
 import hmac
+from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -13,7 +14,7 @@ from ..config import settings
 
 router = APIRouter(prefix='/api/tiles', tags=['tiles'])
 
-TILE_DIR   = 'tiles/bgmountains'
+TILE_DIR   = str(Path(__file__).resolve().parent.parent.parent / 'tiles' / 'bgmountains')
 SOURCE_URL = 'https://bgmtile.kade.si/{z}/{x}/{y}.png'
 DELAY_SEC  = 0.05
 
