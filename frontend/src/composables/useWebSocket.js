@@ -3,6 +3,7 @@ import { useLocationsStore } from '../stores/locations'
 
 let socket = null
 let reconnectTimer = null
+let hasConnectedBefore = false
 
 export function useWebSocket() {
   const store = useLocationsStore()
@@ -10,6 +11,18 @@ export function useWebSocket() {
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws'
     socket = new WebSocket(`${proto}://${location.host}/ws`)
+
+    socket.onopen = () => {
+      if (hasConnectedBefore) {
+        // Reconnected after a drop (sleep/wake, network blip, backend restart) — any
+        // pushes missed during the gap are gone, so pull a fresh snapshot instead of
+        // trusting stale/partial state.
+        store.fetchLive().catch(() => {})
+        store.fetchSOS().catch(() => {})
+        store.fetchTrail().catch(() => {})
+      }
+      hasConnectedBefore = true
+    }
 
     socket.onmessage = (event) => {
       const msg = JSON.parse(event.data)

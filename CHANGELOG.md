@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.6.0] - 2026-09-08
+
+### Recover from sleep/wake and connection drops without a manual restart
+
+Symptom this addresses: after the machine running the stack sleeps and wakes
+(or Docker/Postgres has any other blip), the map either goes stale/blank or,
+previously, stayed broken until the backend was restarted by hand.
+
+- **Frontend**: `useWebSocket` now re-syncs full state (`fetchLive`, `fetchSOS`,
+  `fetchTrail`) whenever the WebSocket *reconnects* after a drop, not just on
+  first page load. Anything that happened while disconnected (sleep, network
+  blip, backend restart) is otherwise silently missed since there's no gap-fill
+  on the push channel — this makes reconnect pull a fresh snapshot instead of
+  trusting stale state.
+- **Backend**: `WSManager.listen_notifications()` (the dedicated asyncpg
+  connection doing `LISTEN location_update` / `LISTEN sos_alert`) previously
+  had no reconnect logic at all — if that single connection died or went
+  stale (e.g. Docker Desktop pausing Postgres across a system sleep), live
+  pushes stopped forever with no recovery, matching reports of "had to
+  restart the backend to get the map working again." It now retries every 5s
+  on error, and pings the connection every 30s (`SELECT 1`) to catch a
+  connection that's gone stale silently rather than raising — the same
+  pattern already used by the HID and serial readers.
+
 ## [1.5.1] - 2026-09-08
 
 ### Map — stale markers after device deletion
