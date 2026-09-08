@@ -35,6 +35,15 @@
 - Admin role check is still in place — the password is an additional gate, not a replacement
 - New i18n keys: `about.offlineMapsPasswordTitle`, `…Desc`, `…Placeholder`, `…Wrong` (EN + BG)
 
+### Windows support
+
+- `GET /api/serial/status` (and the map's connection banner) now reports the **HID reader's** real status instead of the unused serial-gateway reader's, which always showed "disconnected"
+- HID reader broadcasts `serial_status` over the WebSocket on connect/disconnect, matching the old serial reader's behaviour
+- `hid.device().open()` failures and a missing/broken `hidapi` install now surface into `status.error` and the logs with actionable detail (e.g. check Device Manager on Windows) instead of failing silently inside an unretrieved asyncio task
+- Background reader tasks now log their exception on crash instead of failing silently
+- `backend/uploads` and `tiles/bgmountains` are now resolved relative to the package location instead of the process's current working directory, so photo uploads and offline map tiles work regardless of where the server is launched from (a shortcut, a scheduled task, a different shell)
+- README: added a Windows setup section (PowerShell commands, HID driver expectations, reading VID/PID from Device Manager, common gotchas) and corrected the claim that the serial gateway reader is active — its `run()` loop is currently commented out; only the HID reader runs
+
 ## [1.4.0] - 2026-04-23
 
 ### HID device reader
