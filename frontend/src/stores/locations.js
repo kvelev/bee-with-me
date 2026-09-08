@@ -35,6 +35,14 @@ export const useLocationsStore = defineStore('locations', () => {
     sosNotifications.value = sosNotifications.value.filter(n => n.id !== id)
   }
 
+  function resetTrail(deviceId) {
+    // Call when a device's volunteer assignment changes — the marker/live position stays,
+    // but the accumulated trail line must not splice the previous holder's path into the
+    // new one's.
+    const { [deviceId]: _removedTrail, ...rest } = trails.value
+    trails.value = rest
+  }
+
   function removePosition(deviceId) {
     const { [deviceId]: _removed, ...rest } = positions.value
     positions.value = rest
@@ -101,6 +109,6 @@ export const useLocationsStore = defineStore('locations', () => {
     positions, sosAlerts, sosNotifications, trails, serialStatus, positionList, hasSOS,
     fetchLive, fetchSOS, fetchTrail,
     applyLocationUpdate, applySOSAlert, applySerialStatus, resolveSOS, dismissSOSNotification,
-    removePosition,
+    removePosition, resetTrail,
   }
 })

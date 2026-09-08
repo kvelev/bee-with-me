@@ -86,12 +86,19 @@ async def location_trail(
     _: Annotated[asyncpg.Record, Depends(get_current_user)],
     minutes: int = Query(30, ge=1, le=60),
 ):
-    """Return all location events from the last N minutes, grouped by device_id."""
+    """Return all location events from the last N minutes, grouped by device_id.
+
+    Bounded by the device's current assignment (assigned_at) so a reassigned or
+    unassigned device's trail doesn't splice in the previous volunteer's movement.
+    """
     rows = await conn.fetch("""
         SELECT le.device_id, le.latitude, le.longitude, le.recorded_at
         FROM location_events le
         JOIN devices d ON d.id = le.device_id AND d.is_active = TRUE
-        WHERE le.recorded_at > NOW() - ($1 * INTERVAL '1 minute')
+        WHERE le.recorded_at > GREATEST(
+            NOW() - ($1 * INTERVAL '1 minute'),
+            COALESCE(d.assigned_at, '-infinity'::timestamptz)
+        )
         ORDER BY le.device_id, le.recorded_at ASC
     """, minutes)
     grouped = defaultdict(list)

@@ -101,8 +101,13 @@ function openForm(d) {
 async function save() {
   formError.value = ''
   try {
-    if (editing.value) await updateDevice(editing.value.id, form.value)
-    else               await createDevice(form.value)
+    if (editing.value) {
+      const reassigned = form.value.user_id !== editing.value.user_id
+      await updateDevice(editing.value.id, form.value)
+      if (reassigned) locationsStore.resetTrail(editing.value.id)
+    } else {
+      await createDevice(form.value)
+    }
     showModal.value = false
     await load()
   } catch (e) { formError.value = e }

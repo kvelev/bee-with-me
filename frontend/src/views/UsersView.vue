@@ -204,8 +204,10 @@ import { ref, watch, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import api from '../api/client'
 import { getUsers, createUser, updateUser, deleteUser, deactivateUser, reactivateUser, setGroupLeader, removeMember, getDevices, assignDevice, importUsers } from '../api'
+import { useLocationsStore } from '../stores/locations'
 
 const { t } = useI18n()
+const locationsStore = useLocationsStore()
 const BLOOD_TYPES = ['A+', 'A−', 'B+', 'B−', 'AB+', 'AB−', 'O+', 'O−']
 
 const users      = ref([])
@@ -333,8 +335,14 @@ async function save() {
 
     // Handle device assignment change
     if (selectedDeviceId.value !== originalDeviceId.value) {
-      if (originalDeviceId.value) await assignDevice(originalDeviceId.value, null)
-      if (selectedDeviceId.value) await assignDevice(selectedDeviceId.value, savedId)
+      if (originalDeviceId.value) {
+        await assignDevice(originalDeviceId.value, null)
+        locationsStore.resetTrail(originalDeviceId.value)
+      }
+      if (selectedDeviceId.value) {
+        await assignDevice(selectedDeviceId.value, savedId)
+        locationsStore.resetTrail(selectedDeviceId.value)
+      }
     }
 
     showModal.value = false

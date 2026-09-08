@@ -88,6 +88,12 @@ async def update_device(
     if not updates:
         raise HTTPException(status_code=400, detail='No fields to update')
     fields = ', '.join(f'{k} = ${i+2}' for i, k in enumerate(updates))
+    if 'user_id' in updates:
+        # Reassigning to a different volunteer (or clearing the assignment) should not
+        # carry the previous volunteer's trail forward — stamp assigned_at only when the
+        # value is actually changing, so repeat saves with the same user_id are a no-op.
+        idx = list(updates.keys()).index('user_id') + 2
+        fields += f', assigned_at = CASE WHEN user_id IS DISTINCT FROM ${idx} THEN NOW() ELSE assigned_at END'
     row = await conn.fetchrow(
         f'UPDATE devices SET {fields} WHERE id = $1 RETURNING id, dev_sn, name, is_active',
         device_id, *updates.values(),
@@ -104,7 +110,18 @@ async def assign_device(
     conn: Annotated[asyncpg.Connection, Depends(get_conn)],
     _: Annotated[asyncpg.Record, Depends(require_role('admin'))],
 ):
-    await conn.execute('UPDATE devices SET user_id = $1 WHERE id = $2', body.user_id, device_id)
+    # Stamp assigned_at only on an actual change (assign, reassign, or unassign) so the
+    # trail query can cut off a device's history at the moment its current volunteer
+    # took it over, instead of showing the previous holder's movement as if it were theirs.
+    await conn.execute(
+        """
+        UPDATE devices
+        SET user_id = $1,
+            assigned_at = CASE WHEN user_id IS DISTINCT FROM $1 THEN NOW() ELSE assigned_at END
+        WHERE id = $2
+        """,
+        body.user_id, device_id,
+    )
     return {'device_id': str(device_id), 'user_id': str(body.user_id) if body.user_id else None}
 
 

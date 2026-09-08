@@ -44,6 +44,14 @@ async def _cleanup_old_locations() -> None:
             logger.warning('Location cleanup failed: %s', exc)
 
 
+async def _ensure_schema_migrations() -> None:
+    """Small, idempotent additive migrations for existing databases — schema.sql only
+    applies to a fresh volume, so anything added after go-live needs a safe upgrade path
+    here instead of requiring `docker compose down -v` (which would drop live data)."""
+    async with get_pool().acquire() as conn:
+        await conn.execute('ALTER TABLE devices ADD COLUMN IF NOT EXISTS assigned_at TIMESTAMPTZ')
+
+
 async def _ensure_default_admin() -> None:
     async with get_pool().acquire() as conn:
         count = await conn.fetchval('SELECT COUNT(*) FROM users')
@@ -60,6 +68,7 @@ async def _ensure_default_admin() -> None:
 async def lifespan(app: FastAPI):
     await init_pool()
     logger.info('Database pool ready')
+    await _ensure_schema_migrations()
     await _ensure_default_admin()
 
     notify_task  = asyncio.create_task(manager.listen_notifications())

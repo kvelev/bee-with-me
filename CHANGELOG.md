@@ -24,6 +24,26 @@ previously, stayed broken until the backend was restarted by hand.
   connection that's gone stale silently rather than raising — the same
   pattern already used by the HID and serial readers.
 
+### Trail is cut off when a device is reassigned or unassigned
+
+Symptom this addresses: a physical device gets handed from one volunteer to
+another (or unassigned), and the map's trail line kept splicing the previous
+holder's movement into the new one's, since the trail was only ever bounded
+by device_id + a rolling time window, not by who currently holds the device.
+
+- `devices.assigned_at` (new column, applied via an idempotent `ALTER TABLE
+  ... ADD COLUMN IF NOT EXISTS` at startup — no `docker compose down -v`
+  needed on existing installs) is stamped whenever a device's `user_id`
+  actually changes, via both `PUT /api/devices/{id}/assign` and
+  `PUT /api/devices/{id}`
+- `GET /api/locations/trail` now bounds each device's trail to
+  `GREATEST(now - window, assigned_at)`, so history from before the current
+  assignment never appears
+- Frontend: reassigning a device (from either the Devices page or a
+  volunteer's Assign Device field on the Users page) also clears that
+  device's client-side trail cache immediately, instead of waiting for the
+  next `/trail` poll
+
 ## [1.5.1] - 2026-09-08
 
 ### Map — stale markers after device deletion
