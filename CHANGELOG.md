@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.1] - 2026-09-08
+
+### Map — stale markers after device deletion
+
+- Deactivating or permanently deleting a device on the Devices page now removes its marker, trail and tracker-panel row from the live map immediately
+- Previously the map's live-position store was only ever seeded once (on first load) and never learned about deletions made elsewhere, so a removed device's last-known position stayed on the map (and could duplicate) until a full page reload
+
+### Windows — one-command start
+
+- New `start.ps1` (with `start.bat` wrapper) brings up Docker, the backend and the frontend together in one step — creates `.env`/`.venv`, installs dependencies on first run, waits for Postgres, then opens backend and frontend in their own windows
+- Supports `-ProjectPath`, `-SkipDocker` and `-NoBrowser`; documented in the README's Windows section
+
 ## [1.5.0] - 2026-05-24
 
 ### Map — persistent state across page navigation

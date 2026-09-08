@@ -35,6 +35,15 @@ export const useLocationsStore = defineStore('locations', () => {
     sosNotifications.value = sosNotifications.value.filter(n => n.id !== id)
   }
 
+  function removePosition(deviceId) {
+    const { [deviceId]: _removed, ...rest } = positions.value
+    positions.value = rest
+    const { [deviceId]: _removedTrail, ...restTrails } = trails.value
+    trails.value = restTrails
+    sosAlerts.value = sosAlerts.value.filter(a => a.device_id !== deviceId)
+    resolvedSOS.delete(deviceId)
+  }
+
   function applyLocationUpdate(data) {
     const existing = positions.value[data.device_id] ?? {}
 
@@ -92,5 +101,6 @@ export const useLocationsStore = defineStore('locations', () => {
     positions, sosAlerts, sosNotifications, trails, serialStatus, positionList, hasSOS,
     fetchLive, fetchSOS, fetchTrail,
     applyLocationUpdate, applySOSAlert, applySerialStatus, resolveSOS, dismissSOSNotification,
+    removePosition,
   }
 })

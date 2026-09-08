@@ -96,7 +96,7 @@ async def lifespan(app: FastAPI):
     await close_pool()
 
 
-app = FastAPI(title='Bee With Me API', version='1.5.0', lifespan=lifespan)
+app = FastAPI(title='Bee With Me API', version='1.5.1', lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

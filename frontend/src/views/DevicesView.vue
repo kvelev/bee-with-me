@@ -69,8 +69,10 @@
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getDevices, createDevice, updateDevice, deleteDevice, reactivateDevice, permanentDeleteDevice, getUsers } from '../api'
+import { useLocationsStore } from '../stores/locations'
 
 const { t } = useI18n()
+const locationsStore = useLocationsStore()
 
 const devices   = ref([])
 const users     = ref([])
@@ -109,6 +111,7 @@ async function save() {
 async function deactivate(d) {
   if (!confirm(`Deactivate device SN:${d.dev_sn}?`)) return
   await deleteDevice(d.id)
+  locationsStore.removePosition(d.id)
   await load()
 }
 
@@ -120,6 +123,7 @@ async function reactivate(d) {
 async function remove(d) {
   if (!confirm(`Permanently delete device SN:${d.dev_sn}? This also deletes all its location history and cannot be undone.`)) return
   await permanentDeleteDevice(d.id)
+  locationsStore.removePosition(d.id)
   await load()
 }
 </script>
