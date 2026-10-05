@@ -165,15 +165,15 @@ if (-not $SkipContainers) {
                "To keep using data\pgdata, choose Docker:`n" +
                "  `$env:CONTAINER_ENGINE = 'docker'; powershell -ExecutionPolicy Bypass -File `"$root\start.ps1`"`n" +
                "To move to Podman instead (nothing is deleted):`n" +
-               "(1) back up with Docker, not Podman, then stop the Docker stack:`n" +
+               "(1) back up with Docker, not Podman (write down the dump file name it prints: step (4) restores that file), then stop the Docker stack:`n" +
                "  `$env:CONTAINER_ENGINE = 'docker'; powershell -ExecutionPolicy Bypass -File `"$root\scripts\backup.ps1`"`n" +
                "  docker compose -p bee-with-me -f `"$root\docker\docker-compose.yaml`" stop`n" +
                "(2) rename data\pgdata out of the way (it becomes $root\data\pgdata.docker-$stamp):`n" +
                "  Rename-Item -LiteralPath `"$root\data\pgdata`" -NewName `"pgdata.docker-$stamp`"`n" +
                "(3) start again with Podman (the Docker choice is cleared):`n" +
                "  Remove-Item Env:CONTAINER_ENGINE -ErrorAction SilentlyContinue; powershell -ExecutionPolicy Bypass -File `"$root\start.ps1`"`n" +
-               "(4) stop the backend (Ctrl+C in that window), then restore the dump (the newest file in data\backups):`n" +
-               "  powershell -ExecutionPolicy Bypass -File `"$root\scripts\restore.ps1`" `"$root\data\backups\<the dump>`"")
+               "(4) stop the backend (Ctrl+C in that window), then restore the dump from step (1) (not a newer file: step (3) makes a dump of the empty Podman database):`n" +
+               "  powershell -ExecutionPolicy Bypass -File `"$root\scripts\restore.ps1`" `"$root\data\backups\<the dump from step (1)>`"")
     }
 
     # data\backups is made now, by this user, before the database container starts (the same order as

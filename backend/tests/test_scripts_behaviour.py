@@ -90,7 +90,7 @@ def project(tmp_path, _venv, postgres_port):
     return proj
 
 
-def _run(kind, project, tmp_path, *, engine='podman', migrate='0', wait=None, args=(), path_prepend=None, **stub):
+def _run(kind, project, tmp_path, *, engine='podman', migrate='0', wait=None, args=(), bash_path_prepend=None, **stub):
     log = tmp_path / 'calls.log'
     log.write_text('', encoding='utf-8')
     if kind == 'sh':
@@ -104,7 +104,7 @@ def _run(kind, project, tmp_path, *, engine='podman', migrate='0', wait=None, ar
         stub_dir = STUBS / 'win'
     env = {k: v for k, v in script_env().items() if not k.startswith('BWM_')}
     env.update({
-        'PATH': os.pathsep.join([*(str(d) for d in (path_prepend or [])), str(stub_dir), os.environ.get('PATH', '')]),
+        'PATH': os.pathsep.join([str(stub_dir), os.environ.get('PATH', '')]),
         'CONTAINER_ENGINE': engine,
         'BWM_START_DRY_RUN': '1',
         'BWM_STUB_LOG': log.as_posix(),
@@ -121,6 +121,10 @@ def _run(kind, project, tmp_path, *, engine='podman', migrate='0', wait=None, ar
                *args]
     else:
         cmd = [BASH, (project / 'start.sh').as_posix(), '--no-browser', *args]
+        if bash_path_prepend:
+            # Git Bash's launcher puts /mingw64/bin:/usr/bin in front of the inherited PATH, so fakes of
+            # openssl/base64 only win when PATH is set inside bash, right before the script runs.
+            cmd = [BASH, '-c', 'PATH="$(cygpath -u "$1" 2>/dev/null || printf %s "$1"):$PATH"; shift; exec "$@"', 'bwm', Path(bash_path_prepend).as_posix(), *cmd]
     res = subprocess.run(cmd, cwd=project, env=env, capture_output=True, text=True, timeout=300)
     res.calls = log.read_text(encoding='utf-8').splitlines()
     res.out = res.stdout + res.stderr
@@ -767,17 +771,24 @@ def test_start_sh_tightens_an_existing_data_backups(project, tmp_path):
     assert backups.stat().st_mode & 0o777 == 0o700
 
 
+def _fake_failing_tool(fake_dir, name):
+    """A tool that logs 'fake <name>' to BWM_STUB_LOG and fails."""
+    path = fake_dir / name
+    path.write_text(f'#!/usr/bin/env bash\necho "fake {name}" >> "$BWM_STUB_LOG"\nexit 1\n', encoding='utf-8', newline='\n')
+    path.chmod(0o755)
+
+
 @pytest.mark.Trait("Bug", "B59")
 @pytest.mark.skipif(BASH is None, reason=SKIP_REASON)
 def test_start_sh_falls_back_to_urandom_when_openssl_fails(project, tmp_path):
     fake = tmp_path / 'fakebin'
     fake.mkdir()
-    (fake / 'openssl').write_text('#!/usr/bin/env bash\nexit 1\n', encoding='utf-8', newline='\n')
-    (fake / 'openssl').chmod(0o755)
+    _fake_failing_tool(fake, 'openssl')
     (project / '.env.example').write_text(EXAMPLE.format(port=5432), encoding='utf-8', newline='\n')
     (project / '.env').unlink(missing_ok=True)
-    res = _run('sh', project, tmp_path, args=('--skip-containers',), path_prepend=[fake])
+    res = _run('sh', project, tmp_path, args=('--skip-containers',), bash_path_prepend=fake)
     assert res.returncode == 0, res.out
+    assert 'fake openssl' in res.calls, res.calls    # the fake really ran: the fallback made the key
     key = _secret_lines(project)[0].split('=', 1)[1]
     assert key != 'change-me-example-key' and len(key) >= 48, key
 
@@ -788,12 +799,12 @@ def test_start_sh_stops_naming_both_attempts_when_nothing_can_make_a_key(project
     fake = tmp_path / 'fakebin'
     fake.mkdir()
     for name in ('openssl', 'base64'):
-        (fake / name).write_text('#!/usr/bin/env bash\nexit 1\n', encoding='utf-8', newline='\n')
-        (fake / name).chmod(0o755)
+        _fake_failing_tool(fake, name)
     (project / '.env.example').write_text(EXAMPLE.format(port=5432), encoding='utf-8', newline='\n')
     (project / '.env').unlink(missing_ok=True)
-    res = _run('sh', project, tmp_path, args=('--skip-containers',), path_prepend=[fake])
+    res = _run('sh', project, tmp_path, args=('--skip-containers',), bash_path_prepend=fake)
     assert res.returncode != 0, res.out
+    assert 'fake openssl' in res.calls and 'fake base64' in res.calls, res.calls
     assert not (project / '.env').exists()
     assert 'openssl' in res.out and '/dev/urandom' in res.out, res.out
 
@@ -872,3 +883,17 @@ def test_start_sh_temp_secrets_file_is_made_by_mktemp_and_a_stale_one_is_ignored
     assert names == ['.env.new'], names                    # no temp file of this run left behind
     text = (ROOT / 'start.sh').read_text(encoding='utf-8')
     assert 'mktemp' in text and re.search(r'trap .*rm -f', text)
+
+
+# ── B61: the guard restores the step-(1) Docker dump, not "the newest file" ──
+
+@pytest.mark.Trait("Bug", "B61")
+@pytest.mark.parametrize('kind', _guard_kinds())
+def test_guard_restore_step_names_the_step_1_dump_not_the_newest(kind, project, tmp_path):
+    out = _guard_text(kind, project, tmp_path)
+    assert 'newest' not in out.lower(), out     # step (3) makes a dump of the empty Podman database: that one is newer
+    step1 = out.split('(2)')[0]
+    step4 = re.split(r'(?<!step )\(4\)', out)[1]    # not the "step (4)" mention inside step 1
+    assert 'dump' in step1 and re.search(r'note|write down', step1, re.I), step1   # step 1: note the file name it prints
+    assert 'step (1)' in step4, step4                                              # step 4 restores that one
+    assert re.search(r'scripts/restore\.(ps1|sh)" "[^"]*data/backups/[^"]+"', step4), step4

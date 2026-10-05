@@ -43,7 +43,8 @@ Architecture/
 │   └── schema-fire.md                fire tables (mutable; migrations win)
 ├── application/
 │   ├── application-architecture.md   containers, components, flows, auth (mutable)
-│   └── api-contracts.md              REST, WebSocket, hardware, external feeds (mutable)
+│   ├── api-contracts.md              REST, WebSocket, hardware, external feeds (mutable)
+│   └── modular-monolith.md           target modules (vertical slices), outbox, architecture tests (mutable)
 ├── technology/
 │   ├── technology-architecture.md    catalogue, topology, ports, operations (mutable)
 │   ├── engineering-standards.md      rules ES-01 to ES-34 (mutable)

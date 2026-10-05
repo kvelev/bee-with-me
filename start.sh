@@ -184,15 +184,15 @@ start the database on its own named volume (bee-with-me_pgdata), which is empty:
 To keep using data/pgdata, choose Docker:
   CONTAINER_ENGINE=docker \"$ROOT/start.sh\"
 To move to Podman instead (nothing is deleted):
-(1) back up with Docker, not Podman, then stop the Docker stack:
+(1) back up with Docker, not Podman (write down the dump file name it prints: step (4) restores that file), then stop the Docker stack:
   CONTAINER_ENGINE=docker \"$ROOT/scripts/backup.sh\" \"$ROOT/data/backups\"
   cd \"$ROOT\" && docker compose -p bee-with-me -f docker/docker-compose.yaml stop
 (2) rename data/pgdata out of the way (it becomes $ROOT/data/pgdata.docker-$STAMP):
   mv -n \"$ROOT/data/pgdata\" \"$ROOT/data/pgdata.docker-$STAMP\"
 (3) start again with Podman (the Docker choice is cleared):
   unset CONTAINER_ENGINE; \"$ROOT/start.sh\"
-(4) stop the backend (Ctrl+C in that window), then restore the dump (the newest file in data/backups):
-  \"$ROOT/scripts/restore.sh\" \"$ROOT/data/backups/<the dump>\""
+(4) stop the backend (Ctrl+C in that window), then restore the dump from step (1) (not a newer file: step (3) makes a dump of the empty Podman database):
+  \"$ROOT/scripts/restore.sh\" \"$ROOT/data/backups/<the dump from step (1)>\""
     fi
 
     # data/backups is made now, as this user: rootful Docker would create data/ as root through the bind

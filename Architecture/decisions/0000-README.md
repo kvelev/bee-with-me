@@ -26,6 +26,9 @@ Index of all ADRs for Bee With Me. Format and rules: [ADR 1](0001-record-archite
 | [0014](0014-run-from-source-git-pull.md) | Run from source, update with git pull, no packaged release or CI for now | Proposed | 2026-10-03 | D |
 | [0015](0015-live-channel-open-by-design.md) | The live channel /ws is open by design | Proposed | 2026-10-04 | C, D |
 | [0016](0016-lawful-basis-asp-contract.md) | Lawful basis for personal data: the volunteer contract with ASP | Proposed | 2026-10-04 | B, C |
+| [0017](0017-vertical-slice-modules.md) | Modules as vertical slices across backend and frontend | Proposed | 2026-10-05 | C |
+| [0018](0018-transactional-outbox.md) | Transactional outbox with idempotent handlers for cascades between modules | Proposed | 2026-10-05 | C |
+| [0019](0019-architecture-tests.md) | Module boundaries enforced by architecture tests with a ratchet | Proposed | 2026-10-05 | D, G |
 
 ## Writing a new ADR (people and agents)
 

@@ -405,6 +405,12 @@ flowchart LR
     SPA -.->|tiles, weather, optional| ON[Online providers]
 ```
 
+**Target module structure.** The code moves step by step to modules as vertical slices across backend and frontend,
+with writes only by the owning module, a transactional outbox for cascades, a direct path for positions and alarms,
+and architecture tests that guard the boundaries ([ADR 17](decisions/0017-vertical-slice-modules.md),
+[ADR 18](decisions/0018-transactional-outbox.md), [ADR 19](decisions/0019-architecture-tests.md); details in
+[application/modular-monolith.md](application/modular-monolith.md)).
+
 **Capabilities to components.**
 
 | Capability | Components |
