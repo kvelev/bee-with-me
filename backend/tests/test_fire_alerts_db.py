@@ -141,3 +141,23 @@ async def test_open_alerts_list_puts_unacknowledged_before_newer_acknowledged(mi
     await repository.acknowledge_alert(migrated_conn, newer, admin)
     assert [str(a.id) for a in await repository.list_alerts(migrated_conn, 'open', 50, 0)] == [older, newer]
     assert [str(a.id) for a in await repository.list_alerts(migrated_conn, 'all', 50, 0)] == [newer, older]
+
+
+async def test_clearing_hq_resolves_an_acknowledged_hq_alert_so_a_new_hq_alarms_again(migrated_conn):
+    hotspot, _, rescuer_alert, admin = await _seed(migrated_conn)
+    hq_alert = await migrated_conn.fetchval(
+        "INSERT INTO fire_alerts (hotspot_id, target_type, distance_m) VALUES ($1, 'hq', 4000) RETURNING id::text",
+        hotspot)
+    await repository.acknowledge_alert(migrated_conn, hq_alert, admin)
+    assert await repository.resolve_hq_alerts(migrated_conn, admin) == [hq_alert]
+    row = await migrated_conn.fetchrow(
+        'SELECT resolve_reason::text, resolved_by FROM fire_alerts WHERE id = $1::uuid', hq_alert)
+    assert row['resolve_reason'] == 'disabled' and row['resolved_by'] == admin
+    # rescuer alerts are not HQ alerts
+    assert await migrated_conn.fetchval(
+        'SELECT resolved_at IS NULL FROM fire_alerts WHERE id = $1::uuid', rescuer_alert)
+    # the hotspot is free again: an HQ set next to the same fire gets a new, unacknowledged alert
+    await migrated_conn.execute(
+        "INSERT INTO fire_alerts (hotspot_id, target_type, distance_m) VALUES ($1, 'hq', 4000)", hotspot)
+    assert await repository.resolve_hq_alerts(migrated_conn, None) != []
+    assert await repository.resolve_hq_alerts(migrated_conn, None) == []   # idempotent

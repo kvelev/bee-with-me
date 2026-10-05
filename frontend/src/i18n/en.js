@@ -61,6 +61,9 @@ export default {
     },
     weatherFeels:    'feels like',
     weatherWind:     'Wind',
+    weatherFrom:     'from {dir} ({deg}°)',
+    weatherGusts:    'Gusts',
+    weatherWindSource: 'Wind: {source}',
     weatherHumidity: 'Humidity',
     weatherClouds:   'Cloud cover',
     basemaps: {

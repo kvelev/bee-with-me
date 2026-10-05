@@ -438,18 +438,43 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
 
   let activeBasemapId = 'osm'
 
-  function setWeatherLayer(url) {
+  // `recolor(data, width)` (lib/weatherTiles.js) repaints each tile's RGBA bytes in place; without it the
+  // provider's tiles are shown as they come.
+  function setWeatherLayer(url, recolor = null) {
     if (activeWeatherLayer) {
       map.removeLayer(activeWeatherLayer)
       activeWeatherLayer = null
     }
     if (!url || !map) return
-    activeWeatherLayer = new TileLayer({
-      source: new XYZ({ url, crossOrigin: 'anonymous' }),
-      opacity: 1.0,
-      zIndex: 2,
-    })
+    const source = new XYZ({ url, crossOrigin: 'anonymous' })
+    if (recolor) source.setTileLoadFunction((tile, src) => loadRecolored(tile, src, recolor))
+    activeWeatherLayer = new TileLayer({ source, opacity: 1.0, zIndex: 2 })
     map.addLayer(activeWeatherLayer)
+  }
+
+  // Load a tile, repaint it on a canvas and hand OpenLayers the result. Any failure (no 2D
+  // canvas, a tainted image) falls back to the original tile rather than a hole in the layer.
+  function loadRecolored(tile, src, recolor) {
+    const target = tile.getImage()
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = img.naturalWidth
+        canvas.height = img.naturalHeight
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })
+        ctx.drawImage(img, 0, 0)
+        const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        recolor(pixels.data, canvas.width)
+        ctx.putImageData(pixels, 0, 0)
+        target.src = canvas.toDataURL()
+      } catch {
+        target.src = src
+      }
+    }
+    img.onerror = () => { target.src = src }   // let OpenLayers see the failure itself
+    img.src = src
   }
 
   function setBasemap(id) {

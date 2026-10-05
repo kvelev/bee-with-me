@@ -272,6 +272,22 @@ async def resolve_disabled_alerts(conn: asyncpg.Connection, resolved_by=None, de
     return [r['id'] for r in rows]
 
 
+async def resolve_hq_alerts(conn: asyncpg.Connection, resolved_by) -> list[str]:
+    """Resolve every open HQ alert as 'disabled', by the admin who cleared HQ.
+
+    Clearing HQ is a decision, not missing data (B40 keeps an alert open only while data is missing): left
+    open, an acknowledged alert would still own its hotspot (idx_fire_alerts_open_hq), so an HQ set again
+    next to the same fire would never alarm. Returns the resolved ids.
+    """
+    rows = await conn.fetch("""
+        UPDATE fire_alerts
+        SET resolved_at = NOW(), resolve_reason = 'disabled', resolved_by = $1::uuid
+        WHERE target_type = 'hq' AND resolved_at IS NULL
+        RETURNING id::text AS id
+    """, None if resolved_by is None else str(resolved_by))
+    return [r['id'] for r in rows]
+
+
 async def get_alert_out(conn: asyncpg.Connection, alert_id: str) -> FireAlertOut | None:
     row = await conn.fetchrow(ALERT_OUT_SELECT + ' WHERE a.id = $1::uuid', alert_id)
     return FireAlertOut.from_row(row) if row else None
