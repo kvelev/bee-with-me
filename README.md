@@ -1,5 +1,12 @@
 # Bee With Me
 
+[![CI](https://github.com/kvelev/bee-with-me/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kvelev/bee-with-me/actions/workflows/ci.yml?query=branch%3Amain)
+[![Release](https://img.shields.io/github/v/release/kvelev/bee-with-me?sort=semver)](https://github.com/kvelev/bee-with-me/releases/latest)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+![Python 3.11 | 3.12](https://img.shields.io/badge/python-3.11%20%7C%203.12-3776AB?logo=python&logoColor=white)
+![Node 22 | 24](https://img.shields.io/badge/node-22%20%7C%2024-5FA04E?logo=nodedotjs&logoColor=white)
+![PostGIS 16-3.4](https://img.shields.io/badge/PostGIS-16--3.4-336791?logo=postgresql&logoColor=white)
+
 Offline people-tracking application for LoRaWAN-based rescue and volunteer operations. RescuerBee devices transmit MGRS coordinates over a USB LoRaWAN gateway; the backend parses the frames, stores positions in PostGIS, and broadcasts them in real time to a bilingual (EN/BG) web interface showing live positions on an interactive map.
 
 > This is an intranet-only application. It is not designed to be exposed to the internet and makes security trade-offs accordingly.
@@ -392,13 +399,62 @@ tools/
 ## Running tests
 
 ```bash
+# Backend — run from the repo root. Use `python -m pytest` (not bare `pytest`) so the repo root
+# is on sys.path and `import backend` resolves.
 source .venv/bin/activate
-pytest backend/tests/
+python -m pytest backend/tests/                 # DB tests skip if PostgreSQL is unreachable
+python -m pytest backend/tests/ --require-db    # …or fail instead, as CI does
+
+# Frontend
+cd frontend && npm test && npm run build
 ```
+
+DB-backed tests create and drop throwaway `scratch_*` databases on the server from `.env`
+(the `docker compose` database works); they never touch `rescuer_locator`'s data.
 
 The `[sh]` script tests need a real bash. On Windows they use Git Bash (found next to `git.exe`, or
 `%ProgramFiles%\Git\bin\bash.exe`), never the WSL launcher `C:\Windows\System32\bash.exe`; set
 `BWM_TEST_BASH` to a bash path to override. Without one, the `[sh]` cases are skipped.
+
+### Continuous integration
+
+Every pull request and every push to `main` runs [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+
+| Check | Runs on | What it verifies |
+| --- | --- | --- |
+| **Backend (Python 3.11 / 3.12)** | Ubuntu + `postgis/postgis:16-3.4` service | Byte-compiles `backend/`, full `pytest` suite with `--require-db` (migrations, PostGIS queries, fire alerts, PDF export, bash scripts) |
+| **Scripts (Windows PowerShell)** | Windows | `start.ps1` / `backup.ps1` / `restore.ps1` behaviour tests, which only run on Windows |
+| **Frontend (Node 22 / 24)** | Ubuntu | `npm ci`, Vitest suite, production `vite build`, `npm audit` of runtime deps (high+) |
+| **Version & docs consistency** | Ubuntu | `backend/version.py` and `frontend/package.json` agree |
+| **CI OK** | — | Aggregate gate: green only if all of the above passed. This is the required check on `main` |
+
+Dependabot opens grouped weekly PRs for pip and npm, and monthly ones for GitHub Actions; they go through the same checks.
+
+### Releases
+
+Releases are cut by pushing a `vX.Y.Z` tag ([`.github/workflows/release.yml`](.github/workflows/release.yml)).
+The workflow refuses to publish unless the tag matches `backend/version.py`, `frontend/package.json`
+and a `## [X.Y.Z]` heading in `CHANGELOG.md`, then reruns the full CI suite on the tagged commit.
+It publishes a GitHub Release whose notes come from that changelog section, with an offline install
+bundle (`bee-with-me-vX.Y.Z.zip`) and its `.sha256`. Verify the checksum after copying the bundle to a field laptop:
+
+```bash
+shasum -a 256 -c bee-with-me-v1.7.2.zip.sha256                         # macOS / Linux
+(Get-FileHash .\bee-with-me-v1.7.2.zip -Algorithm SHA256).Hash         # Windows: compare with the .sha256 file
+```
+
+---
+
+## Contributing
+
+`main` is protected: all changes land through a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
+workflow; in short:
+
+1. Branch from `main` (`fix/…`, `feat/…`, or a release branch such as `1.7.2`).
+2. Open a PR and fill in the template checklist.
+3. **CI OK** must be green, and a code owner (see [`.github/CODEOWNERS`](.github/CODEOWNERS)) must approve.
+   New commits pushed after an approval dismiss it, and all review threads must be resolved.
+4. Squash-merge; the branch is deleted automatically.
 
 ---
 
