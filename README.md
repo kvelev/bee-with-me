@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/kvelev/bee-with-me?sort=semver)](https://github.com/kvelev/bee-with-me/releases/latest)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 ![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
-![Node 22 | 24](https://img.shields.io/badge/node-22%20%7C%2024-5FA04E?logo=nodedotjs&logoColor=white)
+![Node 24](https://img.shields.io/badge/node-24-5FA04E?logo=nodedotjs&logoColor=white)
 ![PostGIS 16-3.4](https://img.shields.io/badge/PostGIS-16--3.4-336791?logo=postgresql&logoColor=white)
 
 Offline people-tracking application for LoRaWAN-based rescue and volunteer operations. RescuerBee devices transmit MGRS coordinates over a USB LoRaWAN gateway; the backend parses the frames, stores positions in PostGIS, and broadcasts them in real time to a bilingual (EN/BG) web interface showing live positions on an interactive map.
@@ -424,7 +424,7 @@ Every pull request and every push to `main` runs [`.github/workflows/ci.yml`](.g
 | --- | --- | --- |
 | **Backend (Python 3.11)** | Ubuntu + `postgis/postgis:16-3.4` service | Byte-compiles `backend/`, full `pytest` suite with `--require-db` (migrations, PostGIS queries, fire alerts, PDF export, bash scripts) |
 | **Scripts (Windows PowerShell)** | Windows | `start.ps1` / `backup.ps1` / `restore.ps1` behaviour tests, which only run on Windows |
-| **Frontend (Node 22 / 24)** | Ubuntu | `npm ci`, Vitest suite, production `vite build`, `npm audit` of runtime deps (high+) |
+| **Frontend (Node 24)** | Ubuntu | `npm ci`, Vitest suite, production `vite build`, `npm audit` of runtime deps (high+) |
 | **Version & docs consistency** | Ubuntu | `backend/version.py` and `frontend/package.json` agree |
 | **CI OK** | — | Aggregate gate: green only if all of the above passed. This is the required check on `main` |
 

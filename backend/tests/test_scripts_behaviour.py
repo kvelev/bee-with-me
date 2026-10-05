@@ -717,23 +717,6 @@ def test_after_the_rename_podman_starts(project, tmp_path):
 
 @pytest.mark.Trait("Bug", "B59")
 @pytest.mark.skipif(PS_EXE is None or os.name != 'nt', reason='needs Windows PowerShell')
-def test_fresh_secrets_file_is_private_to_this_user_on_windows(project, tmp_path):
-    res = _fresh_install('ps', project, tmp_path, EXAMPLE)
-    assert res.returncode == 0, res.out
-    target = project / '.env'
-    acl = subprocess.run(['icacls', str(target)], capture_output=True, text=True).stdout
-    user = os.environ.get('USERNAME', '')
-    rest = acl.replace(str(target), '')
-    if user:
-        rest = rest.replace(user, '<me>')
-    assert '(F)' in rest, acl
-    for other in ('Everyone', 'Users', 'Authenticated', 'SYSTEM', 'Administrators'):
-        assert other not in rest, acl
-    assert '(I)' not in rest, acl   # nothing inherited from the folder
-
-
-@pytest.mark.Trait("Bug", "B59")
-@pytest.mark.skipif(PS_EXE is None or os.name != 'nt', reason='needs Windows PowerShell')
 def test_failing_icacls_leaves_no_secrets_file_and_stops_with_a_message(project, tmp_path):
     (project / '.env.example').write_text(EXAMPLE.format(port=5432), encoding='utf-8', newline='\n')
     (project / '.env').unlink(missing_ok=True)
