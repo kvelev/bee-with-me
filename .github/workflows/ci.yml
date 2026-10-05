@@ -24,8 +24,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.11 is the floor start.sh/start.ps1 enforce on field laptops
-        python: ['3.11', '3.12']
+        # 3.11 is the floor start.sh/start.ps1 enforce on field laptops; add newer versions here
+        python: ['3.11']
 
     services:
       postgres:
@@ -91,7 +91,7 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.11'
           cache: pip
           cache-dependency-path: backend/requirements.txt
 

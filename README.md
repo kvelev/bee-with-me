@@ -3,7 +3,7 @@
 [![CI](https://github.com/kvelev/bee-with-me/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/kvelev/bee-with-me/actions/workflows/ci.yml?query=branch%3Amain)
 [![Release](https://img.shields.io/github/v/release/kvelev/bee-with-me?sort=semver)](https://github.com/kvelev/bee-with-me/releases/latest)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-![Python 3.11 | 3.12](https://img.shields.io/badge/python-3.11%20%7C%203.12-3776AB?logo=python&logoColor=white)
+![Python 3.11](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
 ![Node 22 | 24](https://img.shields.io/badge/node-22%20%7C%2024-5FA04E?logo=nodedotjs&logoColor=white)
 ![PostGIS 16-3.4](https://img.shields.io/badge/PostGIS-16--3.4-336791?logo=postgresql&logoColor=white)
 
@@ -422,7 +422,7 @@ Every pull request and every push to `main` runs [`.github/workflows/ci.yml`](.g
 
 | Check | Runs on | What it verifies |
 | --- | --- | --- |
-| **Backend (Python 3.11 / 3.12)** | Ubuntu + `postgis/postgis:16-3.4` service | Byte-compiles `backend/`, full `pytest` suite with `--require-db` (migrations, PostGIS queries, fire alerts, PDF export, bash scripts) |
+| **Backend (Python 3.11)** | Ubuntu + `postgis/postgis:16-3.4` service | Byte-compiles `backend/`, full `pytest` suite with `--require-db` (migrations, PostGIS queries, fire alerts, PDF export, bash scripts) |
 | **Scripts (Windows PowerShell)** | Windows | `start.ps1` / `backup.ps1` / `restore.ps1` behaviour tests, which only run on Windows |
 | **Frontend (Node 22 / 24)** | Ubuntu | `npm ci`, Vitest suite, production `vite build`, `npm audit` of runtime deps (high+) |
 | **Version & docs consistency** | Ubuntu | `backend/version.py` and `frontend/package.json` agree |

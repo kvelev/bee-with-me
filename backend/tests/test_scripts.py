@@ -1,5 +1,6 @@
 """Static checks on the backup/start scripts plus a syntax parse of each."""
 
+import os
 import re
 import shutil
 import subprocess
@@ -844,7 +845,8 @@ def _run_script(kind, rel, tmp_path, args, **env_overrides):
 
 
 _KINDS = [
-    pytest.param('ps', marks=pytest.mark.skipif(_PS_EXE is None, reason='no PowerShell')),
+    # backup.ps1/restore.ps1 are Windows-only (WindowsIdentity, icacls): pwsh on Linux/macOS cannot run them
+    pytest.param('ps', marks=pytest.mark.skipif(_PS_EXE is None or os.name != 'nt', reason='needs Windows PowerShell')),
     pytest.param('sh', marks=pytest.mark.skipif(BASH is None, reason=SKIP_REASON)),
 ]
 

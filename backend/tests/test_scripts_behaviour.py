@@ -123,8 +123,10 @@ def _run(kind, project, tmp_path, *, engine='podman', migrate='0', wait=None, ar
         cmd = [BASH, (project / 'start.sh').as_posix(), '--no-browser', *args]
         if bash_path_prepend:
             # Git Bash's launcher puts /mingw64/bin:/usr/bin in front of the inherited PATH, so fakes of
-            # openssl/base64 only win when PATH is set inside bash, right before the script runs.
-            cmd = [BASH, '-c', 'PATH="$(cygpath -u "$1" 2>/dev/null || printf %s "$1"):$PATH"; shift; exec "$@"', 'bwm', Path(bash_path_prepend).as_posix(), *cmd]
+            # openssl/base64 only win when PATH is set inside bash, right before the script runs. The script
+            # is then run by "$BASH" (the real bash.exe already running), not by BASH again: re-running the
+            # launcher (Git\bin\bash.exe) would put /mingw64/bin:/usr/bin back in front of the fakes.
+            cmd = [BASH, '-c', 'PATH="$(cygpath -u "$1" 2>/dev/null || printf %s "$1"):$PATH"; shift; exec "$BASH" "$@"', 'bwm', Path(bash_path_prepend).as_posix(), *cmd[1:]]
     res = subprocess.run(cmd, cwd=project, env=env, capture_output=True, text=True, timeout=300)
     res.calls = log.read_text(encoding='utf-8').splitlines()
     res.out = res.stdout + res.stderr
