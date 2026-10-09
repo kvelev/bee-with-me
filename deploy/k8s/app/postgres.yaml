@@ -45,9 +45,9 @@ spec:
           requests:
             cpu: 100m
             memory: 256Mi
-          limits:   # whole app fits in 1 CPU / 2Gi (see frontend.yaml)
-            cpu: 400m
-            memory: 768Mi
+          limits:   # whole app fits in 2 CPU / 4Gi (see frontend.yaml)
+            cpu: 800m
+            memory: 1536Mi
         readinessProbe:
           exec:
             command: [pg_isready, -U, rescuer, -d, rescuer_locator]

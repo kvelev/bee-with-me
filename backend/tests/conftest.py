@@ -18,6 +18,7 @@ from backend.routers import auth, devices, export, fire, groups, locations, user
 from backend.routers import test as test_router
 from backend.routers import settings as settings_router
 from backend.routers import weather as weather_router
+from backend.routers import tiles as tiles_router
 
 # ── Minimal app without lifespan ──────────────────────────────────────────────
 
@@ -32,6 +33,7 @@ _app.include_router(fire.router)
 _app.include_router(settings_router.router)
 _app.include_router(test_router.router)
 _app.include_router(weather_router.router)
+_app.include_router(tiles_router.router)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
