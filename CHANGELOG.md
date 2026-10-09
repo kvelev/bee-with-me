@@ -10,6 +10,20 @@ teams, then moves them around a chosen start point every few seconds. The card o
 the backend runs with `ENABLE_TEST_ENDPOINTS=true`, so field laptops never show it. Unlike the
 CLI script, the demo volunteers get an unusable random password. A backend restart stops test mode.
 
+### Test mode scenarios
+
+Test mode can now exercise every tracker state: up to 12 trackers (6 personas with photos and teams,
+up to 6 extras without), and how many are in SOS, without a GPS fix, stale, lost or on low battery,
+plus the step per update and the start area. **Reset demo data** stops test mode and deletes the
+demo trackers' positions and SOS alerts, so the next tester starts with an empty map.
+
+### Offline maps moved to Settings
+
+The BG Mountains download and the online/offline choice moved from the About page to Settings →
+Offline maps. Until someone picks online or offline, the browser now uses offline tiles only if the
+server has downloaded them (`available` in `GET /api/tiles/bgmountains/status`); before, it always
+assumed offline, so a server without a download showed an empty BG Mountains map.
+
 ### `INITIAL_ADMIN_PASSWORD`
 
 Sets the password of the `admin` account created on an empty database. Unset, it stays `admin`

@@ -32,10 +32,10 @@ spec:
             cpu: 10m
             memory: 32Mi
           # Small enough that a rolling update (2 frontend pods for a moment) still fits a
-          # 1 CPU / 2Gi namespace quota: 400m+500m+2x50m = 1 CPU, 768Mi+1Gi+2x64Mi < 2Gi
+          # 2 CPU / 4Gi namespace quota: 800m+1000m+2x100m = 2 CPU, 1536Mi+2Gi+2x128Mi = 3.75Gi
           limits:
-            cpu: 50m
-            memory: 64Mi
+            cpu: 100m
+            memory: 128Mi
         readinessProbe:
           httpGet:
             path: /

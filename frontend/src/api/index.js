@@ -94,6 +94,7 @@ export const getWeatherTile    = (src)        => api.get(src.replace(/^\/api/, '
 export const getSimulation   = ()     => api.get('/test/simulation')
 export const startSimulation = (body) => api.post('/test/simulation/start', body)
 export const stopSimulation  = ()     => api.post('/test/simulation/stop')
+export const resetSimulation = ()     => api.post('/test/simulation/reset')
 
 // Fire: operator writes. Notes are free operator text; they travel only in these bodies.
 export const dismissFireHotspot     = (id, notes) => api.post(`/fire/hotspots/${id}/dismiss`, { notes: notes ?? null })

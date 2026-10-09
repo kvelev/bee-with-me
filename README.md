@@ -26,8 +26,8 @@ Offline people-tracking application for LoRaWAN-based rescue and volunteer opera
 - **Headquarters (ЩАБ)** — place HQ on the map; it anchors the HQ fire alarm.
 - **Fire monitoring** — active-fire hotspots and burnt areas from EFFIS/GWIS, field reports, alarms when a fire is near HQ or near a rescuer, and suppression zones that silence known fires.
 - **Weather** — clouds, rain, wind (animated particles) and temperature overlays on the satellite basemap, from OpenWeatherMap through the backend (the API key never reaches the browser; online only).
-- **Offline maps** — the BG Mountains basemap can be downloaded for offline use (password-gated, About page).
-- **Settings** — fire-alarm radii and timing, rescuer photos on the map, HQ, suppression zones, and (when `ENABLE_TEST_ENDPOINTS=true`) **Test mode**, which simulates demo trackers for UI testing without hardware.
+- **Offline maps** — the BG Mountains basemap can be downloaded for offline use (password-gated) and switched between online and offline tiles, both in Settings. Until someone chooses, the browser uses offline tiles only if the server has downloaded them.
+- **Settings** — fire-alarm radii and timing, rescuer photos on the map, HQ, suppression zones, offline maps, and (when `ENABLE_TEST_ENDPOINTS=true`) **Test mode**: up to 12 demo trackers with a configurable scenario (SOS, no GPS fix, stale, lost, low battery, pace and area) and a reset, for UI testing without hardware.
 - **Volunteers** — manage field personnel with name, rank, blood type, phone, PIN, photo and team memberships.
 - **Bulk import** — import volunteers from an XLS spreadsheet (Bulgarian or English column headers).
 - **Teams** — group volunteers into colour-coded teams; each team can have a designated leader.

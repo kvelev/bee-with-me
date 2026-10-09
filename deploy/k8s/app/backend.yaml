@@ -69,9 +69,9 @@ spec:
           requests:
             cpu: 100m
             memory: 256Mi
-          limits:   # whole app fits in 1 CPU / 2Gi (see frontend.yaml)
-            cpu: 500m
-            memory: 1Gi
+          limits:   # whole app fits in 2 CPU / 4Gi (see frontend.yaml)
+            cpu: 1000m
+            memory: 2Gi
         # Migrations run in the lifespan before the app answers; give a fresh DB time
         startupProbe:
           httpGet:

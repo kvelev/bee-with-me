@@ -63,7 +63,7 @@ export const BASEMAPS = [
 
 const TILE_SERVER = 'http://localhost:8080'
 
-const { bgMountainsOffline } = useSettings()
+const { bgMountainsOffline, resolveBgMountainsDefault } = useSettings()
 
 function makeBgMountainsSource() {
   if (bgMountainsOffline.value) {
@@ -667,6 +667,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   }
 
   onMounted(() => {
+    resolveBgMountainsDefault()   // offline BG Mountains tiles only if this server has them (useSettings.js)
     // Hover tooltip element — created programmatically so it lives inside OL's viewport
     const tooltipEl = document.createElement('div')
     Object.assign(tooltipEl.style, {
