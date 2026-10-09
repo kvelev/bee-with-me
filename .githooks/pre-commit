@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Fast local gate: runs only the test suites for the parts of the repo being committed.
+# CI runs everything (including the PostgreSQL tests) and its "CI OK" is still required to merge.
+#
+# Enable once per clone:   git config core.hooksPath .githooks
+# Skip in an emergency:    git commit --no-verify
+#
+# Note: tests run against the working tree, so unstaged edits are tested too.
+
+set -euo pipefail
+
+staged="$(git diff --cached --name-only --diff-filter=ACMRD)"
+[ -n "$staged" ] || exit 0
+root="$(git rev-parse --show-toplevel)"
+cd "$root"
+
+changed() { grep -qE "$1" <<<"$staged"; }
+step() { printf '\033[36m[pre-commit] %s\033[0m\n' "$*"; }
+
+python=python3
+for candidate in .venv/bin/python backend/.venv/bin/python .venv/Scripts/python.exe backend/.venv/Scripts/python.exe; do
+  if [ -x "$candidate" ]; then python="$candidate"; break; fi
+done
+
+SCRIPT_TESTS=(backend/tests/test_scripts.py backend/tests/test_scripts_behaviour.py backend/tests/test_shells.py)
+
+if changed '^backend/'; then
+  step "backend tests (no database, no script tests) with $python"
+  ignore=(); for t in "${SCRIPT_TESTS[@]}"; do ignore+=("--ignore=$t"); done
+  "$python" -m pytest backend/tests/ -q -m 'not db' -p no:cacheprovider "${ignore[@]}"
+fi
+
+if changed '^(scripts/|start\.(sh|ps1|bat)$|backend/tests/(test_scripts|test_scripts_behaviour|test_shells)\.py$)'; then
+  step 'script tests'
+  "$python" -m pytest "${SCRIPT_TESTS[@]}" -q -p no:cacheprovider
+fi
+
+if changed '^frontend/'; then
+  step 'frontend tests'
+  (cd frontend && npm test --silent)
+fi
+
+step 'all good'

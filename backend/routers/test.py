@@ -11,7 +11,7 @@ from uuid import UUID
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import mgrs as mgrs_lib
 
@@ -49,6 +49,13 @@ async def simulate(
 
     lat = body.lat if body.lat is not None else round(random.uniform(LAT_MIN, LAT_MAX), 6)
     lon = body.lon if body.lon is not None else round(random.uniform(LON_MIN, LON_MAX), 6)
+    return await record_position(conn, device, lat, lon, body.sos_active)
+
+
+async def record_position(conn: asyncpg.Connection, device, lat: float, lon: float, sos_active: bool) -> dict:
+    """Insert one fabricated fix for `device` ({id, user_id}) and push it to the browsers.
+
+    Shared by POST /simulate and the test-mode simulation (backend/simulation.py)."""
     mgrs_str = _MGRS.toMGRS(lat, lon)
     now = datetime.now(timezone.utc)
 
@@ -71,10 +78,10 @@ async def simulate(
         ) RETURNING id
         """,
         device['id'], device['user_id'], random.randint(0, 255), now,
-        lat, lon, mgrs_str, alt, speed, sats, bat, body.sos_active,
+        lat, lon, mgrs_str, alt, speed, sats, bat, sos_active,
     )
 
-    if body.sos_active:
+    if sos_active:
         await conn.execute(
             """
             INSERT INTO sos_alerts (device_id, user_id, triggered_at)
@@ -120,7 +127,7 @@ async def simulate(
         'battery_voltage': bat,
         'gnss_satellites': sats,
         'gnss_valid':      True,
-        'sos_active':      body.sos_active,
+        'sos_active':      sos_active,
         'repeater_mode':   False,
         'recorded_at':     now.isoformat(),
         'received_at':     now.isoformat(),
@@ -148,3 +155,33 @@ async def list_devices_for_test(
         WHERE d.is_active = TRUE
     """)
     return [dict(r) for r in rows]
+
+
+# ── Test mode (Settings page) ─────────────────────────────────────────────────
+# Imported lazily: backend.simulation imports record_position from this module.
+
+class SimulationStart(BaseModel):
+    lat: float = Field(42.698, ge=-90, le=90)       # Sofia, like tools/demo.py
+    lon: float = Field(23.322, ge=-180, le=180)
+    interval: float = Field(3.0, ge=1, le=60)
+
+
+@router.get('/simulation')
+async def simulation_status(_=Depends(require_role('admin'))):
+    from ..simulation import simulation
+    return simulation.status()
+
+
+@router.post('/simulation/start')
+async def simulation_start(body: SimulationStart, _=Depends(require_role('admin'))):
+    from ..simulation import SimulationRunning, simulation
+    try:
+        return await simulation.start(body.lat, body.lon, body.interval)
+    except SimulationRunning:
+        raise HTTPException(status_code=409, detail='Test mode is already running')
+
+
+@router.post('/simulation/stop')
+async def simulation_stop(_=Depends(require_role('admin'))):
+    from ..simulation import simulation
+    return await simulation.stop()

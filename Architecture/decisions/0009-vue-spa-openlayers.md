@@ -32,7 +32,7 @@ The SPA talks only to the backend (REST and `/ws`), except for optional online t
 
 **Negative / Trade-offs:**
 - Today it runs from the Vite dev server (R-11).
-- Online basemap URLs and the OpenWeatherMap key are in the client (R-04, R-05).
+- Online basemap URLs are in the client (R-04). The OpenWeatherMap key was too, until the backend weather proxy (R-05).
 - Front-end changes follow the project's design workflow (dedicated design agent), which adds a step.
 
 ## Considered options

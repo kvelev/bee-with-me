@@ -85,6 +85,16 @@ export const putSettings  = (body) => api.put('/settings', body)
 export const putHQ        = (body) => api.put('/settings/hq', body)
 export const putHQInitial = (body) => api.put('/settings/hq-initial', body)
 
+// Weather: OpenWeatherMap through the backend, which holds the key (routers/weather.py)
+export const getWeatherCurrent = (lat, lon)   => api.get('/weather/current', { params: { lat, lon } })
+export const getWeatherBox     = (bbox, zoom) => api.get('/weather/box', { params: { bbox, zoom } })
+export const getWeatherTile    = (src)        => api.get(src.replace(/^\/api/, ''), { responseType: 'blob' })
+
+// Test mode (only when the server runs with ENABLE_TEST_ENDPOINTS=true; 404 otherwise)
+export const getSimulation   = ()     => api.get('/test/simulation')
+export const startSimulation = (body) => api.post('/test/simulation/start', body)
+export const stopSimulation  = ()     => api.post('/test/simulation/stop')
+
 // Fire: operator writes. Notes are free operator text; they travel only in these bodies.
 export const dismissFireHotspot     = (id, notes) => api.post(`/fire/hotspots/${id}/dismiss`, { notes: notes ?? null })
 export const createFieldReport      = (body)      => api.post('/fire/field-reports', body)

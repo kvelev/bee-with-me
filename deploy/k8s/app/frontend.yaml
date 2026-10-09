@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bee-frontend
+  template:
+    metadata:
+      labels:
+        app: bee-frontend
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: frontend
+        image: ghcr.io/kvelev/bee-with-me-frontend
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          # Small enough that a rolling update (2 frontend pods for a moment) still fits a
+          # 1 CPU / 2Gi namespace quota: 400m+500m+2x50m = 1 CPU, 768Mi+1Gi+2x64Mi < 2Gi
+          limits:
+            cpu: 50m
+            memory: 64Mi
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          periodSeconds: 20
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp     # nginx-unprivileged keeps its pid and temp files here
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+spec:
+  selector:
+    app: bee-frontend
+  ports:
+  - port: 8080
+    targetPort: 8080

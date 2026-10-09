@@ -2,6 +2,33 @@
 
 ## [Unreleased]
 
+### Test mode in Settings
+
+Admins can start and stop a demo simulation from **Settings → Test mode**: the in-server
+version of `tools/demo.py`. It adds 6 demo volunteers with trackers (one always in SOS) and two
+teams, then moves them around a chosen start point every few seconds. The card only appears when
+the backend runs with `ENABLE_TEST_ENDPOINTS=true`, so field laptops never show it. Unlike the
+CLI script, the demo volunteers get an unusable random password. A backend restart stops test mode.
+
+### `INITIAL_ADMIN_PASSWORD`
+
+Sets the password of the `admin` account created on an empty database. Unset, it stays `admin`
+as before, so field laptops are unaffected; any internet-facing install must set it.
+
+### Weather through the backend
+
+The OpenWeatherMap key no longer ships in the browser bundle (R-05). The backend proxies the
+weather tiles, current conditions and box/city wind (`/api/weather/*`, login required) and adds
+the key itself. Rename `VITE_OWM_API_KEY` to `OWM_API_KEY` in `.env` when convenient; the old
+name keeps working.
+
+### Develop environment and branching
+
+Feature branches now merge into `develop` through PRs; every merge is deployed to the
+develop environment (see `CONTRIBUTING.md` and `deploy/`). Releases go
+`release/X.Y.Z` → `main` with a merge commit. A pre-commit hook (`.githooks/`) runs the fast test
+suites for the files being committed.
+
 ### Node.js 20 retired
 
 Node 20 reached end of life on 2026-04-30. The frontend now requires **Node.js 22.12+**, with

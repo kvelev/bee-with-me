@@ -205,6 +205,8 @@
       <p v-if="zoneList.some(z => !z.is_active)" class="hint flush zones-note" data-testid="zones-disabled-note">{{ t('settings.zones.disabledNote') }}</p>
     </section>
 
+    <TestModeCard v-if="isAdmin" />
+
     <!-- Outside the load/save states above: signing out must work even when settings failed to load. -->
     <section class="card account" aria-labelledby="account-title">
       <h3 id="account-title" class="section-title">{{ t('settings.account') }}</h3>
@@ -228,6 +230,7 @@ import { getFireStatus } from '../api'
 import { detailOf } from '../api/client'
 import { fireErrorKey } from '../lib/fireErrors'
 import SuppressionZoneForm from '../components/SuppressionZoneForm.vue'
+import TestModeCard from '../components/TestModeCard.vue'
 import { LIMITS, alarmsTurnedOff, kmError, kmToM, mToKm, photosOnMapOf, wholeError } from '../lib/settingsForm'
 
 const { t } = useI18n()
