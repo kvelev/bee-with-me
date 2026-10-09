@@ -311,7 +311,7 @@ import { useAuthStore } from '../stores/auth'
 import { useSettingsStore } from '../stores/settings'
 import { useWebSocket } from '../composables/useWebSocket'
 import { useMap, BASEMAPS } from '../composables/useMap'
-import { getGroupsWithMembers, getSerialStatus } from '../api'
+import { getGroupsWithMembers, getSerialStatus, getWeatherBox, getWeatherCurrent } from '../api'
 import { ageMs, contactAt, formatAge, freshnessOf, byUrgency } from '../lib/freshness'
 import { firePillState } from '../lib/fireStyle'
 import { recolorFor, tempLegendGradient } from '../lib/weatherTiles'
@@ -323,7 +323,6 @@ import FieldReportForm from '../components/FieldReportForm.vue'
 import SuppressionZoneForm from '../components/SuppressionZoneForm.vue'
 import { fireErrorKey } from '../lib/fireErrors'
 
-const OWM_KEY = import.meta.env.VITE_OWM_API_KEY ?? ''
 const WEATHER_LAYERS = [
   {
     // Clouds and rain are recoloured from OWM's faint tiles (lib/weatherTiles.js); these legends
@@ -831,7 +830,7 @@ function clearHQ() {
 function toggleWeather(id) {
   weatherLayerId.value = weatherLayerId.value === id ? null : id
   const url = weatherLayerId.value
-    ? `https://tile.openweathermap.org/map/${weatherLayerId.value}/{z}/{x}/{y}.png?appid=${OWM_KEY}`
+    ? `/api/weather/tiles/${weatherLayerId.value}/{z}/{x}/{y}.png`
     : null
   setWeatherLayer(url, recolorFor(weatherLayerId.value))
   if (!weatherLayerId.value) weatherInfo.value = null
@@ -853,12 +852,8 @@ async function fetchWeather() {
   if (!m) return
   const [lon, lat] = toLonLat(m.getView().getCenter())
   try {
-    const r = await fetch(
-      `https://api.openweathermap.org/data/2.5/weather?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}&appid=${OWM_KEY}&units=metric`
-    )
-    const d = await r.json()
-    weatherInfo.value = weatherFromOwm(d)
-  } catch { /* network unavailable */ }
+    weatherInfo.value = weatherFromOwm(await getWeatherCurrent(+lat.toFixed(4), +lon.toFixed(4)))
+  } catch { /* network unavailable, or weather not configured on the server */ }
 }
 
 function windDirLabel(deg) {
@@ -928,11 +923,10 @@ async function fetchWindField() {
 
   if (!boxCityDenied) {
     try {
-      const r = await fetch(
-        `https://api.openweathermap.org/data/2.5/box/city?bbox=${minLon.toFixed(2)},${minLat.toFixed(2)},${maxLon.toFixed(2)},${maxLat.toFixed(2)},${zoom}&appid=${OWM_KEY}&units=metric&cnt=50`
+      const d = await getWeatherBox(
+        [minLon, minLat, maxLon, maxLat].map(v => v.toFixed(2)).join(','), zoom
       )
-      if (r.status === 401 || r.status === 403) boxCityDenied = true
-      const d = r.ok ? await r.json() : null
+      if (d?.denied) boxCityDenied = true
       if (Array.isArray(d?.list) && d.list.length) {
         points = d.list
           .filter(c => c.wind?.speed > 0)

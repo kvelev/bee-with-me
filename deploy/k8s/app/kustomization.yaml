@@ -1,0 +1,22 @@
+# The application half of a deployment: PostGIS, backend, frontend. Deliberately environment-
+# neutral: the namespace, the `bee-with-me-secrets` Secret (POSTGRES_PASSWORD, SECRET_KEY,
+# OFFLINE_MAPS_PASSWORD, INITIAL_ADMIN_PASSWORD, OWM_API_KEY), ingress, network policies and quotas are
+# supplied by whoever deploys it. Pods carry `app: bee-postgres|bee-backend|bee-frontend` labels
+# and the Services listen on postgres:5432, backend:8000 and frontend:8080 for that purpose.
+#
+# `images:` is rewritten by .github/workflows/deploy-develop.yml on the CI-maintained
+# `deploy/develop` branch; the `develop` tag here is only a fallback.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+labels:
+- pairs:
+    app.kubernetes.io/part-of: bee-with-me
+resources:
+- postgres.yaml
+- backend.yaml
+- frontend.yaml
+images:
+- name: ghcr.io/kvelev/bee-with-me-backend
+  newTag: develop
+- name: ghcr.io/kvelev/bee-with-me-frontend
+  newTag: develop

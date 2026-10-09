@@ -16,7 +16,7 @@ from .config import settings
 from .version import APP_VERSION
 from .database import close_pool, get_pool, init_pool
 from .db.migrate import BackupRequiredError, MigrationError, migrate
-from .routers import auth, devices, export, fire, groups, locations, users, ws, test, hardware_reader, tiles
+from .routers import auth, devices, export, fire, groups, locations, users, ws, test, hardware_reader, tiles, weather
 from .routers import settings as settings_router
 from .ws import manager
 from .fire import poller as fire_poller
@@ -139,9 +139,12 @@ async def _ensure_default_admin() -> None:
             await conn.execute(
                 """INSERT INTO users (username, password_hash, full_name, role)
                    VALUES ('admin', $1, 'Administrator', 'admin')""",
-                hash_password('admin'),
+                hash_password(settings.initial_admin_password or 'admin'),
             )
-            logger.info('Default admin created — username: admin / password: admin')
+            if settings.initial_admin_password:
+                logger.info('Default admin created — username: admin / password: INITIAL_ADMIN_PASSWORD')
+            else:
+                logger.info('Default admin created — username: admin / password: admin')
 
 
 @asynccontextmanager
@@ -192,6 +195,9 @@ async def lifespan(app: FastAPI):
         serial_task.cancel()
     if hid_task:
         hid_task.cancel()
+    if settings.enable_test_endpoints:
+        from .simulation import simulation
+        await simulation.stop()
     # The alarm task may hold a pooled connection mid-tick: let its cancellation finish before the pool closes.
     with suppress(asyncio.CancelledError):
         await alarm_task
@@ -245,6 +251,7 @@ if settings.enable_test_endpoints:
     logger.warning('Test/simulation endpoints ENABLED — /api/test/simulate writes fabricated positions')
 app.include_router(hardware_reader.router)
 app.include_router(tiles.router)
+app.include_router(weather.router)
 
 
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)

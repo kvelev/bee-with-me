@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+data:
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: rescuer_locator
+  POSTGRES_USER: rescuer
+  # There is no start.sh here to take the pre-migration backup the runner asks for; this
+  # database is dev data, so migrate on boot without it (logs a WARNING by design).
+  ALLOW_MIGRATE_WITHOUT_BACKUP: "true"
+  # No USB gateway in a cluster: Settings → Test mode (and POST /api/test/simulate) feed fake positions
+  ENABLE_TEST_ENDPOINTS: "true"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backend-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  # One replica: the backend owns singleton background work (pg LISTEN, fire poller, alarm,
+  # retention cleanup), and the RWO volume can only be mounted once. Recreate, not RollingUpdate.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: bee-backend
+  template:
+    metadata:
+      labels:
+        app: bee-backend
+    spec:
+      # Hardened: if the app is ever compromised it gets no Kubernetes API token, no capabilities
+      # and no writable filesystem beyond its data volume and /tmp.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: backend
+        image: ghcr.io/kvelev/bee-with-me-backend
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - configMapRef:
+            name: backend-config
+        - secretRef:
+            name: bee-with-me-secrets   # POSTGRES_PASSWORD, SECRET_KEY, OFFLINE_MAPS_PASSWORD, INITIAL_ADMIN_PASSWORD, OWM_API_KEY
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:   # whole app fits in 1 CPU / 2Gi (see frontend.yaml)
+            cpu: 500m
+            memory: 1Gi
+        # Migrations run in the lifespan before the app answers; give a fresh DB time
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 5
+          failureThreshold: 36
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          periodSeconds: 20
+          timeoutSeconds: 5
+        volumeMounts:
+        - name: data
+          mountPath: /app/backend/uploads
+          subPath: uploads
+        - name: data
+          mountPath: /app/tiles
+          subPath: tiles
+        - name: tmp
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 256Mi
+      - name: data
+        persistentVolumeClaim:
+          claimName: backend-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+spec:
+  selector:
+    app: bee-backend
+  ports:
+  - port: 8000
+    targetPort: 8000

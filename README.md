@@ -10,6 +10,9 @@
 Offline people-tracking application for LoRaWAN-based rescue and volunteer operations. RescuerBee devices transmit MGRS coordinates over a USB LoRaWAN gateway; the backend parses the frames, stores positions in PostGIS, and broadcasts them in real time to a bilingual (EN/BG) web interface showing live positions on an interactive map.
 
 > This is an intranet-only application. It is not designed to be exposed to the internet and makes security trade-offs accordingly.
+> The container images in `deploy/` exist for a develop/test environment. Such a deployment is outside the loopback-only
+> setup the security decisions assume (ADR 12), so it must hold test data only and set `INITIAL_ADMIN_PASSWORD`.
+> See [Container deployment](#container-deployment).
 
 ---
 
@@ -17,15 +20,20 @@ Offline people-tracking application for LoRaWAN-based rescue and volunteer opera
 
 - **Live map** — OpenLayers map with real-time MGRS position markers updated via WebSocket. Supports Street, Dark, Satellite, Topo and BG Mountains basemaps.
 - **MGRS grid overlay** — toggleable graticule with labels that scale precision with zoom level.
-- **Stale indicator** — markers grey out automatically after 10 minutes without a new frame.
+- **Freshness** — one clock, three states: live, stale after 10 minutes without contact, lost after 30. Devices in radio contact without a GPS fix stay visible at their last fix.
 - **SOS alerts** — pulsing red marker, audio alarm and toast notification when a device activates SOS. Alerts persist across page refreshes until manually resolved.
 - **Distance / bearing tool** — click two points on the map to measure distance (km) and bearing (°).
+- **Headquarters (ЩАБ)** — place HQ on the map; it anchors the HQ fire alarm.
+- **Fire monitoring** — active-fire hotspots and burnt areas from EFFIS/GWIS, field reports, alarms when a fire is near HQ or near a rescuer, and suppression zones that silence known fires.
+- **Weather** — clouds, rain, wind (animated particles) and temperature overlays on the satellite basemap, from OpenWeatherMap through the backend (the API key never reaches the browser; online only).
+- **Offline maps** — the BG Mountains basemap can be downloaded for offline use (password-gated, About page).
+- **Settings** — fire-alarm radii and timing, rescuer photos on the map, HQ, suppression zones, and (when `ENABLE_TEST_ENDPOINTS=true`) **Test mode**, which simulates demo trackers for UI testing without hardware.
 - **Volunteers** — manage field personnel with name, rank, blood type, phone, PIN, photo and team memberships.
 - **Bulk import** — import volunteers from an XLS spreadsheet (Bulgarian or English column headers).
 - **Teams** — group volunteers into colour-coded teams; each team can have a designated leader.
 - **Devices** — register RescuerBee devices by serial number and assign them to volunteers.
 - **Export** — export location history to CSV, GeoJSON or PDF report with date/person/team filters.
-- **JWT authentication** — long-lived access tokens (intranet deployment) with silent refresh via 7-day refresh tokens.
+- **Authentication** — JWT access tokens (60 minutes by default) with silent refresh via 7-day refresh tokens. Only admins can log in (`LOGIN_ROLES`); rescuers and viewers are tracked people, not users of the app.
 
 ---
 
@@ -45,17 +53,29 @@ Offline people-tracking application for LoRaWAN-based rescue and volunteer opera
 cp .env.example .env
 ```
 
-Edit `.env`:
+(`start.sh` / `start.ps1` do this on first start and generate `SECRET_KEY` for you.) Then edit `.env`;
+at minimum set `POSTGRES_PASSWORD`, `OFFLINE_MAPS_PASSWORD` and the HID gateway's VID/PID. The backend logs an
+`INSECURE CONFIG` warning on every start while a secret still has its example value.
 
-```env
-POSTGRES_PASSWORD=your_password
-SECRET_KEY=a_long_random_string   # used for JWT signing
-SERIAL_PORT=/dev/ttyUSB0          # USB path of the LoRaWAN serial gateway
-SERIAL_BAUD=9600
-HID_VENDOR_ID=0x0ACD              # USB HID gateway VID (hex)
-HID_PRODUCT_ID=0xFAAF             # USB HID gateway PID (hex)
-REFRESH_TOKEN_EXPIRE_DAYS=7
-```
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` / `POSTGRES_USER` | `localhost` / `5432` / `rescuer_locator` / `rescuer` | Database connection |
+| `POSTGRES_PASSWORD` | `change_me` | Database password (also used by the compose file) |
+| `SECRET_KEY` | `change_me` | JWT signing key; a long random string |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` / `REFRESH_TOKEN_EXPIRE_DAYS` | `60` / `7` | Token lifetimes; the browser refreshes silently |
+| `LOGIN_ROLES` | `admin` | Who may log in. Admin-only is the rule; the setting accepts a comma-separated list of `admin`, `rescuer`, `viewer` |
+| `INITIAL_ADMIN_PASSWORD` | empty (= `admin`) | Password of the `admin` account, applied **once** when the backend starts on an empty database; never changed afterwards |
+| `OWM_API_KEY` | empty | OpenWeatherMap key for the weather overlays, used by the backend only. The older name `VITE_OWM_API_KEY` still works |
+| `OFFLINE_MAPS_PASSWORD` | `change_me` | Asked before the BG Mountains offline tile download starts |
+| `SERIAL_PORT` / `SERIAL_BAUD` | `/dev/ttyUSB0` / `9600` | Serial gateway (the serial reader is currently disabled; see Hardware) |
+| `HID_VENDOR_ID` / `HID_PRODUCT_ID` | `0x0ACD` / `0xFAAF` | USB HID gateway VID/PID (hex) |
+| `LOCATION_RETENTION_DAYS` | `90` | Location history older than this is deleted by a background task |
+| `LIVE_POSITION_MAX_AGE_HOURS` | `24` | Devices with no newer fix drop off the live map |
+| `ENABLE_TEST_ENDPOINTS` | `false` | Settings → Test mode and `POST /api/test/simulate` (fabricated positions). Never `true` in the field |
+| `ALLOW_MIGRATE_WITHOUT_BACKUP` | `false` | Development data only: migrate without the pre-migration backup (see "2. Database") |
+| `MIGRATION_LOCK_TIMEOUT` | `5s` | A migration that cannot get its locks within this fails start-up instead of waiting |
+| `BACKUP_MARKER_PATH` | `data/backups/last-backup.json` | Where the backup scripts record the backup the migration guard checks |
+| `BACKUP_DIR` | `./backups` | Read by `scripts/backup.sh` only: where dumps go |
 
 ### 2. Database
 
@@ -243,7 +263,10 @@ A default admin account is created on first start if no users exist.
 
 | Username | Password |
 |----------|----------|
-| `admin`  | `admin`  |
+| `admin`  | `INITIAL_ADMIN_PASSWORD`, or `admin` when it is not set |
+
+The password is set only at that moment: later starts never change it, even if `INITIAL_ADMIN_PASSWORD` changes.
+With the default `admin` password, change it at first login.
 
 ---
 
@@ -369,28 +392,40 @@ backend/
     export.py          CSV / GeoJSON / PDF export
     hardware_reader.py GET /api/serial/status
     tiles.py           Tile download trigger + progress SSE
+    fire.py            Fire hotspots, burnt areas, alerts, field reports, suppression zones
+    settings.py        HQ and fire-alarm settings
+    weather.py         OpenWeatherMap proxy (tiles, current, box/city); holds the API key
     ws.py              GET /ws WebSocket endpoint
-    test.py            POST /api/test/simulate (dev only)
+    test.py            Test endpoints: /simulate, /simulation (only with ENABLE_TEST_ENDPOINTS)
+  fire/                Fire feed poller, sources (EFFIS/GWIS), proximity alarm, repository
+  simulation.py        Settings → Test mode: demo volunteers/trackers moving on the map
   db/
     migrate.py         Migration runner (python -m backend.db.migrate status|up)
     migrations/        Numbered SQL migrations; 0001_baseline.sql is the full base schema
-  tests/               pytest suite (mocked DB, no real Postgres needed)
+  tests/               pytest suite (API tests on a mocked DB; `db` tests on scratch databases)
 frontend/
   src/
-    stores/            Pinia stores — auth.js, locations.js
+    stores/            Pinia stores — auth, locations, fire, settings
     composables/       useMap.js (OpenLayers), useWebSocket.js, useSettings.js
-    views/             Login, Map, Users, Groups, Devices, Export, About
-    components/        AppLayout, SOSToast, SOSBanner
+    views/             Login, Map, Users, Groups, Devices, Export, Settings, About
+    components/        AppLayout, SOS toast/banner, fire alarm banner and popups, TestModeCard
+    lib/               Pure helpers (freshness, wind, weather tiles, fire styles, …) with unit tests
     router/            Vue Router — index.js
     i18n/              en.js, bg.js (vue-i18n v9)
     api/               Axios client (client.js) with JWT refresh interceptor
     nav-config.js      Navigation items with icons
 docker/
   docker-compose.yaml  PostgreSQL 16 + PostGIS; tileserver-gl
+deploy/
+  docker/              Backend and frontend container images (+ nginx.conf)
+  k8s/app/             Kubernetes manifests of the app (database, backend, frontend)
+scripts/               backup / restore (.sh + .ps1)
+.githooks/             pre-commit hook (runs the fast test suites for the files being committed)
+Architecture/          Architecture docs, ADRs, risk register, guides
 lorawan/
   main.py              Standalone LoRaWAN bridge utility
 tools/
-  demo.py              Simulation script — injects fake frames via HTTP
+  demo.py              Simulation script via POST /api/test/simulate (same as Settings → Test mode)
   download_tiles.py    Tile download pipeline (z8–z18, Bulgaria bbox)
 ```
 
@@ -407,6 +442,13 @@ python -m pytest backend/tests/ --require-db    # …or fail instead, as CI does
 
 # Frontend
 cd frontend && npm test && npm run build
+```
+
+Enable the pre-commit hook once per clone; it runs the fast suites for the part of the repo you commit
+(frontend ~10 s, backend without the database ~1 min, script tests only when scripts change):
+
+```bash
+git config core.hooksPath .githooks
 ```
 
 DB-backed tests create and drop throwaway `scratch_*` databases on the server from `.env`
@@ -426,7 +468,12 @@ Every pull request and every push to `main` runs [`.github/workflows/ci.yml`](.g
 | **Scripts (Windows PowerShell)** | Windows | `start.ps1` / `backup.ps1` / `restore.ps1` behaviour tests, which only run on Windows |
 | **Frontend (Node 24)** | Ubuntu | `npm ci`, Vitest suite, production `vite build`, `npm audit` of runtime deps (high+) |
 | **Version & docs consistency** | Ubuntu | `backend/version.py` and `frontend/package.json` agree |
-| **CI OK** | — | Aggregate gate: green only if all of the above passed. This is the required check on `main` |
+| **CI OK** | — | Aggregate gate: green only if all of the above passed. This is the required check on `main` and `develop` |
+
+Every push to `develop` also runs [`.github/workflows/deploy-develop.yml`](.github/workflows/deploy-develop.yml): the
+full CI, then the backend and frontend images are built and pushed to GHCR as `sha-<commit>`, and the
+`deploy/develop` branch is force-pushed with `deploy/k8s/app` pinned to them. Only the `develop` branch can
+write `deploy/develop` (a deploy key held by the GitHub Environment `develop`). `main` is not deployed.
 
 Dependabot opens grouped weekly PRs for pip and npm, and monthly ones for GitHub Actions; they go through the same checks.
 
@@ -447,28 +494,47 @@ shasum -a 256 -c bee-with-me-v1.7.2.zip.sha256                         # macOS /
 
 ## Contributing
 
-`main` is protected: all changes land through a pull request. See [CONTRIBUTING.md](CONTRIBUTING.md) for the
-workflow; in short:
+`develop` and `main` are protected: all changes land through a pull request. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the workflow; in short:
 
-1. Branch from `main` (`fix/…`, `feat/…`, or a release branch such as `1.7.2`).
-2. Open a PR and fill in the template checklist.
-3. **CI OK** must be green, and a code owner (see [`.github/CODEOWNERS`](.github/CODEOWNERS)) must approve.
-   New commits pushed after an approval dismiss it, and all review threads must be resolved.
-4. Squash-merge; the branch is deleted automatically.
+1. Branch from `develop` (`feature/…`, `fix/…`) and open a PR into `develop`. **CI OK** must be green and
+   review threads resolved; squash-merge. Every merge is deployed to the develop environment.
+2. To release, cut `release/X.Y.Z` from `develop` and open a PR into `main`. It also needs a code owner's
+   approval (see [`.github/CODEOWNERS`](.github/CODEOWNERS)) and is merged with a **merge commit**, so
+   `main` and `develop` keep sharing history. Then tag it (see Releases).
 
 ---
 
 ## Real-time architecture
 
 ```
-USB device → hardware_reader/reader.py → INSERT location_events → pg_notify('location_update')
+USB HID gateway → hardware_reader/hid_reader.py → INSERT location_events → pg_notify('location_update')
                                                                           ↓
                                                      ws.py WSManager.listen_notifications()
                                                                           ↓
                                                      WebSocket broadcast → Pinia store → OL map
 ```
 
-The WebSocket manager also broadcasts serial gateway connect/disconnect events so the map page shows a live status pill without polling.
+The WebSocket manager also broadcasts gateway connect/disconnect events and fire alerts, so the map page shows them without polling.
+The browser also re-pulls `/api/locations/live` every 45 s, so a half-open WebSocket cannot leave the map silently frozen.
+
+---
+
+## Container deployment
+
+`deploy/` builds the app for a container platform (used for the develop environment; field laptops keep using
+`start.sh` / `start.ps1`):
+
+- `deploy/docker/backend.Dockerfile` and `frontend.Dockerfile` (nginx serving the Vite build). The ingress in front
+  routes `/api`, `/ws`, `/uploads`, `/tiles`, `/health`, `/docs` and `/openapi.json` to the backend on port 8000 and
+  everything else to the frontend on 8080, like the Vite dev proxy.
+- `deploy/k8s/app/` — PostGIS StatefulSet (same image as the laptops), backend and frontend, with hardened pods
+  (no service-account token, non-root, read-only root filesystem, no capabilities). It is environment-neutral: the
+  namespace, ingress, network policies, quotas and a Secret `bee-with-me-secrets` (`POSTGRES_PASSWORD`, `SECRET_KEY`,
+  `OFFLINE_MAPS_PASSWORD`, `INITIAL_ADMIN_PASSWORD`, `OWM_API_KEY`) come from the environment.
+
+The backend runs with `ALLOW_MIGRATE_WITHOUT_BACKUP=true` (no start script to take the backup) and
+`ENABLE_TEST_ENDPOINTS=true` (no gateway: use Settings → Test mode). Keep such an environment on test data only.
 
 ---
 

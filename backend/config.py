@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import BaseModel, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 
 KNOWN_ROLES = ('admin', 'rescuer', 'viewer')
 
@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     postgres_password: str = 'change_me'
 
     secret_key: str = 'change_me'
+    # Password of the `admin` account created on an empty database. Empty = the historical 'admin'
+    # (field laptops); any internet-facing install must set it before its first start.
+    initial_admin_password: str = ''
     refresh_token_expire_days: int = 7
     access_token_expire_minutes: int = 60
 
@@ -37,6 +40,10 @@ class Settings(BaseSettings):
     location_retention_days: int = 90
 
     offline_maps_password: str = 'change_me'
+
+    # OpenWeatherMap key, used only server-side by routers/weather.py (the browser never sees it).
+    # VITE_OWM_API_KEY is the name older .env files use from when the browser called OWM directly.
+    owm_api_key: str = Field('', validation_alias=AliasChoices('owm_api_key', 'vite_owm_api_key'))
 
     # Which roles may log in (POST /api/auth/login and /refresh), comma-separated. The owner's rule is
     # admin-only; widen it with LOGIN_ROLES=admin,rescuer. Other users keep their account and role.
