@@ -50,12 +50,12 @@ spec:
             memory: 1536Mi
         readinessProbe:
           exec:
-            command: [pg_isready, -U, rescuer, -d, rescuer_locator]
+            command: [/usr/lib/postgresql/16/bin/pg_isready, -U, rescuer, -d, rescuer_locator]
           initialDelaySeconds: 5
           periodSeconds: 10
         livenessProbe:
           exec:
-            command: [pg_isready, -U, rescuer, -d, rescuer_locator]
+            command: [/usr/lib/postgresql/16/bin/pg_isready, -U, rescuer, -d, rescuer_locator]
           initialDelaySeconds: 30
           periodSeconds: 15
           timeoutSeconds: 5

@@ -215,8 +215,9 @@ async def test_scenario_produces_every_state(scratch_pool, migrated_conn, tmp_pa
         assert by[u]['all_fix'] and by[u]['newest'].total_seconds() < 60
     assert await migrated_conn.fetchval('SELECT count(*) FROM sos_alerts WHERE resolved_at IS NULL') == 2
     low = sim.simulation._low_battery
-    assert len(low) == 2 and all(by[u]['max_bat'] <= 3.40 for u in low)
-    assert all(by[u]['max_bat'] >= 3.70 or u in low for u in by)  # everyone else reads healthy
+    # battery_voltage is REAL (float4): 3.40 reads back as 3.4000000953..., so round before comparing
+    assert len(low) == 2 and all(round(by[u]['max_bat'], 2) <= 3.40 for u in low)
+    assert all(round(by[u]['max_bat'], 2) >= 3.70 or u in low for u in by)  # everyone else reads healthy
 
 
 @pytest.mark.db
