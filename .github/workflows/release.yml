@@ -1,11 +1,4 @@
 name: Release
-
-# Pushing a tag vX.Y.Z publishes a GitHub Release, but only after the full CI suite has passed
-# on the tagged commit and the tag agrees with backend/version.py, frontend/package.json and a
-# "## [X.Y.Z]" section in CHANGELOG.md.
-#
-#   git tag -a v1.7.2 -m "v1.7.2" && git push origin v1.7.2
-
 on:
   push:
     tags: ['v[0-9]+.[0-9]+.[0-9]+']

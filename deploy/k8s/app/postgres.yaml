@@ -1,0 +1,85 @@
+# Same image as docker/docker-compose.yaml on the field laptops, so a deployment runs the
+# migrations against exactly the PostGIS build production uses. Single instance: dev data.
+# App deploys never touch it; only a change to this StatefulSet itself (e.g. a new Postgres image)
+# restarts the database, which is a short outage the backend rides out by reconnecting.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bee-postgres
+  template:
+    metadata:
+      labels:
+        app: bee-postgres
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: postgres
+        image: postgis/postgis:16-3.4
+        # The entrypoint starts as root to own PGDATA and then drops to `postgres`, so capabilities
+        # and a writable root stay; privilege escalation (setuid binaries) does not.
+        securityContext:
+          allowPrivilegeEscalation: false
+        ports:
+        - containerPort: 5432
+        env:
+        - name: POSTGRES_DB
+          value: rescuer_locator
+        - name: POSTGRES_USER
+          value: rescuer
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: bee-with-me-secrets
+              key: POSTGRES_PASSWORD
+        # subdirectory: the volume root holds lost+found, which initdb refuses
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:   # the app fits a 2 CPU / 4Gi quota even mid-rollout (see frontend.yaml)
+            cpu: 500m
+            memory: 1Gi
+        readinessProbe:
+          exec:
+            command: [/usr/lib/postgresql/16/bin/pg_isready, -U, rescuer, -d, rescuer_locator]
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command: [/usr/lib/postgresql/16/bin/pg_isready, -U, rescuer, -d, rescuer_locator]
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ReadWriteOnce]
+      resources:
+        requests:
+          storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  selector:
+    app: bee-postgres
+  ports:
+  - port: 5432
+    targetPort: 5432

@@ -5,6 +5,7 @@ import View from 'ol/View'
 import TileLayer from 'ol/layer/Tile'
 import OSM from 'ol/source/OSM'
 import XYZ from 'ol/source/XYZ'
+import TileState from 'ol/TileState'
 import VectorLayer from 'ol/layer/Vector'
 import VectorSource from 'ol/source/Vector'
 import Feature from 'ol/Feature'
@@ -27,6 +28,7 @@ import { createLongPress } from '../lib/longPress'
 import { hotspotStyleKey } from '../lib/fireStyle'
 import { hexToRgba } from '../lib/color'
 import { PHOTO_SIZE, markerZIndex, onPhotoLoaded, photoCanvas, photoImage, ringFor, safePhotoUrl } from '../lib/photoMarker'
+import { getWeatherTile } from '../api'
 
 const DEFAULT_COLOR = '#3b82f6'
 
@@ -61,7 +63,7 @@ export const BASEMAPS = [
 
 const TILE_SERVER = 'http://localhost:8080'
 
-const { bgMountainsOffline } = useSettings()
+const { bgMountainsOffline, resolveBgMountainsDefault } = useSettings()
 
 function makeBgMountainsSource() {
   if (bgMountainsOffline.value) {
@@ -446,10 +448,25 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
       activeWeatherLayer = null
     }
     if (!url || !map) return
-    const source = new XYZ({ url, crossOrigin: 'anonymous' })
-    if (recolor) source.setTileLoadFunction((tile, src) => loadRecolored(tile, src, recolor))
+    const source = new XYZ({ url })
+    source.setTileLoadFunction((tile, src) => loadWeatherTile(tile, src, recolor))
     activeWeatherLayer = new TileLayer({ source, opacity: 1.0, zIndex: 2 })
     map.addLayer(activeWeatherLayer)
+  }
+
+  // Weather tiles come from the backend proxy (/api/weather/tiles, login required). An <img> cannot
+  // send the Authorization header, so the tile is fetched through the API client (which also renews
+  // an expired token) and handed to OpenLayers as an object URL, freed once the image has loaded.
+  function loadWeatherTile(tile, src, recolor) {
+    const target = tile.getImage()
+    getWeatherTile(src).then((blob) => {
+      const objectUrl = URL.createObjectURL(blob)
+      const free = () => URL.revokeObjectURL(objectUrl)
+      target.addEventListener('load', free, { once: true })
+      target.addEventListener('error', free, { once: true })
+      if (recolor) loadRecolored(tile, objectUrl, recolor)
+      else target.src = objectUrl
+    }).catch(() => tile.setState(TileState.ERROR))
   }
 
   // Load a tile, repaint it on a canvas and hand OpenLayers the result. Any failure (no 2D
@@ -650,6 +667,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   }
 
   onMounted(() => {
+    resolveBgMountainsDefault()   // offline BG Mountains tiles only if this server has them (useSettings.js)
     // Hover tooltip element — created programmatically so it lives inside OL's viewport
     const tooltipEl = document.createElement('div')
     Object.assign(tooltipEl.style, {

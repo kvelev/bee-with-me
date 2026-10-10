@@ -22,8 +22,8 @@ We will keep secrets and settings in **`bee-with-me/.env`**, read by pydantic-se
 by the compose file. `.env` is created from `.env.example` on first start, is never committed (git ignore and a
 staged-diff hook), and the backend warns at start-up when `SECRET_KEY`, the database password or the offline-maps
 password still have their default values. Settings that an operator changes at run time (HQ, alarm radii) live in
-the database, not in `.env`. No secret goes into the browser bundle; the OpenWeatherMap key (`VITE_OWM_API_KEY`)
-breaks this rule today and is tracked as R-05.
+the database, not in `.env`. No secret goes into the browser bundle. The OpenWeatherMap key (`OWM_API_KEY`) used to (R-05); since the
+backend proxies weather (`/api/weather/*`) it stays on the server.
 
 ## Consequences
 

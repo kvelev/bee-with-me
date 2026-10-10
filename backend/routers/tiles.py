@@ -100,6 +100,13 @@ async def start_download(
     return {'started': True}
 
 
+def _tiles_available() -> bool:
+    """True once at least one tile has been downloaded to this machine. The browser uses it to pick
+    online or offline BG Mountains tiles when nobody has chosen yet (a server without a download,
+    such as a test deployment, would otherwise show an empty map)."""
+    return next(Path(TILE_DIR).glob('*/*/*.png'), None) is not None
+
+
 @router.get('/bgmountains/status')
 async def download_status(_=Depends(require_role('admin'))):
-    return _status
+    return {**_status, 'available': _tiles_available()}

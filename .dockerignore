@@ -1,0 +1,17 @@
+# Keep build contexts small and keep local state (DB, uploads, .env) out of images
+.git
+.github
+.venv*
+venv*
+**/__pycache__
+**/*.pyc
+**/node_modules
+frontend/dist
+data
+tiles
+backend/uploads
+backend/tests
+.env
+.env.*
+*.log
+.DS_Store

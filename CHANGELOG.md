@@ -2,6 +2,49 @@
 
 ## [Unreleased]
 
+### Test mode in Settings
+
+Admins can start and stop a demo simulation from **Settings → Test mode**: the in-server
+version of `tools/demo.py`. It adds 6 demo volunteers with trackers (one always in SOS) and two
+teams, then moves them around a chosen start point every few seconds. The card only appears when
+the backend runs with `ENABLE_TEST_ENDPOINTS=true`, so field laptops never show it. Unlike the
+CLI script, the demo volunteers get an unusable random password. A backend restart stops test mode.
+
+### Test mode scenarios
+
+Test mode can now exercise every tracker state: up to 12 trackers (6 personas with photos and teams,
+up to 6 extras without), and how many are in SOS, without a GPS fix, stale, lost or on low battery,
+plus the step per update and the start area. **Reset demo data** stops test mode and deletes the
+demo trackers' positions and SOS alerts, so the next tester starts with an empty map.
+Simulated trackers report at most once a minute, like real ones: the interval is 60–600 s
+(default 60) in Settings → Test mode, the API, and `tools/demo.py --interval`.
+
+### Offline maps moved to Settings
+
+The BG Mountains download and the online/offline choice moved from the About page to Settings →
+Offline maps. Until someone picks online or offline, the browser now uses offline tiles only if the
+server has downloaded them (`available` in `GET /api/tiles/bgmountains/status`); before, it always
+assumed offline, so a server without a download showed an empty BG Mountains map.
+
+### `INITIAL_ADMIN_PASSWORD`
+
+Sets the password of the `admin` account created on an empty database. Unset, it stays `admin`
+as before, so field laptops are unaffected; any internet-facing install must set it.
+
+### Weather through the backend
+
+The OpenWeatherMap key no longer ships in the browser bundle (R-05). The backend proxies the
+weather tiles, current conditions and box/city wind (`/api/weather/*`, login required) and adds
+the key itself. Rename `VITE_OWM_API_KEY` to `OWM_API_KEY` in `.env` when convenient; the old
+name keeps working.
+
+### Develop environment and branching
+
+Feature branches now merge into `develop` through PRs; every merge is deployed to the
+develop environment (see `CONTRIBUTING.md` and `deploy/`). Releases go
+`release/X.Y.Z` → `main` with a merge commit. A pre-commit hook (`.githooks/`) runs the fast test
+suites for the files being committed.
+
 ### Node.js 20 retired
 
 Node 20 reached end of life on 2026-04-30. The frontend now requires **Node.js 22.12+**, with

@@ -8,7 +8,7 @@
       <div class="about-logo">
         <img src="../assets/asp-logo-1.png" class="about-logo-img" alt="ASP logo" />
         <h1 class="app-name">Bee With Me</h1>
-        <span class="version">v1.0.0</span>
+        <span class="version" data-testid="app-version">v{{ APP_VERSION }}</span>
       </div>
 
       <div class="about-section">
@@ -40,93 +40,49 @@
         <p>ASP RESCUER TEAM<br><a href="https://rescuer.team" target="_blank" rel="noopener">https://rescuer.team</a></p>
       </div>
 
+      <div class="about-section" data-testid="download">
+        <h3>{{ t('about.download.title') }}</h3>
+        <ul class="download-list">
+          <li v-for="d in DOWNLOADS" :key="d.key" class="download">
+            <a class="download-link" :class="d.key" :href="d.href" target="_blank" rel="noopener"
+               :data-testid="'download-' + d.key">{{ t('about.download.' + d.key) }}</a>
+            <span class="download-desc">{{ t('about.download.' + d.key + 'Desc') }}</span>
+          </li>
+        </ul>
+        <p class="download-note">
+          {{ t('about.download.note') }}
+          <a :href="REPO + '/releases/latest'" target="_blank" rel="noopener">{{ t('about.download.releases') }}</a>
+        </p>
+      </div>
+
       <div class="about-section">
         <h3>{{ t('about.license') }}</h3>
         <p class="placeholder-text">—</p>
-      </div>
-
-      <div class="about-section" v-if="authStore.user?.role === 'admin'">
-        <h3>{{ t('about.offlineMaps') }}</h3>
-        <p class="maps-desc">{{ t('about.offlineMapsDesc') }}</p>
-
-        <div class="mode-row">
-          <span class="mode-label">{{ t('about.offlineMapsMode') }}</span>
-          <div class="mode-pills">
-            <button
-              type="button"
-              :class="['mode-pill', !bgMountainsOffline && 'mode-pill-active']"
-              @click="bgMountainsOffline = false"
-            >{{ t('about.modeOnline') }}</button>
-            <button
-              type="button"
-              :class="['mode-pill', bgMountainsOffline && 'mode-pill-active']"
-              @click="bgMountainsOffline = true"
-            >{{ t('about.modeOffline') }}</button>
-          </div>
-        </div>
-
-        <div v-if="tileStatus" class="tile-status">
-          <div class="tile-progress-bar">
-            <div class="tile-progress-fill" :style="{ transform: 'scaleX(' + progressPct / 100 + ')' }"></div>
-          </div>
-          <div class="tile-progress-label">
-            <span v-if="tileStatus.running">
-              {{ tileStatus.done.toLocaleString() }} / {{ tileStatus.total.toLocaleString() }} &nbsp;·&nbsp; {{ progressPct }}%
-            </span>
-            <span v-else-if="tileStatus.total > 0" class="tile-done">
-              ✓ {{ t('about.offlineMapsComplete') }} &nbsp;·&nbsp; {{ tileStatus.skipped.toLocaleString() }} {{ t('about.offlineMapsSkipped') }}
-              <span v-if="tileStatus.errors > 0" class="tile-errors">&nbsp;·&nbsp; {{ tileStatus.errors }} {{ t('about.offlineMapsErrors') }}</span>
-            </span>
-          </div>
-        </div>
-
-        <button class="download-btn" :disabled="tileStatus?.running" @click="openPasswordPrompt">
-          {{ tileStatus?.running ? t('about.offlineMapsDownloading') : t('about.offlineMapsDownload') }}
-        </button>
-      </div>
-    </div>
-
-    <div v-if="passwordPromptOpen" class="modal-backdrop" @click.self="closePasswordPrompt">
-      <div class="modal-card">
-        <h3 class="modal-title">{{ t('about.offlineMapsPasswordTitle') }}</h3>
-        <p class="modal-desc">{{ t('about.offlineMapsPasswordDesc') }}</p>
-        <input
-          ref="passwordInputEl"
-          v-model="passwordInput"
-          type="password"
-          class="modal-input"
-          :placeholder="t('about.offlineMapsPasswordPlaceholder')"
-          @keyup.enter="submitPassword"
-        />
-        <div v-if="passwordError" class="modal-error">{{ passwordError }}</div>
-        <div class="modal-actions">
-          <button type="button" class="secondary" @click="closePasswordPrompt">
-            {{ t('common.cancel') }}
-          </button>
-          <button type="button" @click="submitPassword" :disabled="!passwordInput">
-            {{ t('about.offlineMapsDownload') }}
-          </button>
-        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
-import { useSettings } from '../composables/useSettings'
-import { startTileDownload, getTileStatus } from '../api'
-import { errorText } from '../api/client'
+import { version as APP_VERSION } from '../../package.json'   // CI keeps it equal to backend/version.py
 
 const { t } = useI18n()
 const authStore = useAuthStore()
-const { bgMountainsOffline } = useSettings()
 
 onMounted(async () => {
   if (!authStore.user) await authStore.fetchMe()
 })
+
+// Source downloads straight from GitHub (needs internet). Stable = main (released versions only,
+// see CONTRIBUTING.md); latest = develop (every merged change, what the develop environment runs).
+const REPO = 'https://github.com/kvelev/bee-with-me'
+const DOWNLOADS = [
+  { key: 'stable', href: `${REPO}/archive/refs/heads/main.zip` },
+  { key: 'latest', href: `${REPO}/archive/refs/heads/develop.zip` },
+]
 
 // Contacts as data: the visible number is formatted +359 XXX XXX XXX, tel: gets it without spaces.
 const CONTACTS = [
@@ -135,55 +91,6 @@ const CONTACTS = [
   { name: 'Kiril Iliev',      phone: '+359 889 396 793', email: 'office@hemussoftware.com' },
 ]
 const contacts = CONTACTS.map(c => ({ ...c, e164: c.phone.replace(/\s/g, '') }))
-
-const tileStatus = ref(null)
-let pollTimer = null
-
-const passwordPromptOpen = ref(false)
-const passwordInput      = ref('')
-const passwordError      = ref('')
-const passwordInputEl    = ref(null)
-
-const progressPct = computed(() => {
-  if (!tileStatus.value?.total) return 0
-  return Math.round(tileStatus.value.done / tileStatus.value.total * 100)
-})
-
-function openPasswordPrompt() {
-  passwordInput.value = ''
-  passwordError.value = ''
-  passwordPromptOpen.value = true
-  nextTick(() => passwordInputEl.value?.focus())
-}
-
-function closePasswordPrompt() {
-  passwordPromptOpen.value = false
-}
-
-async function submitPassword() {
-  if (!passwordInput.value) return
-  passwordError.value = ''
-  try {
-    await startTileDownload(passwordInput.value)
-    passwordPromptOpen.value = false
-    pollStatus()
-  } catch (e) {
-    if (e?.status === 403) {
-      passwordError.value = t('about.offlineMapsPasswordWrong')
-    } else {
-      passwordError.value = errorText(e)
-    }
-  }
-}
-
-async function pollStatus() {
-  tileStatus.value = await getTileStatus()
-  if (tileStatus.value.running) {
-    pollTimer = setTimeout(pollStatus, 1500)
-  }
-}
-
-onUnmounted(() => clearTimeout(pollTimer))
 </script>
 
 <style scoped>
@@ -214,9 +121,6 @@ onUnmounted(() => clearTimeout(pollTimer))
   color: var(--text);
   margin-bottom: 10px;
 }
-.maps-desc { margin-bottom: 12px; }
-.download-btn { margin-top: 12px; }
-.download-btn:focus-visible, .mode-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .contact-list { list-style: none; display: grid; gap: 16px; }
 .contact { display: grid; gap: 4px; }
@@ -251,43 +155,18 @@ onUnmounted(() => clearTimeout(pollTimer))
 }
 .placeholder-text { color: var(--text-muted); }
 
-.tile-status { margin-top: 8px; }
-.tile-progress-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
-.tile-progress-fill { height: 100%; width: 100%; background: var(--accent); border-radius: 3px; transform-origin: left; transition: transform .4s; }
-@media (prefers-reduced-motion: reduce) { .tile-progress-fill { transition: none; } }
-.tile-progress-label { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
-.tile-done  { color: var(--success); }
-.tile-errors { color: var(--danger); }
+.download-list { list-style: none; display: grid; gap: 10px; margin-bottom: 10px; }
+.download { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.download-link {
+  display: inline-block; min-width: 11rem; text-align: center;
+  padding: 7px 14px; border-radius: 6px; font-size: 14px; font-weight: 600;
+  background: var(--accent); color: #fff; text-decoration: none;
+}
+.download-link.latest { background: var(--bg-card); color: var(--text); border: 1px solid var(--warning-line); }
+.download-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .download-link:hover { opacity: .85; } }
+.download-desc { font-size: 13px; color: var(--text-muted); flex: 1; min-width: 14rem; }
+.about-section .download-note { font-size: 13px; color: var(--text-muted); }
+.download-note a { color: var(--accent); }
 
-.mode-row   { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.mode-label { font-size: 14px; color: var(--text); white-space: nowrap; }
-.mode-pills { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; flex-shrink: 0; }
-.mode-pill  { padding: 5px 16px; font-size: 13px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; }
-.mode-pill-active { background: var(--primary, #3b82f6); color: #fff; font-weight: 600; }
-
-.modal-backdrop {
-  position: fixed; inset: 0; z-index: 100;
-  background: rgba(0,0,0,0.55); backdrop-filter: blur(2px);
-  display: flex; align-items: center; justify-content: center;
-}
-.modal-card {
-  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
-  padding: 24px; width: min(420px, 90vw);
-  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
-}
-.modal-title { margin: 0 0 8px; font-size: 16px; font-weight: 600; }
-.modal-desc  { margin: 0 0 14px; font-size: 13px; color: var(--text-muted); }
-.modal-input {
-  width: 100%; padding: 8px 10px; font-size: 14px;
-  background: var(--bg-card); color: var(--text);
-  border: 1px solid var(--border); border-radius: 4px;
-  box-sizing: border-box;
-}
-.modal-input:focus { outline: none; border-color: var(--accent); }
-.modal-error {
-  margin-top: 8px; font-size: 12px; color: var(--danger);
-}
-.modal-actions {
-  margin-top: 16px; display: flex; justify-content: flex-end; gap: 8px;
-}
 </style>

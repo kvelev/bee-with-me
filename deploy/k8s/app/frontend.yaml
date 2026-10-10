@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  replicas: 1
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0    # the old pod serves until the new one is ready
+  selector:
+    matchLabels:
+      app: bee-frontend
+  template:
+    metadata:
+      labels:
+        app: bee-frontend
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+      - name: frontend
+        image: ghcr.io/kvelev/bee-with-me-frontend
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: [ALL]
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          # Sized so that BOTH deployments rolling at once (two backends + two frontends for a
+          # moment, plus Postgres) still fit a 2 CPU / 4Gi namespace quota; a pod over the quota
+          # would be refused and the rollout would hang:
+          #   CPU     2x650m  + 500m   + 2x100m  = 2000m
+          #   memory  2x1280Mi + 1024Mi + 2x128Mi = 3840Mi  (< 4096Mi)
+          limits:
+            cpu: 100m
+            memory: 128Mi
+        lifecycle:
+          preStop:
+            sleep:
+              seconds: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+          periodSeconds: 20
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp     # nginx-unprivileged keeps its pid and temp files here
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+spec:
+  selector:
+    app: bee-frontend
+  ports:
+  - port: 8080
+    targetPort: 8080
