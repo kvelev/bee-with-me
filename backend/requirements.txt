@@ -21,4 +21,4 @@ lxml>=5.0
 html5lib>=1.1
 beautifulsoup4>=4.12
 weasyprint>=70,<71
-h3>=4.0,<5
+h3>=4.5.0,<5
