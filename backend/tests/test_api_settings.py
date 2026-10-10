@@ -263,3 +263,67 @@ def test_put_saves_rescuer_photo_flag(client, mock_conn):
     sql, *args = mock_conn.fetchrow.call_args.args
     assert 'is_rescuer_photo_on_map_enabled = $9' in sql and 'updated_at = $11' in sql
     assert args[8] is False
+
+
+# ---- Clearing HQ ends its alerts, so an HQ set again alarms afresh ----
+
+def test_put_hq_clear_resolves_open_hq_alerts_and_broadcasts(client, mock_conn, admin_user, monkeypatch):
+    resolved, notified = [], []
+
+    async def fake_resolve(conn, by):
+        resolved.append(by)
+        return ['a1']
+
+    async def fake_notify(conn, ids):
+        notified.append(list(ids))
+
+    monkeypatch.setattr(settings_router.fire_repository, 'resolve_hq_alerts', fake_resolve)
+    monkeypatch.setattr(settings_router, 'notify_alerts_updated', fake_notify)
+    mock_conn.fetchrow = AsyncMock(return_value=ROW)
+    resp = client.put('/api/settings/hq', json={'hq_latitude': None, 'hq_longitude': None})
+    assert resp.status_code == 200
+    assert resolved == [admin_user['id']] and notified == [['a1']]
+
+
+@pytest.mark.parametrize('url,body', [
+    ('/api/settings/hq', {'hq_latitude': 42.5, 'hq_longitude': 24.5}),
+    ('/api/settings', {**BODY, 'hq_latitude': 42.5, 'hq_longitude': 24.5}),
+])
+def test_setting_hq_leaves_hq_alerts_alone(client, mock_conn, monkeypatch, url, body):
+    resolved = []
+
+    async def fake_resolve(conn, by):
+        resolved.append(by)
+        return []
+
+    monkeypatch.setattr(settings_router.fire_repository, 'resolve_hq_alerts', fake_resolve)
+    mock_conn.fetchrow = AsyncMock(return_value={**ROW, 'hq_latitude': 42.5, 'hq_longitude': 24.5})
+    assert client.put(url, json=body).status_code == 200
+    assert resolved == []
+
+
+def test_put_settings_clearing_hq_resolves_hq_alerts(client, mock_conn, admin_user, monkeypatch):
+    resolved = []
+
+    async def fake_resolve(conn, by):
+        resolved.append(by)
+        return []
+
+    monkeypatch.setattr(settings_router.fire_repository, 'resolve_hq_alerts', fake_resolve)
+    mock_conn.fetchrow = AsyncMock(return_value=ROW)
+    assert client.put('/api/settings', json=BODY).status_code == 200   # BODY has HQ null
+    assert resolved == [admin_user['id']]
+
+
+def test_stale_put_settings_resolves_nothing(client, mock_conn, monkeypatch):
+    resolved = []
+
+    async def fake_resolve(conn, by):
+        resolved.append(by)
+        return []
+
+    monkeypatch.setattr(settings_router.fire_repository, 'resolve_hq_alerts', fake_resolve)
+    mock_conn.fetchrow = AsyncMock(return_value=None)
+    mock_conn.fetchval = AsyncMock(return_value=1)   # row exists: 409 settings_stale
+    assert client.put('/api/settings', json=BODY).status_code == 409
+    assert resolved == []

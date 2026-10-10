@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field, StrictBool, model_validator
 
 from ..auth import get_current_user, require_role
 from ..database import get_conn
+from ..fire import repository as fire_repository
+from ..fire.service import notify_alerts_updated
 
 logger = logging.getLogger(__name__)
 
@@ -95,20 +97,25 @@ async def get_settings(conn: Conn, _: Annotated[asyncpg.Record, Depends(get_curr
 @router.put('', response_model=SettingsOut)
 async def put_settings(body: SettingsUpdate, conn: Conn,
                        user: Annotated[asyncpg.Record, Depends(require_role('admin'))]):
-    row = await conn.fetchrow(
-        """UPDATE settings SET hq_latitude = $1, hq_longitude = $2, is_hq_alarm_enabled = $3,
-               is_rescuer_alarm_enabled = $4, hq_radius_m = $5, rescuer_radius_m = $6,
-               alarm_max_age_hours = $7, repeat_minutes = $8,
-               is_rescuer_photo_on_map_enabled = $9, updated_by = $10
-           WHERE id = 1 AND updated_at = $11 RETURNING *""",
-        body.hq_latitude, body.hq_longitude, body.is_hq_alarm_enabled, body.is_rescuer_alarm_enabled,
-        body.hq_radius_m, body.rescuer_radius_m, body.alarm_max_age_hours, body.repeat_minutes,
-        body.is_rescuer_photo_on_map_enabled, user['id'], body.expected_updated_at,
-    )
+    resolved: list[str] = []
+    async with conn.transaction():
+        row = await conn.fetchrow(
+            """UPDATE settings SET hq_latitude = $1, hq_longitude = $2, is_hq_alarm_enabled = $3,
+                   is_rescuer_alarm_enabled = $4, hq_radius_m = $5, rescuer_radius_m = $6,
+                   alarm_max_age_hours = $7, repeat_minutes = $8,
+                   is_rescuer_photo_on_map_enabled = $9, updated_by = $10
+               WHERE id = 1 AND updated_at = $11 RETURNING *""",
+            body.hq_latitude, body.hq_longitude, body.is_hq_alarm_enabled, body.is_rescuer_alarm_enabled,
+            body.hq_radius_m, body.rescuer_radius_m, body.alarm_max_age_hours, body.repeat_minutes,
+            body.is_rescuer_photo_on_map_enabled, user['id'], body.expected_updated_at,
+        )
+        if row is not None and body.hq_latitude is None:
+            resolved = await fire_repository.resolve_hq_alerts(conn, user['id'])
     if row is None:
         if not await _row_exists(conn):
             raise _missing()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='settings_stale')
+    await notify_alerts_updated(conn, resolved)
     out = _out(row)
     logger.info('settings updated by user %s (hq_alarm=%s, rescuer_alarm=%s, hq_radius_m=%s, rescuer_radius_m=%s, rescuer_photo_on_map=%s)',
                 user['id'], body.is_hq_alarm_enabled, body.is_rescuer_alarm_enabled,
@@ -120,14 +127,22 @@ async def put_settings(body: SettingsUpdate, conn: Conn,
 @router.put('/hq', response_model=SettingsOut)
 async def put_hq(body: HQPatch, conn: Conn,
                  user: Annotated[asyncpg.Record, Depends(require_role('admin'))]):
-    """Set or clear HQ only; never touches alarm flags or radii, so no version check is needed."""
-    row = await conn.fetchrow(
-        """UPDATE settings SET hq_latitude = $1, hq_longitude = $2, updated_by = $3
-           WHERE id = 1 RETURNING *""",
-        body.hq_latitude, body.hq_longitude, user['id'],
-    )
+    """Set or clear HQ only; never touches alarm flags or radii, so no version check is needed.
+
+    Clearing HQ ends its open alerts (as 'disabled', by this admin) in the same transaction: an HQ set again
+    later then alarms afresh for a fire nearby, even one whose old alert was acknowledged."""
+    resolved: list[str] = []
+    async with conn.transaction():
+        row = await conn.fetchrow(
+            """UPDATE settings SET hq_latitude = $1, hq_longitude = $2, updated_by = $3
+               WHERE id = 1 RETURNING *""",
+            body.hq_latitude, body.hq_longitude, user['id'],
+        )
+        if row is not None and body.hq_latitude is None:
+            resolved = await fire_repository.resolve_hq_alerts(conn, user['id'])
     if row is None:
         raise _missing()
+    await notify_alerts_updated(conn, resolved)
     out = _out(row)
     logger.info('HQ %s by user %s', 'cleared' if body.hq_latitude is None else 'set', user['id'])
     _changed()

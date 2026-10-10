@@ -61,6 +61,9 @@ export default {
     },
     weatherFeels:    'усеща се',
     weatherWind:     'Вятър',
+    weatherFrom:     'от {dir} ({deg}°)',
+    weatherGusts:    'Пориви',
+    weatherWindSource: 'Вятър: {source}',
     weatherHumidity: 'Влажност',
     weatherClouds:   'Облачност',
     basemaps: {

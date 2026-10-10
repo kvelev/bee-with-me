@@ -10,14 +10,15 @@ On Linux: `shutil.which('bash')`.
 
 import os
 import shutil
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 _BAD_DIRS = ('system32', 'sysnative', 'windowsapps')
 SKIP_REASON = 'no Git Bash / bash'
 
 
 def _is_launcher(path: str) -> bool:
-    parts = [p.lower() for p in Path(path).parts]
+    # PureWindowsPath: split on backslashes even when the tests run on Linux/macOS (CI)
+    parts = [p.lower() for p in PureWindowsPath(path).parts]
     return any(bad in parts for bad in _BAD_DIRS)
 
 

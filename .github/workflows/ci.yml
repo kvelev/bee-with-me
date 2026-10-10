@@ -1,0 +1,163 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # release.yml runs the whole suite again on the exact tagged commit before publishing
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A new push to a PR cancels its stale run; runs on main and release tags always finish
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    name: Backend (Python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is the floor start.sh/start.ps1 enforce on field laptops; add newer versions here
+        python: ['3.11']
+
+    services:
+      postgres:
+        # Same image as docker/docker-compose.yaml
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: rescuer_locator
+          POSTGRES_USER: rescuer
+          POSTGRES_PASSWORD: change_me
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U rescuer -d rescuer_locator"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: rescuer_locator
+      POSTGRES_USER: rescuer
+      POSTGRES_PASSWORD: change_me
+      PYTHONUNBUFFERED: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System libraries for WeasyPrint (PDF export tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Byte-compile (syntax check)
+        run: python -m compileall -q backend
+
+      - name: Tests
+        # --require-db: a DB test that cannot reach PostgreSQL fails instead of silently skipping
+        run: python -m pytest backend/tests/ --require-db -q -rs --junitxml=pytest-${{ matrix.python }}.xml
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-${{ matrix.python }}
+          path: pytest-${{ matrix.python }}.xml
+          retention-days: 14
+
+  scripts-windows:
+    # Field laptops run start.ps1 / backup.ps1 / restore.ps1. Their tests only run on Windows
+    # PowerShell and skip everywhere else, so they get a runner of their own (no DB needed).
+    name: Scripts (Windows PowerShell)
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Script tests
+        run: python -m pytest backend/tests/test_scripts.py backend/tests/test_scripts_behaviour.py backend/tests/test_shells.py -q -rs
+
+  frontend:
+    name: Frontend (Node ${{ matrix.node }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # 24 = the version field laptops run (frontend/.nvmrc)
+        node: ['24']
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: npm audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
+
+  consistency:
+    name: Version & docs consistency
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: backend/version.py matches frontend/package.json
+        run: |
+          py=$(sed -nE "s/^APP_VERSION = '([^']+)'.*/\1/p" backend/version.py)
+          js=$(node -p "require('./frontend/package.json').version")
+          echo "backend=$py frontend=$js"
+          if [ "$py" != "$js" ]; then
+            echo "::error file=backend/version.py::APP_VERSION ($py) != frontend/package.json version ($js)"
+            exit 1
+          fi
+
+  # Single, stable check name for the branch ruleset to require. Matrix job names change
+  # whenever a version is added or dropped; this one never does.
+  ci-ok:
+    name: CI OK
+    if: always()
+    needs: [backend, scripts-windows, frontend, consistency]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: All required jobs passed
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if [ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}" = "true" ]; then
+            exit 1
+          fi

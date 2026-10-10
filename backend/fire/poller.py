@@ -119,7 +119,9 @@ async def refresh_once(pool, hotspots: FireFeedSource = HOTSPOTS, burnt_areas: F
         return False
     async with _refresh_guard:
         # Fetch and parse first, without a connection or the advisory lock; only the short store phase holds them.
-        fetched_hotspots = await _fetch_feed('hotspots', hotspots, parse_hotspots)
+        # The injected clock reaches the parser too, so its future-skew filter agrees with upstream_state().
+        fetched_hotspots = await _fetch_feed('hotspots', hotspots,
+                                             lambda payload, stats: parse_hotspots(payload, now=now(), stats=stats))
         fetched_areas = await _fetch_feed('burnt_areas', burnt_areas, parse_burnt_areas)
         async with pool.acquire() as conn:
             if not await conn.fetchval('SELECT pg_try_advisory_lock($1)', REFRESH_LOCK_KEY):

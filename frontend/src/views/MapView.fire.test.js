@@ -374,3 +374,57 @@ describe('MapView: popup actions and zones', () => {
     expect(w.find('.fire-pill').exists()).toBe(false)
   })
 })
+
+describe('MapView: "Show on map" from a fire alarm', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    document.body.innerHTML = ''
+    hooks.layerVisible = []
+    api.getSettings.mockResolvedValue(SETTINGS)
+    api.getGroupsWithMembers.mockResolvedValue({ items: [] })
+    api.getSerialStatus.mockResolvedValue({})
+    api.getFireHotspots.mockResolvedValue({ type: 'FeatureCollection', features: [], meta: {} })
+    api.getFireBurntAreas.mockResolvedValue({ type: 'FeatureCollection', features: [], meta: {} })
+    api.getSuppressionZones.mockResolvedValue([])
+  })
+
+  // The real app keeps MapView alive (AppLayout); onActivated, which consumes the request, only runs there.
+  async function mountAlive() {
+    const { KeepAlive, h, defineComponent } = await import('vue')
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useAuthStore().user = { role: 'admin' }
+    const loc = useLocationsStore()
+    loc.fetchLive = vi.fn(); loc.fetchSOS = vi.fn(); loc.fetchTrail = vi.fn()
+    const Host = defineComponent({ render: () => h(KeepAlive, null, [h(MapView)]) })
+    const w = mount(Host, { attachTo: document.body, global: { plugins: [pinia, i18n], stubs: { SOSToast: true } } })
+    await flushPromises()
+    return w
+  }
+
+  it('turns the hotspots layer on and marks the spot, so the fire is not an empty map', async () => {
+    const w = await mountAlive()
+    const fire = useFireStore()
+    expect(fire.layers.hotspots).toBeFalsy()
+    fire.requestFocus(42.7, 24.17)
+    await flushPromises()
+    expect(fire.focusRequest).toBeNull()                       // consumed
+    expect(fire.layers.hotspots).toBe(true)
+    expect(hooks.layerVisible).toContainEqual(['hotspots', true])
+    expect(w.find('[data-testid="fire-focus-ring"]').exists()).toBe(true)
+    w.unmount()
+  })
+
+  it('leaves an already visible hotspots layer on', async () => {
+    const w = await mountAlive()
+    const fire = useFireStore()
+    fire.layers.hotspots = true
+    hooks.layerVisible = []                                     // forget the sync done at mount
+    fire.requestFocus(42.7, 24.17)
+    await flushPromises()
+    expect(fire.layers.hotspots).toBe(true)
+    expect(hooks.layerVisible).toEqual([])                     // not toggled (which would hide it)
+    w.unmount()
+  })
+})

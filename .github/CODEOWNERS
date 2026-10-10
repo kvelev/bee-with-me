@@ -1,0 +1,11 @@
+# Every change needs a review from a code owner (enforced by the "main" branch ruleset).
+*                               @kvelev
+
+# Areas where a mistake silently loses field data — keep these explicit when more owners join.
+/backend/db/migrations/         @kvelev
+/backend/hardware_reader/       @kvelev
+/docs/PROTOCOL.md               @kvelev
+/scripts/                       @kvelev
+/start.sh                       @kvelev
+/start.ps1                      @kvelev
+/.github/                       @kvelev
