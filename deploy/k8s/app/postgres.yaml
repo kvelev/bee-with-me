@@ -1,5 +1,7 @@
 # Same image as docker/docker-compose.yaml on the field laptops, so a deployment runs the
 # migrations against exactly the PostGIS build production uses. Single instance: dev data.
+# App deploys never touch it; only a change to this StatefulSet itself (e.g. a new Postgres image)
+# restarts the database, which is a short outage the backend rides out by reconnecting.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -45,9 +47,9 @@ spec:
           requests:
             cpu: 100m
             memory: 256Mi
-          limits:   # whole app fits in 2 CPU / 4Gi (see frontend.yaml)
-            cpu: 800m
-            memory: 1536Mi
+          limits:   # the app fits a 2 CPU / 4Gi quota even mid-rollout (see frontend.yaml)
+            cpu: 500m
+            memory: 1Gi
         readinessProbe:
           exec:
             command: [/usr/lib/postgresql/16/bin/pg_isready, -U, rescuer, -d, rescuer_locator]

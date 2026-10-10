@@ -22,7 +22,7 @@
       </div>
       <div class="field">
         <label for="tm-interval">{{ t('settings.testMode.interval') }}</label>
-        <input id="tm-interval" v-model.number="form.interval" type="number" step="1" min="1" max="60" />
+        <input id="tm-interval" v-model.number="form.interval" type="number" step="5" :min="MIN_INTERVAL_S" :max="MAX_INTERVAL_S" />
       </div>
     </div>
 
@@ -74,10 +74,13 @@ const { t } = useI18n()
 const POLL_MS = 5000
 const status = ref(null)          // null = test mode not available on this server: render nothing
 const form = reactive({
-  lat: 42.698, lon: 23.322, interval: 3,   // Sofia, like tools/demo.py
+  lat: 42.698, lon: 23.322, interval: 60,   // Sofia; 60 s between frames like a real tracker
   // scenario (backend/simulation.Scenario): defaults = six personas, one in SOS
   trackers: 6, sos: 1, no_fix: 0, stale: 0, lost: 0, low_battery: 0, step_m: 300, spread_km: 5,
 })
+// Same bounds as the server (routers/test.SimulationStart): never faster than once a minute
+const MIN_INTERVAL_S = 60
+const MAX_INTERVAL_S = 600
 const COUNT_FIELDS = [
   { key: 'trackers', min: 1, max: 12 },
   { key: 'sos', min: 0, max: 12 },
@@ -94,6 +97,7 @@ const resetDone = ref('')
 // Same rule as the server (routers/test.SimulationStart), checked before the request is sent
 const scenarioError = computed(() => {
   const n = (k) => Number(form[k]) || 0
+  if (n('interval') < MIN_INTERVAL_S || n('interval') > MAX_INTERVAL_S) return t('settings.testMode.intervalRange', { min: MIN_INTERVAL_S, max: MAX_INTERVAL_S })
   if (n('sos') + n('no_fix') + n('stale') + n('lost') > n('trackers')) return t('settings.testMode.tooManyStates')
   if (n('low_battery') > n('trackers')) return t('settings.testMode.tooManyLowBattery')
   return ''

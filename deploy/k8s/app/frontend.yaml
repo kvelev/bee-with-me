@@ -4,6 +4,12 @@ metadata:
   name: frontend
 spec:
   replicas: 1
+  minReadySeconds: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0    # the old pod serves until the new one is ready
   selector:
     matchLabels:
       app: bee-frontend
@@ -31,11 +37,18 @@ spec:
           requests:
             cpu: 10m
             memory: 32Mi
-          # Small enough that a rolling update (2 frontend pods for a moment) still fits a
-          # 2 CPU / 4Gi namespace quota: 800m+1000m+2x100m = 2 CPU, 1536Mi+2Gi+2x128Mi = 3.75Gi
+          # Sized so that BOTH deployments rolling at once (two backends + two frontends for a
+          # moment, plus Postgres) still fit a 2 CPU / 4Gi namespace quota; a pod over the quota
+          # would be refused and the rollout would hang:
+          #   CPU     2x650m  + 500m   + 2x100m  = 2000m
+          #   memory  2x1280Mi + 1024Mi + 2x128Mi = 3840Mi  (< 4096Mi)
           limits:
             cpu: 100m
             memory: 128Mi
+        lifecycle:
+          preStop:
+            sleep:
+              seconds: 5
         readinessProbe:
           httpGet:
             path: /

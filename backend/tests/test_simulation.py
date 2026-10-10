@@ -47,7 +47,7 @@ def test_start_twice_is_409_and_stop_ends_it(client, monkeypatch):
     monkeypatch.setattr(sim, 'get_pool', lambda: _Pool())
     monkeypatch.setattr(sim.Simulation, '_run', _forever)
     with patch.object(sim, 'seed', AsyncMock(return_value={'demo_ivan': {'id': 1, 'user_id': 2}})):
-        first = client.post('/api/test/simulation/start', json={'lat': 42.1, 'lon': 24.7, 'interval': 2})
+        first = client.post('/api/test/simulation/start', json={'lat': 42.1, 'lon': 24.7, 'interval': 60})
         assert first.status_code == 200
         assert first.json()['running'] is True and first.json()['devices'] == 1
         assert client.post('/api/test/simulation/start', json={}).status_code == 409
@@ -56,7 +56,7 @@ def test_start_twice_is_409_and_stop_ends_it(client, monkeypatch):
 
 
 @pytest.mark.parametrize('body', [
-    {'interval': 0.1}, {'interval': 600}, {'lat': 91}, {'lon': -181},
+    {'interval': 0.1}, {'interval': 59}, {'interval': 601}, {'lat': 91}, {'lon': -181},
     {'trackers': 0}, {'trackers': 13}, {'step_m': 1}, {'spread_km': 100},
     {'trackers': 3, 'sos': 2, 'lost': 2},          # more states than trackers
     {'trackers': 2, 'low_battery': 3},
@@ -164,7 +164,7 @@ def test_start_passes_the_scenario(client, monkeypatch):
 
     monkeypatch.setattr(sim.Simulation, 'start', _start)
     r = client.post('/api/test/simulation/start', json={
-        'lat': 42.1, 'interval': 2, 'trackers': 10, 'sos': 2, 'no_fix': 1, 'stale': 1, 'lost': 1,
+        'lat': 42.1, 'interval': 90, 'trackers': 10, 'sos': 2, 'no_fix': 1, 'stale': 1, 'lost': 1,
         'low_battery': 3, 'step_m': 50, 'spread_km': 1.5})
     assert r.status_code == 200
     assert seen['scenario'] == sim.Scenario(trackers=10, sos=2, no_fix=1, stale=1, lost=1,
@@ -237,3 +237,17 @@ async def test_reset_clears_demo_positions_and_alerts_only(scratch_pool, migrate
     assert await migrated_conn.fetchval('SELECT count(*) FROM location_events') == 1      # the real device's
     assert await migrated_conn.fetchval('SELECT count(*) FROM sos_alerts') == 1
     assert await migrated_conn.fetchval("SELECT count(*) FROM users WHERE username LIKE 'demo_%'") == 6
+
+
+def test_interval_defaults_to_and_never_goes_below_60_seconds(client, monkeypatch):
+    seen = {}
+
+    async def _start(self, lat, lon, interval, scenario=None):
+        seen['interval'] = interval
+        return {'running': True}
+
+    monkeypatch.setattr(sim.Simulation, 'start', _start)
+    assert client.post('/api/test/simulation/start', json={}).status_code == 200
+    assert seen['interval'] == 60
+    assert client.post('/api/test/simulation/start', json={'interval': 59.9}).status_code == 422
+    assert client.post('/api/test/simulation/start', json={'interval': 60}).status_code == 200
