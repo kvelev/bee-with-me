@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-10-10
+
 ### Test mode in Settings
 
 Admins can start and stop a demo simulation from **Settings → Test mode**: the in-server
