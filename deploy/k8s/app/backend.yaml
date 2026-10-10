@@ -18,7 +18,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: backend-data
 spec:
-  accessModes: [ReadWriteOnce]
+  accessModes: [ ReadWriteOnce ]
   resources:
     requests:
       storage: 2Gi
@@ -28,11 +28,15 @@ kind: Deployment
 metadata:
   name: backend
 spec:
-  # One replica: the backend owns singleton background work (pg LISTEN, fire poller, alarm,
-  # retention cleanup), and the RWO volume can only be mounted once. Recreate, not RollingUpdate.
+  # Zero-downtime rollout: the new pod starts next to the old one and takes traffic only once
+
   replicas: 1
+  minReadySeconds: 5
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: bee-backend
@@ -44,6 +48,8 @@ spec:
       # Hardened: if the app is ever compromised it gets no Kubernetes API token, no capabilities
       # and no writable filesystem beyond its data volume and /tmp.
       automountServiceAccountToken: false
+      # preStop (10 s) + uvicorn's graceful shutdown (20 s, see backend.Dockerfile) fit in here
+      terminationGracePeriodSeconds: 40
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -57,21 +63,28 @@ spec:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
           capabilities:
-            drop: [ALL]
+            drop: [ ALL ]
         ports:
         - containerPort: 8000
         envFrom:
         - configMapRef:
             name: backend-config
         - secretRef:
-            name: bee-with-me-secrets   # POSTGRES_PASSWORD, SECRET_KEY, OFFLINE_MAPS_PASSWORD, INITIAL_ADMIN_PASSWORD, OWM_API_KEY
+            name: bee-with-me-secrets # POSTGRES_PASSWORD, SECRET_KEY, OFFLINE_MAPS_PASSWORD, INITIAL_ADMIN_PASSWORD, OWM_API_KEY
         resources:
           requests:
             cpu: 100m
             memory: 256Mi
-          limits:   # whole app fits in 2 CPU / 4Gi (see frontend.yaml)
-            cpu: 1000m
-            memory: 2Gi
+          limits:
+            # the app fits a 2 CPU / 4Gi quota even mid-rollout (see frontend.yaml)
+            cpu: 650m
+            memory: 1280Mi
+        # Leave the ingress' endpoint list before shutting down, so no request hits a closing pod.
+        # (Native sleep action: no shell or binary needed in the read-only image.)
+        lifecycle:
+          preStop:
+            sleep:
+              seconds: 10
         # Migrations run in the lifespan before the app answers; give a fresh DB time
         startupProbe:
           httpGet:

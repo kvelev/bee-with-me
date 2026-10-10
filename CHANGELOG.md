@@ -16,6 +16,8 @@ Test mode can now exercise every tracker state: up to 12 trackers (6 personas wi
 up to 6 extras without), and how many are in SOS, without a GPS fix, stale, lost or on low battery,
 plus the step per update and the start area. **Reset demo data** stops test mode and deletes the
 demo trackers' positions and SOS alerts, so the next tester starts with an empty map.
+Simulated trackers report at most once a minute, like real ones: the interval is 60–600 s
+(default 60) in Settings → Test mode, the API, and `tools/demo.py --interval`.
 
 ### Offline maps moved to Settings
 

@@ -8,7 +8,7 @@
       <div class="about-logo">
         <img src="../assets/asp-logo-1.png" class="about-logo-img" alt="ASP logo" />
         <h1 class="app-name">Bee With Me</h1>
-        <span class="version">v1.0.0</span>
+        <span class="version" data-testid="app-version">v{{ APP_VERSION }}</span>
       </div>
 
       <div class="about-section">
@@ -40,6 +40,21 @@
         <p>ASP RESCUER TEAM<br><a href="https://rescuer.team" target="_blank" rel="noopener">https://rescuer.team</a></p>
       </div>
 
+      <div class="about-section" data-testid="download">
+        <h3>{{ t('about.download.title') }}</h3>
+        <ul class="download-list">
+          <li v-for="d in DOWNLOADS" :key="d.key" class="download">
+            <a class="download-link" :class="d.key" :href="d.href" target="_blank" rel="noopener"
+               :data-testid="'download-' + d.key">{{ t('about.download.' + d.key) }}</a>
+            <span class="download-desc">{{ t('about.download.' + d.key + 'Desc') }}</span>
+          </li>
+        </ul>
+        <p class="download-note">
+          {{ t('about.download.note') }}
+          <a :href="REPO + '/releases/latest'" target="_blank" rel="noopener">{{ t('about.download.releases') }}</a>
+        </p>
+      </div>
+
       <div class="about-section">
         <h3>{{ t('about.license') }}</h3>
         <p class="placeholder-text">—</p>
@@ -52,6 +67,7 @@
 import { onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
+import { version as APP_VERSION } from '../../package.json'   // CI keeps it equal to backend/version.py
 
 const { t } = useI18n()
 const authStore = useAuthStore()
@@ -59,6 +75,14 @@ const authStore = useAuthStore()
 onMounted(async () => {
   if (!authStore.user) await authStore.fetchMe()
 })
+
+// Source downloads straight from GitHub (needs internet). Stable = main (released versions only,
+// see CONTRIBUTING.md); latest = develop (every merged change, what the develop environment runs).
+const REPO = 'https://github.com/kvelev/bee-with-me'
+const DOWNLOADS = [
+  { key: 'stable', href: `${REPO}/archive/refs/heads/main.zip` },
+  { key: 'latest', href: `${REPO}/archive/refs/heads/develop.zip` },
+]
 
 // Contacts as data: the visible number is formatted +359 XXX XXX XXX, tel: gets it without spaces.
 const CONTACTS = [
@@ -130,5 +154,19 @@ const contacts = CONTACTS.map(c => ({ ...c, e164: c.phone.replace(/\s/g, '') }))
   white-space: pre-line;
 }
 .placeholder-text { color: var(--text-muted); }
+
+.download-list { list-style: none; display: grid; gap: 10px; margin-bottom: 10px; }
+.download { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.download-link {
+  display: inline-block; min-width: 11rem; text-align: center;
+  padding: 7px 14px; border-radius: 6px; font-size: 14px; font-weight: 600;
+  background: var(--accent); color: #fff; text-decoration: none;
+}
+.download-link.latest { background: var(--bg-card); color: var(--text); border: 1px solid var(--warning-line); }
+.download-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) { .download-link:hover { opacity: .85; } }
+.download-desc { font-size: 13px; color: var(--text-muted); flex: 1; min-width: 14rem; }
+.about-section .download-note { font-size: 13px; color: var(--text-muted); }
+.download-note a { color: var(--accent); }
 
 </style>

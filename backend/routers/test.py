@@ -165,10 +165,16 @@ async def list_devices_for_test(
 # ── Test mode (Settings page) ─────────────────────────────────────────────────
 # Imported lazily: backend.simulation imports record_position from this module.
 
+MIN_INTERVAL_S = 60    # seconds between simulated frames per tracker
+MAX_INTERVAL_S = 600
+
+
 class SimulationStart(BaseModel):
     lat: float = Field(42.698, ge=-90, le=90)       # Sofia, like tools/demo.py
     lon: float = Field(23.322, ge=-180, le=180)
-    interval: float = Field(3.0, ge=1, le=60)
+    # Real trackers report about once a minute; faster simulated traffic would make the map, trails and
+    # freshness behave unlike the field. 60 s is the floor for anything a tester can start.
+    interval: float = Field(MIN_INTERVAL_S, ge=MIN_INTERVAL_S, le=MAX_INTERVAL_S)
     # Scenario (backend/simulation.Scenario): how many trackers are in each state
     trackers: int = Field(6, ge=1, le=12)
     sos: int = Field(1, ge=0, le=12)

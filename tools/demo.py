@@ -4,7 +4,7 @@ Demo simulation — creates test users, devices, groups and sends live location 
 
 Usage:
     python tools/demo.py                   # random walk near Sofia
-    python tools/demo.py --lat 42.1 --lon 24.7 --interval 2
+    python tools/demo.py --lat 42.1 --lon 24.7 --interval 90
     python tools/demo.py --no-photos       # skip uploading the persona photos
     python tools/demo.py --replace-photos  # upload photos even if a user already has one
 
@@ -258,13 +258,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description='Bee With Me demo simulator')
     parser.add_argument('--lat',      type=float, default=42.698, help='Start latitude  (default: Sofia)')
     parser.add_argument('--lon',      type=float, default=23.322, help='Start longitude (default: Sofia)')
-    parser.add_argument('--interval', type=float, default=3.0,   help='Seconds between updates (default: 3)')
+    parser.add_argument('--interval', type=float, default=60.0,  help='Seconds between updates, at least 60 like a real tracker (default: 60)')
     parser.add_argument('--user',     default='admin')
     parser.add_argument('--password', default='admin')
     parser.add_argument('--no-photos', action='store_true', help='Do not upload persona photos')
     parser.add_argument('--replace-photos', action='store_true',
                         help='Upload photos even for users that already have one')
     args = parser.parse_args()
+    if args.interval < 60:
+        parser.error('--interval must be at least 60 seconds (a real tracker reports about once a minute)')
 
     print('Bee With Me — demo simulator')
     print('─' * 40)

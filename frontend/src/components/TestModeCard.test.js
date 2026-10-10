@@ -11,7 +11,7 @@ import bg from '../i18n/bg.js'
 
 const IDLE = { running: false, started_at: null, lat: 0, lon: 0, interval: 0, steps: 0, devices: 0, last_error: null }
 const SCENARIO = { trackers: 6, sos: 1, no_fix: 0, stale: 0, lost: 0, low_battery: 0, step_m: 300, spread_km: 5 }
-const RUNNING = { ...IDLE, running: true, lat: 42.1, lon: 24.7, interval: 2, steps: 4, devices: 6, scenario: SCENARIO }
+const RUNNING = { ...IDLE, running: true, lat: 42.1, lon: 24.7, interval: 60, steps: 4, devices: 6, scenario: SCENARIO }
 
 const mountCard = () => mount(TestModeCard, { global: { plugins: [i18n] } })
 
@@ -34,10 +34,10 @@ describe('TestModeCard', () => {
     expect(w.get('[data-testid="test-mode-state"]').text()).toBe(en.settings.testMode.stopped)
     await w.get('#tm-lat').setValue('42.1')
     await w.get('#tm-lon').setValue('24.7')
-    await w.get('#tm-interval').setValue('2')
+    await w.get('#tm-interval').setValue('90')
     await w.get('[data-testid="test-mode-start"]').trigger('click')
     await flushPromises()
-    expect(startSimulation).toHaveBeenCalledWith({ lat: 42.1, lon: 24.7, interval: 2, ...SCENARIO })
+    expect(startSimulation).toHaveBeenCalledWith({ lat: 42.1, lon: 24.7, interval: 90, ...SCENARIO })
     expect(w.get('[data-testid="test-mode-state"]').text()).toContain('6 demo trackers')
     expect(w.find('#tm-lat').exists()).toBe(false)
     expect(w.find('[data-testid="test-mode-stop"]').exists()).toBe(true)
@@ -100,6 +100,18 @@ describe('TestModeCard', () => {
     await w.get('#tm-lost').setValue('0')
     await w.get('#tm-low_battery').setValue('3')
     expect(w.get('[data-testid="test-mode-scenario-error"]').text()).toBe(en.settings.testMode.tooManyLowBattery)
+  })
+
+  it('refuses an interval under 60 seconds before sending it', async () => {
+    getSimulation.mockResolvedValue(IDLE)
+    const w = mountCard()
+    await flushPromises()
+    expect(w.get('#tm-interval').element.value).toBe('60')
+    await w.get('#tm-interval').setValue('30')
+    expect(w.get('[data-testid="test-mode-scenario-error"]').text()).toContain('60–600')
+    expect(w.get('[data-testid="test-mode-start"]').attributes('disabled')).toBeDefined()
+    await w.get('#tm-interval').setValue('60')
+    expect(w.find('[data-testid="test-mode-scenario-error"]').exists()).toBe(false)
   })
 
   it('resets the demo data and reports what was removed', async () => {
