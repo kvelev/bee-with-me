@@ -466,7 +466,7 @@ Every pull request and every push to `main` runs [`.github/workflows/ci.yml`](.g
 | --- | --- | --- |
 | **Backend (Python 3.11)** | Ubuntu + `postgis/postgis:16-3.4` service | Byte-compiles `backend/`, full `pytest` suite with `--require-db` (migrations, PostGIS queries, fire alerts, PDF export, bash scripts) |
 | **Scripts (Windows PowerShell)** | Windows | `start.ps1` / `backup.ps1` / `restore.ps1` behaviour tests, which only run on Windows |
-| **Frontend (Node 24)** | Ubuntu | `npm ci`, Vitest suite, production `vite build`, `npm audit` of runtime deps (high+) |
+| **Frontend (Node 24)** | Ubuntu | `npm ci`, Vitest suite, production `vite build`, `npm audit` of runtime deps (high+): blocking on pushes, deploys, releases and PRs that change frontend dependencies; a warning on other PRs |
 | **Version & docs consistency** | Ubuntu | `backend/version.py` and `frontend/package.json` agree |
 | **CI OK** | — | Aggregate gate: green only if all of the above passed. This is the required check on `main` and `develop` |
 
@@ -475,7 +475,7 @@ full CI, then the backend and frontend images are built and pushed to GHCR as `s
 `deploy/develop` branch is force-pushed with `deploy/k8s/app` pinned to them. Only the `develop` branch can
 write `deploy/develop` (a deploy key held by the GitHub Environment `develop`). `main` is not deployed.
 
-Dependabot opens grouped weekly PRs for pip and npm, and monthly ones for GitHub Actions; they go through the same checks.
+Dependabot opens grouped weekly PRs for pip and npm, and monthly ones for GitHub Actions, **into `develop`**; they go through the same checks and reach `main` with the next release.
 
 ### Releases
 

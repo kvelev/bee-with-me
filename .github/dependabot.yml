@@ -1,7 +1,11 @@
+# Dependabot reads this file from the DEFAULT branch (main) only, so a change here takes effect after
+# the next release to main. Updates go to develop like every other change (CONTRIBUTING.md): they are
+# tested and deployed there first and reach main with the next release.
 version: 2
 updates:
   - package-ecosystem: pip
     directory: /backend
+    target-branch: develop
     schedule: { interval: weekly, day: monday }
     open-pull-requests-limit: 5
     groups:
@@ -14,6 +18,7 @@ updates:
 
   - package-ecosystem: npm
     directory: /frontend
+    target-branch: develop
     schedule: { interval: weekly, day: monday }
     open-pull-requests-limit: 5
     groups:
@@ -22,6 +27,7 @@ updates:
 
   - package-ecosystem: github-actions
     directory: /
+    target-branch: develop
     schedule: { interval: monthly }
     groups:
       actions:
