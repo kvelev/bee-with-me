@@ -17,6 +17,8 @@ resources:
 - frontend.yaml
 images:
 - name: ghcr.io/kvelev/bee-with-me-backend
-  newTag: develop
+  newName: ghcr.io/kvelev/bee-with-me-backend
+  newTag: sha-6e9b9e0da825ce03da4da99aa2d428b26039fdc8
 - name: ghcr.io/kvelev/bee-with-me-frontend
-  newTag: develop
+  newName: ghcr.io/kvelev/bee-with-me-frontend
+  newTag: sha-6e9b9e0da825ce03da4da99aa2d428b26039fdc8
