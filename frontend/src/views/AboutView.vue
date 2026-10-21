@@ -88,7 +88,7 @@ const DOWNLOADS = [
 const CONTACTS = [
   { name: 'Konstantin Velev', phone: '+359 877 389 417', email: 'konsvelev@gmail.com' },
   { name: 'Kiril Penev',      phone: '+359 883 545 571', email: 'k.penev@outlook.com' },
-  { name: 'Kiril Iliev',      phone: '+359 889 396 793', email: 'office@hemussoftware.com' },
+  { name: 'Kiril Iliev',      phone: '+359 889 396 793', email: 'kiril.iliev@orpheussystems.com' },
 ]
 const contacts = CONTACTS.map(c => ({ ...c, e164: c.phone.replace(/\s/g, '') }))
 </script>

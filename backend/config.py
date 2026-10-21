@@ -10,7 +10,7 @@ KNOWN_ROLES = ('admin', 'rescuer', 'viewer')
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
 
-    postgres_host: str = 'localhost'
+    postgres_host: str = '127.0.0.1'
     postgres_port: int = 5432
     postgres_db: str = 'rescuer_locator'
     postgres_user: str = 'rescuer'
@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     # Per-file lock_timeout of the migration runner: a migration that cannot get its table locks in
     # this time fails the start-up with a clear error instead of waiting (and queueing writers) forever.
     migration_lock_timeout: str = '5s'
+
+    @field_validator("postgres_host")
+    def prefer_ipv4_loopback(cls, v):
+        # `localhost` resolves to ::1 first, but the DB port is published on 127.0.0.1 only: on Windows
+        # each refused ::1 connect costs about 2 s before the IPv4 fallback (B67)
+        return '127.0.0.1' if v.strip().lower() == 'localhost' else v
 
     @field_validator("migration_lock_timeout")
     def validate_lock_timeout(cls, v):

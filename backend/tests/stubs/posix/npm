@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Stub npm for the start.sh tests (see ../npm_stub.py).
+HERE="$(cd "$(dirname "$0")/.." && { pwd -W 2>/dev/null || pwd; })"
+exec "$BWM_STUB_PYTHON" "$HERE/npm_stub.py" "$@"

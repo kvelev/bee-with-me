@@ -23,6 +23,7 @@ adds a technology or an external connection.
 | FC-03 | APRS as a second position source | 1.1 Live position tracking | BP-01, TP-01 | Idea (owner: yes, 2026-10-03) | [application-architecture.md](../application/application-architecture.md), Section 6 |
 | FC-04 | Meshtastic as a position and message source | 1.1, possibly two-way messages | BP-01, TP-01, ADR 3 | Idea (owner: yes, 2026-10-03) | Same |
 | FC-05 | Packaged release: built frontend, service with auto-restart, pinned dependencies | 6.2 Install and start | TP-03, BP-01 | Idea | ADR 14 revisit conditions; R-11, R-25 |
+| FC-07 | Generic field signal with category (obstacle, fire, other), own module | 5.2 Field reports | BP-01, DP-03 | Candidate (field exercise FX-04, after the vertical slices) | [field-exercise-findings.md](field-exercise-findings.md) |
 | FC-06 | Operation entity: per-operation records, reports and retention | 5. Records and reporting | DP-03 | Idea | ADR 4 revisit conditions; BR-09, R-20 |
 
 ---

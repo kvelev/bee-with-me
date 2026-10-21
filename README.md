@@ -40,7 +40,10 @@ Offline people-tracking application for LoRaWAN-based rescue and volunteer opera
 ## Prerequisites
 
 - Python 3.11+
-- Node.js 22.12+ (24 LTS recommended; `frontend/.nvmrc`)
+- Node.js 22.12+ (24 LTS recommended; `.nvmrc` and `frontend/.nvmrc`). Node 23 and 25 are not supported by
+  the frontend tools; `start` and `prepare-offline` refuse them. Field laptop: one system-wide Node 24 LTS.
+  Development machine with several projects: [fnm](https://github.com/Schniz/fnm) with `--use-on-cd` picks
+  the version from `.nvmrc`.
 - Podman 4.7+ with a compose provider (`podman compose`), **or** Docker with Docker Compose
 
 ---
@@ -59,7 +62,7 @@ at minimum set `POSTGRES_PASSWORD`, `OFFLINE_MAPS_PASSWORD` and the HID gateway'
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` / `POSTGRES_USER` | `localhost` / `5432` / `rescuer_locator` / `rescuer` | Database connection |
+| `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` / `POSTGRES_USER` | `127.0.0.1` / `5432` / `rescuer_locator` / `rescuer` | Database connection (`localhost` is read as `127.0.0.1`) |
 | `POSTGRES_PASSWORD` | `change_me` | Database password (also used by the compose file) |
 | `SECRET_KEY` | `change_me` | JWT signing key; a long random string |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` / `REFRESH_TOKEN_EXPIRE_DAYS` | `60` / `7` | Token lifetimes; the browser refreshes silently |
@@ -256,6 +259,26 @@ npm run dev
 ```
 
 App: **http://localhost:5173**
+
+### Starting in the field (no internet)
+
+- **One click (Windows):** double-click `Start Bee With Me.cmd` in the project folder (or a desktop shortcut
+  to it). It runs `start.ps1`; on an error the window stays open so the message can be read.
+- **Packages are checked locally first.** The start scripts install backend packages with `pip --no-index`
+  (installed packages and `vendor/wheels`), go online only for what is missing (5 s timeout, one retry), and
+  stop with "Python packages are missing" or "Frontend packages are missing" if they cannot be found. When
+  `backend/requirements.txt` and `frontend/package-lock.json` have not changed since the last good start,
+  the check is skipped.
+- **Prepare at home, with internet:** after installing or updating, run
+  `powershell -ExecutionPolicy Bypass -File .\scripts\prepare-offline.ps1` (Linux: `./scripts/prepare-offline.sh`).
+  It downloads every backend package for this laptop's Python into `vendor/wheels` (wheels only, not committed),
+  records their SHA-256 in `vendor/wheels/SHA256SUMS` and runs `npm ci`, so the next start needs no internet. The
+  start uses `vendor/wheels` only while it matches `SHA256SUMS`, and never mixes it with PyPI. Frontend packages
+  are installed with `npm ci`, which never rewrites `package-lock.json`.
+- **Start timings:** before the servers start, the script prints one line such as
+  `Start timings: containers 8.4 s, python packages 0.6 s, migrations 1.9 s, frontend packages 0.2 s, total 11.1 s`,
+  and the backend logs `Startup timings: database pool …, migrations …, default admin …, background tasks …`.
+  Use them to find what makes a start slow.
 
 ### 5. First login
 
