@@ -69,6 +69,7 @@ export function useWebSocket() {
         fireStore.refreshVisible().catch(() => { /* fetchFailed drives the pill */ })
       }
       hasConnectedBefore = true
+      // Defensive: hasConnectedBefore already covers every later open; this just keeps the flag honest.
       catchUpOnOpen = false
     }
 

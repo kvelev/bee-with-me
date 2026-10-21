@@ -101,6 +101,51 @@ describe('MapView: B66 start before the backend is up', () => {
     w.unmount()
   })
 
+  it('one failed part of the snapshot is enough to ask for catch-up [B66]', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useAuthStore().user = { role: 'admin' }
+    const l = useLocationsStore()
+    l.fetchLive = vi.fn(async () => {}); l.fetchTrail = vi.fn(async () => {})
+    l.fetchSOS = vi.fn().mockRejectedValue(down())
+    const w = mount(MapView, { attachTo: document.body, global: { plugins: [pinia, i18n], stubs: { SOSToast: true } } })
+    await flushPromises()
+    expect(ws.connect).toHaveBeenCalledWith({ catchUp: true })
+    w.unmount()
+  })
+
+  it('unmounting while the snapshot is in flight stops the rest of mount: no connect, settings or interval [B66]', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    useAuthStore().user = { role: 'admin' }
+    const l = useLocationsStore()
+    let release
+    const gate = new Promise(r => { release = r })
+    l.fetchLive = vi.fn(() => gate); l.fetchSOS = vi.fn(async () => {}); l.fetchTrail = vi.fn(async () => {})
+    const w = mount(MapView, { attachTo: document.body, global: { plugins: [pinia, i18n], stubs: { SOSToast: true } } })
+    await flushPromises()
+    w.unmount()
+    tick.mockClear()
+    release()
+    await flushPromises()
+    expect(ws.connect).not.toHaveBeenCalled()
+    expect(api.getGroupsWithMembers).not.toHaveBeenCalled()
+    expect(api.getSettings).not.toHaveBeenCalled()
+    expect(tickStarted()).toBe(false)
+  })
+
+  it('unmounting while the groups fetch is in flight starts no interval and no settings load [B66]', async () => {
+    let release
+    api.getGroupsWithMembers.mockReturnValue(new Promise(r => { release = r }))
+    const w = await mountMap()
+    w.unmount()
+    tick.mockClear()
+    release({ items: [] })
+    await flushPromises()
+    expect(api.getSettings).not.toHaveBeenCalled()
+    expect(tickStarted()).toBe(false)
+  })
+
   it('a successful first snapshot connects without catch-up [B66]', async () => {
     const w = await mountMap()
     expect(ws.connect).toHaveBeenCalledTimes(1)
