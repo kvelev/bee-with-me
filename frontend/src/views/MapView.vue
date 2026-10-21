@@ -791,11 +791,18 @@ function toggleRepeaterMode() {
 }
 
 onMounted(async () => {
-  await Promise.all([store.fetchLive(), store.fetchSOS(), store.fetchTrail()])
-  connect()
-  // Build group member cache for hover tooltips (single request instead of N+1)
-  const { items: groups } = await getGroupsWithMembers({ limit: 500 })
-  groupsMap.value = Object.fromEntries(groups.map(g => [g.id, g]))
+  // The browser can open before uvicorn is up (start.ps1). A failed first snapshot must not stop the
+  // rest of mount: without connect() there is no socket, no resync timer and no reconnect, so SOS
+  // pushes and live positions would never arrive until a reload (BP-02).
+  const snapshot = await Promise.allSettled([store.fetchLive(), store.fetchSOS(), store.fetchTrail()])
+  // catchUp: the first socket open pulls the snapshot and fire layers that this attempt missed.
+  connect({ catchUp: snapshot.some(r => r.status === 'rejected') })
+  // Build group member cache for hover tooltips (single request instead of N+1). Only the tooltips
+  // depend on it, so a failure must not abort the mount.
+  try {
+    const { items: groups } = await getGroupsWithMembers({ limit: 500 })
+    groupsMap.value = Object.fromEntries(groups.map(g => [g.id, g]))
+  } catch { /* backend not up yet: tooltips show no group list */ }
   // Seed serial status; WS pushes updates after this
   try { store.applySerialStatus(await getSerialStatus()) } catch { /* port not configured */ }
 
