@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import math
+import time
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
@@ -25,6 +26,25 @@ from .fire.service import service as fire_alarm
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+class _StartupTimer:
+    """B63: how long each start-up step takes, logged as one line so a slow start can be traced in the field."""
+
+    def __init__(self, clock=time.perf_counter):
+        self._clock = clock
+        self._start = self._last = clock()
+        self._phases: list[tuple[str, float]] = []
+
+    def mark(self, name: str) -> None:
+        now = self._clock()
+        self._phases.append((name, now - self._last))
+        self._last = now
+
+    def summary(self) -> str:
+        parts = ['%s %.1f s' % (name, secs) for name, secs in self._phases]
+        parts.append('total %.1f s' % (self._last - self._start))
+        return ', '.join(parts)
 
 UPLOADS_DIR = Path(__file__).resolve().parent / 'uploads'
 
@@ -149,11 +169,15 @@ async def _ensure_default_admin() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    timer = _StartupTimer()
     _warn_insecure_defaults()
     await init_pool()
     logger.info('Database pool ready')
+    timer.mark('database pool')
     await _run_migrations()
+    timer.mark('migrations')
     await _ensure_default_admin()
+    timer.mark('default admin')
 
     notify_task  = asyncio.create_task(manager.listen_notifications())
     cleanup_task = asyncio.create_task(_cleanup_old_locations())
@@ -184,6 +208,9 @@ async def lifespan(app: FastAPI):
         logger.info('HID reader task started')
     except Exception as exc:
         logger.warning('HID reader not started: %s', exc)
+
+    timer.mark('background tasks')
+    logger.info('Startup timings: %s', timer.summary())
 
     yield
 

@@ -5,3 +5,6 @@
 # Migration files and SQL fixtures keep LF endings everywhere, so a checkout never differs from
 # the bytes that were reviewed (migrate.py also normalises line endings before checksumming).
 *.sql text eol=lf
+
+# Windows batch files need CRLF endings to run reliably in cmd.exe (B62 one-click starter).
+*.cmd text eol=crlf

@@ -57,3 +57,5 @@ data/
 /.npm
 .claude
 CLAUDE.MD
+# Offline package cache filled by scripts/prepare-offline (B62)
+/vendor/

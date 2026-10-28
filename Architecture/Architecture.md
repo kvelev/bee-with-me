@@ -492,6 +492,10 @@ the catalogue of future capabilities [roadmap/future-capabilities.md](roadmap/fu
 APRS, Meshtastic, packaged release, operation entity, and an AI operator assistant assessed in
 [roadmap/fc-01-ai-assistant.md](roadmap/fc-01-ai-assistant.md)).
 
+The first field test produced findings FX-01 to FX-04 and the order of work: vertical slices first, then the generic
+field signal as the first new module ([roadmap/field-exercise-findings.md](roadmap/field-exercise-findings.md)). It also
+raised a strategic question, internet-first or offline-first, to be brainstormed before Phase E is written.
+
 ## 7. Phase F: Migration Planning
 
 *To be written in Phase F.*

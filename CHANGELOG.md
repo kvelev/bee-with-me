@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+### Faster start on Windows
+
+The backend took about 4 s to open its database pool, and `start.ps1` lost about 2 s more, because
+`localhost` resolves to IPv6 `::1` first while the database port is published on `127.0.0.1` only; on
+Windows every refused `::1` connect waits about 2 s. The database host now defaults to `127.0.0.1`, and
+`POSTGRES_HOST=localhost` in an existing `.env` is read as `127.0.0.1`, so no `.env` needs editing.
+
+### Starts without internet
+
+Field test feedback: with no internet the app did not start, because the start scripts ran
+`pip install` on every start. Now `start.ps1` / `start.sh` check backend packages locally first
+(`pip --no-index`, plus `vendor/wheels` if present), try the internet only for what is missing
+(5 s timeout, one retry), and stop with a clear message naming the fix if a package cannot be found.
+Frontend packages follow the same order (npm cache, then online). Unchanged `requirements.txt` and
+`package-lock.json` skip the check entirely.
+
+- **`scripts/prepare-offline.ps1` / `.sh`:** run at home, with internet, after installing or updating;
+  it saves every backend package in `vendor/wheels` (wheels only) with a `SHA256SUMS` list and installs
+  the frontend packages. The start uses the folder only while it matches that list, and the online
+  fallback uses PyPI only. Frontend packages are installed with `npm ci`, so `package-lock.json` is
+  never rewritten on the laptop. **After updating to this version, run `prepare-offline` (or start once
+  with internet):** existing installs have no record yet of which lock their packages came from, so
+  the first start reinstalls them with `npm ci`. Node.js 23 and 25 are refused by the start and by
+  `prepare-offline` (the build tools do not accept them); a root `.nvmrc` (24) lets fnm/nvm pick the version.
+- **`Start Bee With Me.cmd`:** one-click start on Windows; the window stays open on an error.
+
+### Start timings
+
+The start scripts print a `Start timings:` line (containers, Python packages, migrations, frontend
+packages, total) and the backend logs `Startup timings:` (database pool, migrations, default admin,
+background tasks), to find what makes a start slow.
+
 ## [1.7.2] - 2026-10-10
 
 ### Test mode in Settings

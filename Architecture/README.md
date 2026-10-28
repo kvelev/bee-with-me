@@ -58,6 +58,7 @@ Architecture/
 │   └── admin-guide.md                administrator guide, Bulgarian (mutable)
 └── roadmap/
     ├── future-capabilities.md        catalogue FC-xx, input to Phase E (mutable)
+    ├── field-exercise-findings.md    findings FX-xx from the field test, order of work (mutable)
     └── fc-NN-*.md                    assessment of one future capability (FC-01: assistant, hardware)
 ```
 

@@ -35,6 +35,22 @@ $ErrorActionPreference = 'Stop'
 function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Write-Warn($msg) { Write-Host $msg -ForegroundColor Yellow }
 
+# How long each start phase takes, printed as one "Start timings:" line before the app starts (B63).
+$startClock = [System.Diagnostics.Stopwatch]::StartNew()
+$phaseTimes = [ordered]@{}
+$phaseMark = 0.0
+function Add-PhaseTime([string]$Name) {
+    $now = $startClock.Elapsed.TotalSeconds
+    $script:phaseTimes[$Name] = $now - $script:phaseMark
+    $script:phaseMark = $now
+}
+function Write-PhaseTimes {
+    $inv = [System.Globalization.CultureInfo]::InvariantCulture
+    $parts = @(foreach ($k in $script:phaseTimes.Keys) { [string]::Format($inv, '{0} {1:0.0} s', $k, $script:phaseTimes[$k]) })
+    $parts += [string]::Format($inv, 'total {0:0.0} s', $startClock.Elapsed.TotalSeconds)
+    Write-Host ('Start timings: ' + ($parts -join ', '))
+}
+
 # Windows PowerShell 5.1 turns a native command's stderr into a terminating error under 'Stop' as soon
 # as stderr is redirected (e.g. a podman warning on `info` with exit code 0 would abort the start).
 # Native calls run through this with 'Continue' (local to the function); the script decides on $LASTEXITCODE.
@@ -230,7 +246,8 @@ if (-not $SkipContainers) {
     $deadline = (Get-Date).AddSeconds(60)
     $ready = $false
     do {
-        $ready = (Test-NetConnection -ComputerName 'localhost' -Port $pgPort -InformationLevel Quiet -WarningAction SilentlyContinue)
+        # 127.0.0.1, not localhost: the port is published on IPv4 only and a refused ::1 try costs ~2 s (B67)
+        $ready = (Test-NetConnection -ComputerName '127.0.0.1' -Port $pgPort -InformationLevel Quiet -WarningAction SilentlyContinue)
         if (-not $ready) { Start-Sleep -Seconds 1 }
     } until ($ready -or (Get-Date) -gt $deadline)
 
@@ -250,6 +267,8 @@ if (-not $SkipContainers) {
     }
 }
 
+Add-PhaseTime 'containers'
+
 # -- Python venv + backend deps -----------------------------------------------
 $venvActivate = "$root\.venv\Scripts\Activate.ps1"
 if (-not (Test-Path $venvActivate)) {
@@ -263,12 +282,44 @@ if (-not (Test-Path $venvActivate)) {
     }
 }
 
-Write-Step 'Installing/checking backend dependencies'
-Invoke-Native { & "$root\.venv\Scripts\python.exe" -m pip install -q -r "$root\backend\requirements.txt" }
-if ($LASTEXITCODE -ne 0) {
-    # Offline laptops still start with what is installed; a missing package shows up when the backend starts.
-    Write-Warn "pip install failed (exit $LASTEXITCODE; offline?) - continuing with the packages already in .venv."
+# Field laptops usually have no internet (B62): look locally first, go online only for what is missing,
+# and stop with a clear message rather than start a backend that cannot import its packages.
+Write-Step 'Checking backend packages'
+$reqFile = "$root\backend\requirements.txt"
+$reqMarker = "$root\.venv\.bwm-requirements.sha256"
+$reqHash = (Get-FileHash -LiteralPath $reqFile -Algorithm SHA256).Hash
+# An empty marker (power cut while writing) reads as $null: the string cast keeps .Trim() safe.
+$savedReqHash = if (Test-Path -LiteralPath $reqMarker) { "$(Get-Content -LiteralPath $reqMarker -Raw)".Trim() } else { '' }
+if ($savedReqHash -eq $reqHash) {
+    Write-Host '    Unchanged since the last start - not checked again.'
+} else {
+    # vendor\wheels is used only when it holds exactly the wheels prepare-offline recorded (SHA256SUMS),
+    # so a wheel changed or added after it (stale or copied in) is not installed. It does not stop someone who can
+    # also rewrite SHA256SUMS, but they could edit this script as well.
+    $wheels = "$root\vendor\wheels"
+    $findLinks = @()
+    if (Test-Path -LiteralPath $wheels -PathType Container) {
+        Invoke-Native { & "$root\.venv\Scripts\python.exe" "$root\scripts\wheelhouse.py" verify $wheels }
+        if ($LASTEXITCODE -eq 0) { $findLinks = @('--find-links', $wheels) }
+        else { Write-Warn 'vendor\wheels failed its integrity check (see above) - not used. Run scripts\prepare-offline.ps1 again.' }
+    }
+    # 1. Local only (installed packages and the verified vendor\wheels): no network, seconds.
+    Invoke-Native { & "$root\.venv\Scripts\python.exe" -m pip install -q --no-index @findLinks -r $reqFile }
+    if ($LASTEXITCODE -ne 0) {
+        # 2. Something is missing locally: one short try, from the package index only (never mixed with vendor\wheels).
+        Write-Warn 'Some backend packages are not installed - trying to download them (needs internet).'
+        Invoke-Native { & "$root\.venv\Scripts\python.exe" -m pip install -q --timeout 5 --retries 1 -r $reqFile }
+        if ($LASTEXITCODE -ne 0) {
+            throw ("Python packages are missing and could not be downloaded (no internet?). The app cannot start without them.`n" +
+                   "The names are in the pip messages above. To fix it:`n" +
+                   "  - connect this laptop to the internet once and start again, or`n" +
+                   "  - at home, with internet, run scripts\prepare-offline.ps1: it saves every package in vendor\wheels,`n" +
+                   "    so the next start works without internet.")
+        }
+    }
+    Set-Content -LiteralPath $reqMarker -Value $reqHash -Encoding ascii
 }
+Add-PhaseTime 'python packages'
 
 # -- Database migrations: back up first if any are pending ---------------------
 if (-not $SkipContainers) {
@@ -298,9 +349,11 @@ if (-not $SkipContainers) {
         default { throw "Could not check database migrations (database not reachable?) - not starting, so the database is never migrated without a backup. Check: $engine compose -f docker\docker-compose.yaml -p bee-with-me logs" }
     }
 }
+Add-PhaseTime 'migrations'
 
 # BWM_START_DRY_RUN=1 (script tests): stop after the database and migration decisions.
 if ($env:BWM_START_DRY_RUN -eq '1') {
+    Write-PhaseTimes
     Write-Host 'DRY RUN: would start backend and frontend'
     exit 0
 }
@@ -309,16 +362,53 @@ if ($env:BWM_START_DRY_RUN -eq '1') {
 if (-not (Get-Command node -ErrorAction SilentlyContinue) -or -not (Get-Command npm -ErrorAction SilentlyContinue)) {
     throw 'Node.js was not found on PATH. Install Node.js 24 LTS and re-run.'
 }
-# Floor matches "engines" in frontend\package.json; .npmrc engine-strict enforces it for npm too.
+# Floor matches "engines" in frontend\package.json; .npmrc engine-strict enforces it for npm too. The build tools
+# (vitest) accept only the even, long-term releases: 22.12+, 24 and 26+.
 $nodeVersion = [version]((node -v).TrimStart('v'))
 if ($nodeVersion -lt [version]'22.12.0') {
     throw "Node.js $nodeVersion is too old (need 22.12+). Install Node.js 24 LTS and re-run."
 }
-if (-not (Test-Path "$root\frontend\node_modules")) {
-    Write-Step 'Installing frontend dependencies (first run only - this can take a minute)'
+if ($nodeVersion.Major -eq 23 -or $nodeVersion.Major -eq 25) {
+    throw "Node.js $nodeVersion is not supported by the frontend tools (use 22.12+, 24 or 26+). Install Node.js 24 LTS and re-run."
+}
+# Same order as the backend packages (B62): local npm cache first, then one short try online. npm ci installs
+# exactly package-lock.json and never rewrites it (npm install does, which would block the next git pull).
+Write-Step 'Checking frontend packages'
+$modules = "$root\frontend\node_modules"
+$lockFile = "$root\frontend\package-lock.json"
+$lockMarker = "$modules\.bwm-package-lock.sha256"
+$lockHash = (Get-FileHash -LiteralPath $lockFile -Algorithm SHA256).Hash
+$savedLockHash = if (Test-Path -LiteralPath $lockMarker) { "$(Get-Content -LiteralPath $lockMarker -Raw)".Trim() } else { '' }
+if ($savedLockHash -eq $lockHash) {
+    Write-Host '    Unchanged since the last start - not checked again.'
+} else {
+    # No marker means nothing vouches for node_modules (installed before this check, or a partial install):
+    # install from the lock. prepare-offline writes the marker itself after its own npm ci.
+    # npm ci empties node_modules first, so after a failure below nothing is left to start with.
     Push-Location "$root\frontend"
-    npm install
-    Pop-Location
+    try {
+        Invoke-Native { npm ci --offline --no-audit --no-fund }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn 'Some frontend packages are not in the local cache - trying to download them (needs internet).'
+            Invoke-Native { npm ci --no-audit --no-fund --fetch-timeout=5000 --fetch-retries=1 }
+        }
+        $npmExit = $LASTEXITCODE
+    } finally { Pop-Location }
+    if ($npmExit -ne 0) {
+        throw ("Frontend packages are missing or out of date and could not be installed. The app cannot start without them.`n" +
+               "The reason is in the npm messages above (no internet, or a Node.js version npm does not accept). To fix it:`n" +
+               "  - connect this laptop to the internet once and start again, or`n" +
+               "  - at home, with internet, run scripts\prepare-offline.ps1, then start again without internet.")
+    }
+    Set-Content -LiteralPath $lockMarker -Value (Get-FileHash -LiteralPath $lockFile -Algorithm SHA256).Hash -Encoding ascii
+}
+Add-PhaseTime 'frontend packages'
+Write-PhaseTimes
+
+# BWM_START_DRY_RUN=frontend (script tests): stop after the frontend packages too.
+if ($env:BWM_START_DRY_RUN -eq 'frontend') {
+    Write-Host 'DRY RUN: would start backend and frontend'
+    exit 0
 }
 
 # -- Backend (own window) ------------------------------------------------------

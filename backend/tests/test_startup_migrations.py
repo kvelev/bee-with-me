@@ -76,3 +76,24 @@ def test_warn_insecure_defaults_silent_for_custom_postgres_password(monkeypatch,
     with caplog.at_level(logging.ERROR):
         main._warn_insecure_defaults()
     assert 'POSTGRES_PASSWORD' not in caplog.text
+
+
+@pytest.mark.Trait("Bug", "B63")
+def test_startup_timer_reports_each_phase_and_the_total():
+    ticks = iter([10.0, 10.25, 11.5, 11.5, 14.0])
+    timer = main._StartupTimer(clock=lambda: next(ticks))
+    timer.mark('database pool')
+    timer.mark('migrations')
+    timer.mark('default admin')
+    timer.mark('background tasks')
+    assert timer.summary() == ('database pool 0.2 s, migrations 1.2 s, default admin 0.0 s, '
+                               'background tasks 2.5 s, total 4.0 s')
+
+
+@pytest.mark.Trait("Bug", "B63")
+def test_lifespan_logs_the_startup_timings():
+    import inspect
+    source = inspect.getsource(main.lifespan)
+    for phase in ('database pool', 'migrations', 'default admin', 'background tasks'):
+        assert f"timer.mark('{phase}')" in source, phase
+    assert "logger.info('Startup timings: %s', timer.summary())" in source

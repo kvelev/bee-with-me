@@ -729,14 +729,28 @@ watch(() => fireStore.zones, (list) => setZones(list.filter(z => z.is_active)), 
 onTrackerClick(onMarkerClick)
 onMapContextMenu(openContextMenu)
 
+// Set on unmount so a mount that is still awaiting (backend slow or down) does not go on to open a
+// socket, register listeners or start the tick on a view that is already gone.
+let unmounted = false
+
 onMounted(async () => {
-  await Promise.all([store.fetchLive(), store.fetchSOS(), store.fetchTrail()])
-  connect()
-  // Build group member cache for hover tooltips (single request instead of N+1)
-  const { items: groups } = await getGroupsWithMembers({ limit: 500 })
-  groupsMap.value = Object.fromEntries(groups.map(g => [g.id, g]))
+  // The browser can open before uvicorn is up (start.ps1). A failed first snapshot must not stop the
+  // rest of mount: without connect() there is no socket, no resync timer and no reconnect, so SOS
+  // pushes and live positions would never arrive until a reload (BP-02).
+  const snapshot = await Promise.allSettled([store.fetchLive(), store.fetchSOS(), store.fetchTrail()])
+  if (unmounted) return
+  // catchUp: the first socket open pulls the snapshot and fire layers that this attempt missed.
+  connect({ catchUp: snapshot.some(r => r.status === 'rejected') })
+  // Build group member cache for hover tooltips (single request instead of N+1). Only the tooltips
+  // depend on it, so a failure must not abort the mount.
+  try {
+    const { items: groups } = await getGroupsWithMembers({ limit: 500 })
+    groupsMap.value = Object.fromEntries(groups.map(g => [g.id, g]))
+  } catch { /* backend not up yet: tooltips show no group list */ }
+  if (unmounted) return
   // Seed serial status; WS pushes updates after this
   try { store.applySerialStatus(await getSerialStatus()) } catch { /* port not configured */ }
+  if (unmounted) return
 
   const m = map()
   if (m) m.on('moveend', scheduleWeatherFetch)
@@ -744,6 +758,7 @@ onMounted(async () => {
   // HQ comes from the database. A failure shows an amber note with a retry; the map and live
   // data do not depend on it.
   await loadSettings()
+  if (unmounted) return
 
   tickTimer = setInterval(() => { nowTick.value = Date.now() }, 10_000)
 })
@@ -754,6 +769,7 @@ watch(() => hqLocation.value && `${hqLocation.value.lat},${hqLocation.value.lon}
   () => setHQ(hqLocation.value), { immediate: true })
 
 onUnmounted(() => {
+  unmounted = true
   clearTimeout(weatherTimer)
   clearInterval(tickTimer)
   stopWindAnim()
