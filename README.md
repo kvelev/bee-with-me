@@ -498,7 +498,7 @@ full CI, then the backend and frontend images are built and pushed to GHCR as `s
 `deploy/develop` branch is force-pushed with `deploy/k8s/app` pinned to them. Only the `develop` branch can
 write `deploy/develop` (a deploy key held by the GitHub Environment `develop`). `main` is not deployed.
 
-Dependabot opens grouped weekly PRs for pip and npm, and monthly ones for GitHub Actions, **into `develop`**; they go through the same checks and reach `main` with the next release.
+Dependency updates are manual (there is no Dependabot config): bump versions in a PR to `develop` like any other change; it goes through the same checks and reaches `main` with the next release.
 
 ### Releases
 

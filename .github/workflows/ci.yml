@@ -151,7 +151,7 @@ jobs:
           if [ "$blocking" = true ]; then
             exit 1
           fi
-          echo "::warning title=npm audit::High-severity advisories in frontend dependencies. This PR does not change them, so it is not blocked; fix them in a PR of their own (often an open Dependabot PR)."
+          echo "::warning title=npm audit::High-severity advisories in frontend dependencies. This PR does not change them, so it is not blocked; fix them in a PR of their own."
           echo "### ⚠️ npm audit: high-severity advisories in frontend dependencies (not caused by this PR)" >> "$GITHUB_STEP_SUMMARY"
 
   consistency:
