@@ -7,6 +7,7 @@ export default {
     devices: 'Devices',
     export:  'Export',
     about:   'About',
+    selectofflinemap: 'Select offline map',
     settings:'Settings',
   },
   login: {
@@ -77,6 +78,7 @@ export default {
       satellite:   'Satellite',
       topo:        'Topo',
       bgmountains: 'BG Mountains',
+      offline: 'Offline',
     },
   },
   users: {
@@ -354,6 +356,11 @@ export default {
     emailPerson: 'Email {name}, {email}',
     team:        'Team',
     license:     'License',
+  },
+  selectOfflinemap: {
+    select: 'Select a map for offline use',
+    load: 'Load',
+    loading: 'Loading…',
   },
   fire: {
     layers: {

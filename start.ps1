@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Starts the whole Bee With Me stack on Windows: Postgres/PostGIS (Podman or Docker), the
     FastAPI backend, and the Vue frontend - instead of starting each one by hand.
@@ -374,6 +374,20 @@ if (-not $Update) {
     }
 }
 
+# -- Tile Server (own window) --------------------------------------------------
+if (-not (Test-Path -LiteralPath "$root\tile-server\server.js")) {
+    throw "Tile Server entry point was not found: $root\tile-server\server.js"
+}
+if (-not (Test-Path -LiteralPath "$root\tile-server\node_modules\better-sqlite3")) {
+    Write-Warn 'Tile Server dependencies may be missing. In tile-server run: npm install better-sqlite3 dotenv'
+}
+Write-Step 'Starting Tile Server in a new window'
+# Keep the project root as the working directory so dotenv loads the root .env file.
+Start-Process powershell -ArgumentList @(
+    '-NoExit', '-ExecutionPolicy', 'Bypass', '-Command',
+    "Set-Location -LiteralPath '$root'; node '.\tile-server\server.js'"
+) -WindowStyle Normal
+
 # -- Backend (own window) ------------------------------------------------------
 Write-Step 'Starting backend (uvicorn) in a new window'
 Start-Process powershell -ArgumentList @(
@@ -395,8 +409,12 @@ Write-Host ''
 Write-Host 'Bee With Me is starting up:' -ForegroundColor Green
 Write-Host '  Backend:  http://localhost:8000  (API docs at /docs)'
 Write-Host '  Frontend: http://localhost:5173'
+$tileEnv = Read-DotEnv "$root\.env"
+$tileHost = if ($tileEnv['VITE_TILE_HOST']) { $tileEnv['VITE_TILE_HOST'] } else { '127.0.0.1' }
+$tilePort = if ($tileEnv['VITE_TILE_PORT']) { $tileEnv['VITE_TILE_PORT'] } else { '8080' }
+Write-Host "  Tile Server: http://${tileHost}:${tilePort}"
 Write-Host ''
-Write-Host 'Backend and frontend run in their own windows - close a window (or Ctrl+C inside it) to stop that service.' -ForegroundColor Gray
+Write-Host 'Backend, frontend, and Tile Server run in their own windows - close a window (or Ctrl+C inside it) to stop that service.' -ForegroundColor Gray
 $engineHint = if ($engine) { $engine } else { 'podman' }
 Write-Host 'The database keeps running in its container until you stop it yourself:' -ForegroundColor Gray
 Write-Host "  $engineHint compose -p bee-with-me -f docker\docker-compose.yaml down" -ForegroundColor Gray

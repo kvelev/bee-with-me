@@ -387,10 +387,22 @@ if ! grep -rqsi 'hidraw' /etc/udev/rules.d/ 2>/dev/null; then
   No plugdev group on your distro (Fedora, Arch)? Use TAG+="uaccess" instead of GROUP/MODE (the logged-in user gets access).'
 fi
 
+# -- Tile Server + backend + frontend (this terminal) -------------------------------
+if [[ ! -f "$ROOT/tile-server/server.js" ]]; then
+    die "Tile Server entry point was not found: $ROOT/tile-server/server.js"
+fi
+if [[ ! -d "$ROOT/tile-server/node_modules/better-sqlite3" ]]; then
+    warn 'Tile Server dependencies may be missing. In tile-server run: npm install better-sqlite3 dotenv'
+fi
+
 # -- Backend + frontend (this terminal) ---------------------------------------------
 # On Ctrl+C / exit, kill the whole process group: uvicorn and npm/vite
 # both spawn children that would otherwise be orphaned and keep the ports busy.
-trap 'trap - INT TERM EXIT; echo; step "Stopping backend and frontend"; kill 0 2>/dev/null; wait 2>/dev/null' INT TERM EXIT
+trap 'trap - INT TERM EXIT; echo; step "Stopping Tile Server, backend and frontend"; kill 0 2>/dev/null; wait 2>/dev/null' INT TERM EXIT
+
+step 'Starting Tile Server (node)'
+( cd "$ROOT" && exec node "$ROOT/tile-server/server.js" ) 2>&1 \
+    | sed -u 's/^/[tile-server] /' &
 
 step 'Starting backend (uvicorn)'
 ( cd "$ROOT" && exec "$ROOT/.venv/bin/uvicorn" backend.main:app ) 2>&1 \
@@ -413,8 +425,11 @@ echo
 printf '\033[32m%s\033[0m\n' 'Bee With Me is starting up:'
 echo '  Backend:  http://localhost:8000  (API docs at /docs)'
 echo '  Frontend: http://localhost:5173'
+TILE_HOST="$(env_value VITE_TILE_HOST 127.0.0.1)"
+TILE_PORT="$(env_value VITE_TILE_PORT 8080)"
+echo "  Tile Server: http://${TILE_HOST}:${TILE_PORT}"
 echo
-printf '\033[90m%s\033[0m\n' 'Press Ctrl+C to stop backend and frontend.'
+printf '\033[90m%s\033[0m\n' 'Press Ctrl+C to stop Tile Server, backend and frontend.'
 printf '\033[90m%s\033[0m\n' 'The database keeps running in its container until you stop it yourself:'
 printf '\033[90m%s\033[0m\n' "  ${ENGINE:-podman} compose -p bee-with-me -f docker/docker-compose.yaml down"
 echo

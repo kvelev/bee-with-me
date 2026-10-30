@@ -13,6 +13,7 @@ const routes = [
       { path: 'groups',  component: () => import('../views/GroupsView.vue') },
       { path: 'devices', component: () => import('../views/DevicesView.vue') },
       { path: 'export',  component: () => import('../views/ExportView.vue') },
+      { path: 'selectofflinemap', component: () => import('../views/SelectOfflineMap.vue') },
       { path: 'settings', component: () => import('../views/SettingsView.vue'), meta: { adminOnly: true } },
       { path: 'about',   component: () => import('../views/AboutView.vue') },
     ],
