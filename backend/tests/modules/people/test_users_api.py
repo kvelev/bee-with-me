@@ -11,6 +11,13 @@ pytestmark = pytest.mark.Trait("Task", "T113")
 PNG = b'\x89PNG\r\n\x1a\n' + b'\x00' * 16
 
 
+@pytest.fixture(autouse=True)
+def upload_dir(monkeypatch, tmp_path):
+    """No test in this module may write into the real backend/uploads (volunteer photos)."""
+    monkeypatch.setattr('backend.routers.users.UPLOAD_DIR', str(tmp_path))
+    return tmp_path
+
+
 def test_deactivate_resolves_rescuer_alerts_and_notifies(client, mock_conn, admin_user, monkeypatch):
     calls = []
 
@@ -65,8 +72,7 @@ def test_photo_upload_rejects_non_image(client, mock_conn):
     mock_conn.execute.assert_not_awaited()
 
 
-def test_photo_upload_stores_file_and_updates_photo_url(client, mock_conn, monkeypatch, tmp_path):
-    monkeypatch.setattr('backend.routers.users.UPLOAD_DIR', str(tmp_path))
+def test_photo_upload_stores_file_and_updates_photo_url(client, mock_conn, upload_dir):
     uid = uuid.uuid4()
 
     resp = client.post(f'/api/users/{uid}/photo', files={'file': ('Me.PNG', PNG, 'image/png')})
@@ -74,7 +80,7 @@ def test_photo_upload_stores_file_and_updates_photo_url(client, mock_conn, monke
     assert resp.status_code == 200
     photo_url = resp.json()['photo_url']
     assert photo_url.startswith('/uploads/') and photo_url.endswith('.png')
-    stored = tmp_path / photo_url.removeprefix('/uploads/')
+    stored = upload_dir / photo_url.removeprefix('/uploads/')
     uuid.UUID(stored.stem)
     assert stored.read_bytes() == PNG
     mock_conn.execute.assert_awaited_once_with('UPDATE users SET photo_url = $1 WHERE id = $2', photo_url, uid)
@@ -86,6 +92,7 @@ def test_photo_upload_stores_file_and_updates_photo_url(client, mock_conn, monke
     ('post', '/api/users/{id}/photo'),
     ('post', '/api/users/import'),
     ('patch', '/api/users/{id}/deactivate'),
+    ('patch', '/api/users/{id}/reactivate'),
     ('delete', '/api/users/{id}'),
 ])
 def test_writes_require_admin(client, mock_conn, viewer_user, test_app, method, path):
@@ -103,5 +110,4 @@ def test_writes_require_admin(client, mock_conn, viewer_user, test_app, method, 
     resp = getattr(client, method)(path.format(id=uuid.uuid4()), **kwargs)
 
     assert resp.status_code == 403
-    mock_conn.execute.assert_not_awaited()
-    mock_conn.fetchrow.assert_not_awaited()
+    assert mock_conn.mock_calls == []  # no query of any kind before the gate

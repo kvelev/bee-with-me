@@ -36,7 +36,7 @@ def test_csv_with_no_rows_is_200(client, mock_conn):
     resp = client.get('/api/export/csv')
     assert resp.status_code == 200
     assert resp.headers['content-disposition'] == 'attachment; filename="locations.csv"'
-    assert len(resp.text.strip().splitlines()) <= 1
+    assert resp.text.strip() == ''
 
 
 def test_filters_are_passed_positionally(client, mock_conn):

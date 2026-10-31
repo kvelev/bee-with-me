@@ -10,6 +10,7 @@ from backend.routers.users import _find_col, _split_name
 pytestmark = pytest.mark.Trait("Task", "T113")
 
 XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+EXISTS_SQL = 'SELECT 1 FROM users WHERE full_name = $1'
 
 
 def _xlsx(rows: list[list]) -> bytes:
@@ -47,10 +48,28 @@ def test_import_creates_rows_and_normalises_pin(client, mock_conn):
     mock_conn.execute.assert_awaited_once()
     assert 'INSERT INTO users' in mock_conn.execute.call_args.args[0]
     assert mock_conn.execute.call_args.args[1:] == ('Иван', 'Петров', 'Иван Петров', '0888', '1234')
+    mock_conn.fetchval.assert_awaited_once_with(EXISTS_SQL, 'Иван Петров')
+
+
+def test_import_normalises_a_numeric_pin_cell(client, mock_conn):
+    # the PIN typed as a number in Excel, not as text
+    resp = _post(client, [['Доброволец', 'ПИН', 'Телефон'], ['Иван Петров', 1234, '0888']])
+    assert resp.status_code == 200
+    assert resp.json() == {'created': 1, 'skipped': []}
+    mock_conn.execute.assert_awaited_once()
+    assert mock_conn.execute.call_args.args[5] == '1234'
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason='B71: Latin e in the name keyword')
+def test_import_finds_the_bulgarian_name_header(client, mock_conn):
+    # _find_col's keyword 'имe' ends in a Latin 'e', so the Cyrillic header 'Име' never matches
+    resp = _post(client, [['Име', 'ПИН', 'Телефон'], ['Иван Петров', '1234', '0888']])
+    assert resp.status_code == 200
+    assert resp.json() == {'created': 1, 'skipped': []}
 
 
 def test_import_skips_empty_names_and_existing_people_with_row_numbers(client, mock_conn):
-    mock_conn.fetchval = AsyncMock(side_effect=[None, 1])
+    mock_conn.fetchval = AsyncMock(side_effect=lambda sql, name: 1 if name == 'Boris Petrov' else None)
     resp = _post(client, [
         ['Name', 'Phone'],
         ['Ana Ivanova', '1'],
@@ -67,6 +86,10 @@ def test_import_skips_empty_names_and_existing_people_with_row_numbers(client, m
     }
     mock_conn.execute.assert_awaited_once()
     assert mock_conn.execute.call_args.args[3] == 'Ana Ivanova'
+    assert [c.args for c in mock_conn.fetchval.await_args_list] == [
+        (EXISTS_SQL, 'Ana Ivanova'),
+        (EXISTS_SQL, 'Boris Petrov'),
+    ]
 
 
 def test_split_name_and_find_col():

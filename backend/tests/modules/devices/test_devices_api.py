@@ -93,6 +93,7 @@ def test_reactivate_is_204(client, mock_conn):
     ('post', '/api/devices/'),
     ('put', '/api/devices/{id}'),
     ('put', '/api/devices/{id}/assign'),
+    ('put', '/api/devices/{id}/location'),
     ('delete', '/api/devices/{id}'),
     ('post', '/api/devices/{id}/reactivate'),
     ('delete', '/api/devices/{id}/permanent'),
@@ -103,5 +104,4 @@ def test_writes_require_admin(client, mock_conn, viewer_user, test_app, method, 
     body = {'post': {'dev_sn': 1}, 'put': {'name': 'x', 'user_id': None}}.get(method)
     resp = client.request(method.upper(), url, json=body)
     assert resp.status_code == 403
-    mock_conn.execute.assert_not_called()
-    mock_conn.fetchrow.assert_not_called()
+    assert mock_conn.mock_calls == []  # no query of any kind before the gate

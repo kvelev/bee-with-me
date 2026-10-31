@@ -4,6 +4,7 @@ _forward is covered by test_ws_forward.py and not repeated here.
 """
 
 import asyncio
+import time
 
 import pytest
 from fastapi import FastAPI
@@ -26,15 +27,30 @@ class _Client:
         self.sent.append(message)
 
 
-def test_ws_endpoint_registers_and_unregisters_the_client():
+def _wait_for(predicate, timeout=2.0):
+    """The server side runs in TestClient's own thread: poll briefly instead of racing it."""
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.01)
+    return True
+
+
+def test_ws_endpoint_registers_and_unregisters_the_client(monkeypatch):
+    fresh = ws.WSManager()
+    monkeypatch.setattr(ws_router, 'manager', fresh)
     app = FastAPI()
     app.include_router(ws_router.router)
-    assert len(ws.manager._clients) == 0
+    assert len(fresh._clients) == 0
     with TestClient(app) as tc:
         with tc.websocket_connect('/ws') as sock:
             sock.send_text('ping')
-            assert len(ws.manager._clients) == 1
-        assert len(ws.manager._clients) == 0
+            assert _wait_for(lambda: len(fresh._clients) == 1)
+            # round trip: the registered client is this socket
+            sock.portal.call(fresh.broadcast, {'type': 'probe'})
+            assert sock.receive_json() == {'type': 'probe'}
+        assert _wait_for(lambda: len(fresh._clients) == 0)
 
 
 @pytest.mark.asyncio

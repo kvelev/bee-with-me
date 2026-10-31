@@ -153,6 +153,7 @@ def test_remove_member_is_204(client, mock_conn):
     ('post', '/api/groups/'),
     ('put', '/api/groups/{gid}'),
     ('patch', '/api/groups/{gid}/deactivate'),
+    ('patch', '/api/groups/{gid}/reactivate'),
     ('delete', '/api/groups/{gid}'),
     ('post', '/api/groups/{gid}/members'),
     ('delete', '/api/groups/{gid}/members/{uid}'),
@@ -166,5 +167,4 @@ def test_writes_require_admin(client, mock_conn, viewer_user, test_app, method, 
     resp = getattr(client, method)(url, **kwargs)
     assert resp.status_code == 403
     assert resp.json()['detail'] == 'Insufficient permissions'
-    mock_conn.execute.assert_not_called()
-    mock_conn.fetchrow.assert_not_called()
+    assert mock_conn.mock_calls == []  # no query of any kind before the gate
