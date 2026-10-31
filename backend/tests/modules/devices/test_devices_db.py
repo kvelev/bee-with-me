@@ -34,6 +34,15 @@ async def test_permanent_delete_removes_events_and_resolves_fire_alerts(migrated
     await c.execute('INSERT INTO sos_alerts (device_id, triggered_at) VALUES ($1, NOW())', dev)
     await c.execute('INSERT INTO repeater_events (device_id, msg_id) VALUES ($1, 1)', dev)
     alert = await _open_rescuer_alert(c, dev)
+    # A bystander device with its own history and an open alert: the delete must not reach it
+    bystander = await c.fetchval('INSERT INTO devices (dev_sn) VALUES (23) RETURNING id')
+    await c.execute(_INSERT_EVENT, bystander)
+    await c.execute(_INSERT_EVENT, bystander)
+    await c.execute(_INSERT_EVENT, bystander)
+    await c.execute('INSERT INTO sos_alerts (device_id, triggered_at) VALUES ($1, NOW())', bystander)
+    await c.execute('INSERT INTO repeater_events (device_id, msg_id) VALUES ($1, 1)', bystander)
+    await c.execute('INSERT INTO repeater_events (device_id, msg_id) VALUES ($1, 2)', bystander)
+    bystander_alert = await _open_rescuer_alert(c, bystander)
 
     await devices.delete_device_permanent(dev, c, {'id': admin})
 
@@ -45,6 +54,16 @@ async def test_permanent_delete_removes_events_and_resolves_fire_alerts(migrated
     assert row['resolve_reason'] == 'disabled'
     assert row['resolved_by'] == admin
     assert row['device_id'] is None
+
+    assert await c.fetchval('SELECT COUNT(*) FROM devices WHERE id = $1', bystander) == 1
+    expected = {'location_events': 3, 'sos_alerts': 1, 'repeater_events': 2}
+    for table, count in expected.items():
+        assert await c.fetchval(f'SELECT COUNT(*) FROM {table} WHERE device_id = $1', bystander) == count, table
+    other = await c.fetchrow('SELECT * FROM fire_alerts WHERE id = $1', bystander_alert)
+    assert other['resolved_at'] is None
+    assert other['resolve_reason'] is None
+    assert other['resolved_by'] is None
+    assert other['device_id'] == bystander
 
 
 async def test_permanent_delete_unknown_device_is_404_and_resolves_nothing(migrated_conn):
