@@ -744,7 +744,6 @@ watch(() => fireStore.zones, (list) => setZones(list.filter(z => z.is_active)), 
 onTrackerClick(onMarkerClick)
 onMapContextMenu(openContextMenu)
 
-<<<<<<< HEAD
 // Repeaters have no GNSS: an admin places each one by hand, like HQ. Everyone sees the placed ones.
 const repeaters     = ref([])
 const repeaterMode  = ref(false)
@@ -790,11 +789,9 @@ function toggleRepeaterMode() {
   }
   setRepeaterPlacementMode(repeaterMode.value)
 }
-=======
 // Set on unmount so a mount that is still awaiting (backend slow or down) does not go on to open a
 // socket, register listeners or start the tick on a view that is already gone.
 let unmounted = false
->>>>>>> d645c04 (fix(frontend): B66 partial snapshot failure and unmount during mount)
 
 onMounted(async () => {
   // The browser can open before uvicorn is up (start.ps1). A failed first snapshot must not stop the
@@ -821,11 +818,9 @@ onMounted(async () => {
   // HQ comes from the database. A failure shows an amber note with a retry; the map and live
   // data do not depend on it.
   await loadSettings()
-<<<<<<< HEAD
-  await loadRepeaters()
-=======
   if (unmounted) return
->>>>>>> d645c04 (fix(frontend): B66 partial snapshot failure and unmount during mount)
+  await loadRepeaters()
+  if (unmounted) return
 
   tickTimer = setInterval(() => { nowTick.value = Date.now() }, 10_000)
 })
