@@ -102,7 +102,7 @@ old_container_is_ours() {
     return 1
 }
 
-# Returns 0 once something is listening on localhost:$1 (bash /dev/tcp - no nc needed)
+# Returns 0 once something is listening on 127.0.0.1:$1 (bash /dev/tcp - no nc needed)
 port_open() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 
 # -- .env ------------------------------------------------------------------------
