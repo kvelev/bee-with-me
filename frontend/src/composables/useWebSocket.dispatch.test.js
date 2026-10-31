@@ -45,8 +45,9 @@ describe('useWebSocket message dispatch', () => {
     const msg = { type, device_id: 'd1', marker: type }
     const disconnect = send(msg)
     expect(store[method]).toHaveBeenCalledTimes(1)
-    const [arg] = store[method].mock.calls[0]
-    if (method !== 'applyFireZonesUpdated') expect(arg).toEqual(msg)
+    // fire_zones_updated only triggers a refetch: the store method takes no arguments
+    if (method === 'applyFireZonesUpdated') expect(store[method]).toHaveBeenCalledWith()
+    else expect(store[method]).toHaveBeenCalledWith(msg)
     // no other dispatch target received the message
     for (const [, s, m] of ALL) if (!(s === store && m === method)) expect(s[m]).not.toHaveBeenCalled()
     disconnect()

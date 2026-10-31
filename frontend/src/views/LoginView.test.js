@@ -6,6 +6,7 @@ import { createRouter, createMemoryHistory } from 'vue-router'
 vi.mock('../api', () => ({ getMe: vi.fn(), login: vi.fn(), getFireAlerts: vi.fn().mockResolvedValue([]) }))
 
 import { login, getMe } from '../api'
+import { ApiError } from '../api/client'
 import LoginView from './LoginView.vue'
 import { i18n } from '../i18n/index.js'
 import en from '../i18n/en.js'
@@ -54,10 +55,12 @@ describe('LoginView', () => {
   })
 
   it('shows login.error on failure and keeps the form [T117]', async () => {
-    login.mockRejectedValue('bad credentials')
+    login.mockRejectedValue(new ApiError('Not allowed', 403))
     const { w, push } = await mountView()
     await submit(w, 'admin', 'wrong')
+    // the login form shows its own message, never the server's text
     expect(w.find('p.error').text()).toBe(en.login.error)
+    expect(w.text()).not.toContain('Not allowed')
     expect(push).not.toHaveBeenCalled()
     const inputs = w.findAll('form.login-card input')
     expect(inputs[0].element.value).toBe('admin')

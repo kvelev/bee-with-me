@@ -4,6 +4,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 
 vi.mock('../api', () => ({ resolveSOS: vi.fn() }))
 
+import { ApiError } from '../api/client'
 import SOSBanner from './SOSBanner.vue'
 import { useLocationsStore } from '../stores/locations'
 import { i18n } from '../i18n/index.js'
@@ -43,7 +44,7 @@ describe('SOSBanner', () => {
 
   it('shows the resolve error and re-enables the button [T117]', async () => {
     const { w, store } = mountBanner([A1])
-    store.resolveSOS.mockRejectedValue('Not allowed')
+    store.resolveSOS.mockRejectedValue(new ApiError('Not allowed', 403))
     const btn = w.find('.resolve-btn')
     await btn.trigger('click')
     await flushPromises()

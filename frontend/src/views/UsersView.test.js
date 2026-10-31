@@ -8,7 +8,8 @@ vi.mock('../api', () => ({
   assignDevice: vi.fn(), importUsers: vi.fn(),
 }))
 
-import { getUsers, getDevices, deactivateUser, importUsers } from '../api'
+import { getUsers, getDevices, createUser, deactivateUser, importUsers } from '../api'
+import { ApiError } from '../api/client'
 import UsersView from './UsersView.vue'
 import { i18n } from '../i18n/index.js'
 import en from '../i18n/en.js'
@@ -75,14 +76,35 @@ describe('UsersView', () => {
   })
 
   it('shows the import error text when the import is rejected [T117]', async () => {
-    importUsers.mockRejectedValue('Bad spreadsheet')
+    importUsers.mockRejectedValue(new ApiError('Not allowed', 403))
     const w = mountView()
     await flushPromises()
     const input = w.find('input[type=file]')
     Object.defineProperty(input.element, 'files', { value: [new File(['x'], 'p.xlsx')] })
     await input.trigger('change')
     await flushPromises()
-    expect(w.find('.page-error').text()).toBe('Bad spreadsheet')
+    expect(w.find('.page-error').text()).toBe('Not allowed')
     expect(w.find('.import-result').exists()).toBe(false)
+  })
+
+  it('shows the create error in the form and keeps it open [T117]', async () => {
+    createUser.mockRejectedValue(new ApiError('Username already taken', 409))
+    const w = mountView()
+    await flushPromises()
+
+    await w.findAll('button').find(b => b.text() === en.users.add).trigger('click')
+    await flushPromises()
+    const modal = w.find('.modal')
+    const [first, last] = modal.findAll('input[required]')
+    await first.setValue('Ivan')
+    await last.setValue('Petrov')
+    await modal.findAll('button').find(b => b.text() === en.users.form.save).trigger('click')
+    await flushPromises()
+
+    expect(createUser).toHaveBeenCalledTimes(1)
+    expect(createUser.mock.calls[0][0]).toMatchObject({ first_name: 'Ivan', last_name: 'Petrov' })
+    expect(w.find('.modal p.error').text()).toBe('Username already taken')
+    expect(w.find('.page-error').exists()).toBe(false)
+    expect(getUsers).toHaveBeenCalledTimes(1)
   })
 })

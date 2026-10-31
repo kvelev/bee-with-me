@@ -7,7 +7,8 @@ vi.mock('../api', () => ({
   reactivateDevice: vi.fn(), permanentDeleteDevice: vi.fn(), getUsers: vi.fn(),
 }))
 
-import { getDevices, getUsers, deleteDevice, reactivateDevice, permanentDeleteDevice } from '../api'
+import { getDevices, getUsers, createDevice, deleteDevice, reactivateDevice, permanentDeleteDevice } from '../api'
+import { ApiError } from '../api/client'
 import DevicesView from './DevicesView.vue'
 import { useLocationsStore } from '../stores/locations'
 import { i18n } from '../i18n/index.js'
@@ -79,5 +80,23 @@ describe('DevicesView', () => {
     await flushPromises()
     expect(permanentDeleteDevice).toHaveBeenCalledWith('d1')
     expect(getDevices).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows the create error in the form and keeps it open [T117]', async () => {
+    createDevice.mockRejectedValue(new ApiError('Serial number already registered', 409))
+    const w = mountView()
+    await flushPromises()
+
+    await w.findAll('button').find(b => b.text() === en.devices.add).trigger('click')
+    await flushPromises()
+    await w.find('.modal input[type="number"]').setValue(1001)
+    await w.find('.modal').findAll('button').find(b => b.text() === en.devices.form.save).trigger('click')
+    await flushPromises()
+
+    expect(createDevice).toHaveBeenCalledTimes(1)
+    expect(createDevice.mock.calls[0][0]).toMatchObject({ dev_sn: 1001, device_type: 'bee' })
+    expect(w.find('.modal p.error').text()).toBe('Serial number already registered')
+    expect(w.find('.modal').exists()).toBe(true)
+    expect(getDevices).toHaveBeenCalledTimes(1)
   })
 })

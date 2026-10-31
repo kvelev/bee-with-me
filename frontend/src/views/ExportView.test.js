@@ -7,6 +7,7 @@ vi.mock('../api', () => ({
 }))
 
 import { getGroups, getUsers, exportCSV, exportGeoJSON } from '../api'
+import { ApiError } from '../api/client'
 import ExportView from './ExportView.vue'
 import { i18n } from '../i18n/index.js'
 import en from '../i18n/en.js'
@@ -70,12 +71,12 @@ describe('ExportView', () => {
   })
 
   it('shows the error text when an export fails [T117]', async () => {
-    exportCSV.mockRejectedValue('Server exploded')
+    exportCSV.mockRejectedValue(new ApiError('Not allowed', 403))
     const w = mountView()
     await flushPromises()
     await w.findAll('.export-btns button')[0].trigger('click')
     await flushPromises()
-    expect(w.find('.error').text()).toBe('Server exploded')
+    expect(w.find('.error').text()).toBe('Not allowed')
     expect(createObjectURL).not.toHaveBeenCalled()
     expect(w.findAll('.export-btns button')[0].attributes('disabled')).toBeUndefined()
   })

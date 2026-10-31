@@ -7,9 +7,11 @@ vi.mock('../api', () => ({
   deactivateGroup: vi.fn(), reactivateGroup: vi.fn(), addMember: vi.fn(), removeMember: vi.fn(), getUsers: vi.fn(),
 }))
 
-import { getGroups, getGroup, getUsers, deactivateGroup, reactivateGroup, deleteGroup, removeMember } from '../api'
+import { getGroups, getGroup, getUsers, createGroup, deactivateGroup, reactivateGroup, deleteGroup, removeMember } from '../api'
+import { ApiError } from '../api/client'
 import GroupsView from './GroupsView.vue'
 import { i18n } from '../i18n/index.js'
+import en from '../i18n/en.js'
 
 const G1 = { id: 'g1', name: 'Alpha', color: '#ff0000', is_active: true, member_count: 2 }
 const G2 = { id: 'g2', name: 'Bravo', color: '#00ff00', is_active: false, member_count: 0 }
@@ -100,5 +102,23 @@ describe('GroupsView', () => {
     expect(removeMember).toHaveBeenCalledWith('g1', 'm1')
     expect(getGroup).toHaveBeenCalledWith('g1')
     expect(w.findAll('.card')[1].findAll('tbody tr')).toHaveLength(1)
+  })
+
+  it('shows the create error in the form and keeps it open [T117]', async () => {
+    createGroup.mockRejectedValue(new ApiError('Group name already exists', 409))
+    const w = mountView()
+    await flushPromises()
+
+    await w.findAll('button').find(b => b.text() === en.groups.add).trigger('click')
+    await flushPromises()
+    await w.find('.modal input').setValue('Alpha')
+    await w.find('.modal').findAll('button').find(b => b.text() === en.groups.form.save).trigger('click')
+    await flushPromises()
+
+    expect(createGroup).toHaveBeenCalledTimes(1)
+    expect(createGroup.mock.calls[0][0].name).toBe('Alpha')
+    expect(w.find('.modal p.error').text()).toBe('Group name already exists')
+    expect(w.find('.modal').exists()).toBe(true)
+    expect(getGroups).toHaveBeenCalledTimes(1)
   })
 })
