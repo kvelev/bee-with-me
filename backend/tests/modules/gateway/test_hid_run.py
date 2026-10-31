@@ -161,3 +161,18 @@ async def test_device_opened_nonblocking_and_released_on_stop(harness):
     assert harness.dev.closed is True
     harness.conn.close.assert_awaited_once()
     assert hid_reader.status['connected'] is False
+
+
+async def test_unprocessable_frame_sends_no_confirm_and_reading_continues(harness):
+    # _process_frame returns None (bad CRC, unknown frame): nothing to ACK, and the loop must not
+    # drop into the reconnect path (removing the `if confirm:` guard would raise on None)
+    harness.process_frame.side_effect = None
+    harness.process_frame.return_value = None
+
+    await hid_reader.run()
+
+    assert harness.process_frame.await_count == 1
+    harness.send_data.assert_not_awaited()
+    assert harness.dev.reads == harness.script_len      # kept polling to the end of the script
+    assert harness.connect.await_count == 1             # no reconnect
+    assert hid_reader.status['error'] is None

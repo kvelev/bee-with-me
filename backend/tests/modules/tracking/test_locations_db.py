@@ -134,6 +134,37 @@ async def test_trail_skips_positions_without_fix(migrated_conn):
     assert len(trail[str(d)]) == 1
 
 
+async def test_trail_excludes_inactive_devices(migrated_conn):
+    from backend.routers import locations
+    c = migrated_conn
+    u = await _user(c, 'A')
+    retired, live = await _device(c, 1, u), await _device(c, 2, u)
+    await c.execute('UPDATE devices SET is_active = FALSE WHERE id = $1', retired)
+    await c.execute(_INSERT_EVENT, retired, u, 2, True, False)
+    await c.execute(_INSERT_EVENT, live, u, 2, True, False)
+
+    trail = await locations.location_trail(c, {'id': u}, minutes=30)
+
+    assert list(trail.keys()) == [str(live)]
+
+
+async def test_trail_points_come_back_oldest_first(migrated_conn):
+    from backend.routers import locations
+    c = migrated_conn
+    u = await _user(c, 'A')
+    d = await _device(c, 1, u)
+    # the newer point is inserted first, so insertion order and received_at order disagree
+    await c.execute(_INSERT_EVENT, d, u, 2, True, False)
+    await c.execute(_INSERT_EVENT, d, u, 10, True, False)
+
+    trail = await locations.location_trail(c, {'id': u}, minutes=30)
+
+    stamps = [p['received_at'] for p in trail[str(d)]]
+    assert len(stamps) == 2
+    assert stamps[0] < stamps[1]
+    assert stamps == sorted(stamps)
+
+
 async def test_resolve_sos_twice_keeps_the_first_resolver(migrated_conn):
     from backend.routers import locations
     c = migrated_conn

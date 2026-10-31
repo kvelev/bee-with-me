@@ -199,3 +199,84 @@ async def test_repeater_frame_inserts_heartbeat(mock_conn):
     inserts = sql_calls(mock_conn.execute, 'INSERT INTO repeater_events')
     assert len(inserts) == 1
     assert inserts[0].args[1:] == ('rep-uuid-1', 100, 3.4)
+
+
+# ── fix round 2: pin the meaning, not only the shape ─────────────────────────
+
+async def test_insert_args_and_full_payload_pin_clocks_and_columns(mock_conn):
+    group = {'id': 'g-uuid-1', 'name': 'Alpha', 'color': '#ff0', 'is_leader': True}
+    install(mock_conn, device=DEVICE, prev_sos=False, existing_alert=None, user=USER, groups=[group])
+    frame = bee_frame(raw_flags=5, speed_knots=7.5, course_deg=211, battery_voltage=3.9, altitude_m=321,
+                      gnss_satellites=9, repeater_mode=True)
+
+    before = datetime.now(timezone.utc)
+    await _handle_bee(frame, mock_conn)
+    after = datetime.now(timezone.utc)
+
+    insert = sql_calls(mock_conn.execute, 'INSERT INTO location_events')[0]
+    args = insert.args
+    # lon/lat order in the geometry: ST_MakePoint(x = longitude $7, y = latitude $6)
+    assert 'ST_MakePoint($7, $6)' in args[0]
+    # args[0] is the SQL text, so args[n] is $n
+    assert args[1:5] == ('dev-uuid-1', 'user-uuid-1', 2, RECORDED)
+    received_at = args[5]
+    # server clock, never the device clock
+    assert received_at.tzinfo is not None
+    assert before <= received_at <= after
+    assert abs((received_at - datetime.now(timezone.utc)).total_seconds()) < 5
+    assert received_at != frame.recorded_at
+    assert args[6:9] == (42.1438409, 24.7495615, '35TNH1234567890')
+    assert args[9] == 321                # altitude_m
+    assert args[10] == 7.5               # speed_knots
+    assert args[11] == 211               # course_deg
+    assert args[12] == 9                 # gnss_satellites
+    assert args[13] == 3.9               # battery_voltage
+    assert args[14] is False             # sos_active
+    assert args[15] is True              # repeater_mode
+    assert args[16] == 5                 # raw_flags
+    assert args[17] is True              # gnss_valid
+
+    p = notifies(mock_conn, 'location_update')[0]
+    assert p == {
+        'device_id': 'dev-uuid-1', 'user_id': 'user-uuid-1', 'full_name': 'Ivan Petrov', 'rank': 'Sgt',
+        'photo_url': None, 'phone': '+359', 'mgrs': '35TNH1234567890',
+        'latitude': 42.1438409, 'longitude': 24.7495615, 'altitude_m': 321, 'speed_knots': 7.5,
+        'course_deg': 211, 'battery_voltage': 3.9, 'gnss_satellites': 9, 'gnss_valid': True,
+        'sos_active': False, 'repeater_mode': True,
+        'recorded_at': RECORDED.isoformat(), 'received_at': received_at.isoformat(),
+        'groups': [{'id': 'g-uuid-1', 'name': 'Alpha', 'color': '#ff0', 'is_leader': True}],
+    }
+    assert p['received_at'] != p['recorded_at']
+
+
+async def test_queries_filter_active_rows_and_order_newest_first(mock_conn):
+    # a no-fix frame exercises the last-fix query; the SOS lookups need the previous-SOS query too
+    last_fix = {'latitude': 42.1, 'longitude': 24.1, 'mgrs': '35TNH0000000000'}
+    install(mock_conn, device=DEVICE, last_fix=last_fix, prev_sos=False, user=USER)
+
+    await _handle_bee(bee_frame(gnss_valid=False), mock_conn)
+
+    device_sql = sql_calls(mock_conn.fetchrow, 'FROM devices')[0].args[0]
+    assert 'is_active = TRUE' in device_sql
+    assert 'device_type = $2' in device_sql
+    last_fix_sql = sql_calls(mock_conn.fetchrow, 'gnss_valid = TRUE')[0].args[0]
+    assert 'ORDER BY received_at DESC LIMIT 1' in last_fix_sql
+    prev_sos_sql = sql_calls(mock_conn.fetchval, 'SELECT sos_active')[0].args[0]
+    assert 'ORDER BY received_at DESC LIMIT 1' in prev_sos_sql
+    groups_sql = sql_calls(mock_conn.fetch, 'FROM user_groups')[0].args[0]
+    assert 'g.is_active = TRUE' in groups_sql
+
+
+async def test_userless_device_is_still_broadcast(mock_conn):
+    install(mock_conn, device={'id': 'dev-uuid-1', 'user_id': None}, prev_sos=False, user=None)
+
+    await _handle_bee(bee_frame(), mock_conn)
+
+    inserts = sql_calls(mock_conn.execute, 'INSERT INTO location_events')
+    assert len(inserts) == 1
+    assert inserts[0].args[2] is None  # $2 user_id
+    payloads = notifies(mock_conn, 'location_update')
+    assert len(payloads) == 1
+    assert payloads[0]['user_id'] is None
+    assert payloads[0]['full_name'] is None
+    assert payloads[0]['groups'] == []

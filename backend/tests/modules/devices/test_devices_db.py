@@ -66,6 +66,30 @@ async def test_permanent_delete_removes_events_and_resolves_fire_alerts(migrated
     assert other['device_id'] == bystander
 
 
+async def test_permanent_delete_keeps_the_history_of_an_already_resolved_alert(migrated_conn):
+    from backend.routers import devices
+    c = migrated_conn
+    admin = await _admin(c)
+    earlier_admin = await c.fetchval("INSERT INTO users (full_name, role) VALUES ('Earlier', 'admin') RETURNING id")
+    dev = await c.fetchval('INSERT INTO devices (dev_sn) VALUES (31) RETURNING id')
+    hotspot = await c.fetchval(
+        "INSERT INTO fire_hotspots (source, effis_id, acquired_at, latitude, longitude) "
+        "VALUES ('viirs', 'resolved-before', NOW(), 42.5, 24.5) RETURNING id")
+    alert = await c.fetchval(
+        "INSERT INTO fire_alerts (hotspot_id, target_type, device_id, distance_m, resolved_at, resolve_reason, "
+        "resolved_by) VALUES ($1, 'rescuer', $2, 100, NOW() - INTERVAL '2 hours', 'aged_out', $3) RETURNING id",
+        hotspot, dev, earlier_admin)
+    before = await c.fetchrow('SELECT resolved_at, resolve_reason, resolved_by FROM fire_alerts WHERE id = $1', alert)
+
+    await devices.delete_device_permanent(dev, c, {'id': admin})
+
+    row = await c.fetchrow('SELECT * FROM fire_alerts WHERE id = $1', alert)
+    assert row['resolved_at'] == before['resolved_at']
+    assert row['resolve_reason'] == 'aged_out'
+    assert row['resolved_by'] == earlier_admin
+    assert row['device_id'] is None     # the FK nulls it, the history stays
+
+
 async def test_permanent_delete_unknown_device_is_404_and_resolves_nothing(migrated_conn):
     import uuid
     from backend.routers import devices
