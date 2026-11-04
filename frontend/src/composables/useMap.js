@@ -59,53 +59,94 @@ export const BASEMAPS = [
   { id: 'satellite',    label: 'Satellite' },
   { id: 'topo',         label: 'Topo' },
   { id: 'bgmountains',  label: 'BG Mountains', local: true },
+  { id: 'offline',      label: 'Offline' },
 ]
-
-const TILE_SERVER = 'http://localhost:8080'
 
 const { bgMountainsOffline, resolveBgMountainsDefault } = useSettings()
 
 function makeBgMountainsSource() {
   if (bgMountainsOffline.value) {
-    return new XYZ({ url: '/tiles/bgmountains/{z}/{x}/{y}.png', attributions: '© BGMountains', maxZoom: 18 })
+    return new XYZ({
+      url: '/tiles/bgmountains/{z}/{x}/{y}.png',
+      attributions: '© BGMountains',
+      wrapX: false,
+      minZoom: 7,
+      maxZoom: 18,
+      transition: 0,
+    })
   }
-  return new XYZ({ url: 'https://bgmtile.kade.si/{z}/{x}/{y}.png', attributions: '© BGMountains', crossOrigin: 'anonymous', maxZoom: 18 })
+
+  return new XYZ({
+    url: 'https://bgmtile.kade.si/{z}/{x}/{y}.png',
+    attributions: '© BGMountains',
+    crossOrigin: 'anonymous',
+    maxZoom: 18,
+  })
+}
+
+function makeOfflineSource() {
+  // Взимаме името на избраната MBTiles карта от localStorage
+  const selectedMap = localStorage.getItem('selectedOfflineMap') || 'default'
+
+  const HOST = import.meta.env.VITE_TILE_HOST;
+  const PORT = import.meta.env.VITE_TILE_PORT;
+
+  const TILE_SERVER = `http://${HOST}:${PORT}`;
+
+  return new XYZ({
+    // Добавяме параметри против кеширане на стария слой
+    url: `${TILE_SERVER}/tiles/{z}/{x}/{y}.jpg?map=${encodeURIComponent(selectedMap)}&t=${Date.now()}`,
+    attributions: 'Offline',
+    wrapX: false,
+    transition: 0, // Изключваме плавното преливане, за да не прозират стари тайлове
+  })
 }
 
 function makeBasemapLayer(id) {
-  const sources = {
-    osm: new OSM(),
-    dark: new XYZ({
-      url: 'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
-      attributions: '© CartoDB',
-    }),
-    satellite: new XYZ({
-      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      attributions: '© Esri',
-    }),
-    topo: new XYZ({
-      url: 'https://{a-c}.tile.opentopomap.org/{z}/{x}/{y}.png',
-      attributions: '© OpenTopoMap',
-    }),
-    bgmountains: makeBgMountainsSource(),
-  }
-  return new TileLayer({ source: sources[id] ?? sources.osm })
-}
+  let source
 
-function gridInterval(zoom) {
-  if (zoom >= 14) return 0.01
-  if (zoom >= 11) return 0.1
-  if (zoom >= 8)  return 1
-  return 5
-}
+  switch (id) {
+    default:
+    case 'osm':
+      source = new OSM()
+      break
 
-function makeMGRSLabel(lon, lat) {
-  try {
-    const mgrs = toMGRS([lon, lat], 0)
-    return mgrs.slice(0, 7)
-  } catch {
-    return ''
+    case 'dark':
+      source = new XYZ({
+        url:
+          'https://{a-d}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+        attributions: '© CartoDB',
+      })
+      break
+
+    case 'satellite':
+      source = new XYZ({
+        url:
+          'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attributions: '© Esri',
+      })
+      break
+
+    case 'topo':
+      source = new XYZ({
+        url:
+          'https://{a-c}.tile.opentopomap.org/{z}/{x}/{y}.png',
+        attributions: '© OpenTopoMap',
+      })
+      break
+
+    case 'bgmountains':
+      source = makeBgMountainsSource()
+      break
+
+    case 'offline':
+      source = makeOfflineSource()
+      break
   }
+
+  return new TileLayer({
+    source,
+  })
 }
 
 // Fire colours live as tokens in style.css (--fire-*). OpenLayers paints on a canvas and
@@ -504,7 +545,19 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   function setBasemap(id) {
     if (!map) return
     activeBasemapId = id
+
+    // 1. Изчистваме източника на стария слой от паметта
+    if (basemapLayer) {
+      const oldSource = basemapLayer.getSource()
+      if (oldSource && typeof oldSource.clear === 'function') {
+        oldSource.clear()
+      }
+    }
+
+    // 2. Премахваме стария слой от картата
     map.getLayers().removeAt(0)
+
+    // 3. Създаваме новия слой (който ще извика обновения makeOfflineSource())
     basemapLayer = makeBasemapLayer(id)
     map.getLayers().insertAt(0, basemapLayer)
   }

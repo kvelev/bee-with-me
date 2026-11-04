@@ -89,7 +89,7 @@
         {{ t('fire.zone.loadFailed') }}
         <button class="bm-btn" @click="retryZones">{{ t('fire.zone.retry') }}</button>
       </span>
-      <template v-if="activeBasemap === 'satellite'">
+      <template v-if="activeBasemap === 'satellite' || activeBasemap === 'offline'">
         <span class="bm-row-break" />
         <button
           v-for="wl in WEATHER_LAYERS" :key="wl.id"
@@ -790,6 +790,14 @@ function toggleRepeaterMode() {
   setRepeaterPlacementMode(repeaterMode.value)
 }
 
+function reloadOfflineBasemap() {
+  if (activeBasemap.value === 'offline') {
+    setBasemap('offline')
+  }
+}
+
+
+
 onMounted(async () => {
   await Promise.all([store.fetchLive(), store.fetchSOS(), store.fetchTrail()])
   connect()
@@ -802,6 +810,8 @@ onMounted(async () => {
   const m = map()
   if (m) m.on('moveend', scheduleWeatherFetch)
 
+  window.addEventListener('offline-map-changed', reloadOfflineBasemap)
+  
   // HQ comes from the database. A failure shows an amber note with a retry; the map and live
   // data do not depend on it.
   await loadSettings()
@@ -821,6 +831,9 @@ onUnmounted(() => {
   stopWindAnim()
   const m = map()
   if (m) m.un('moveend', scheduleWeatherFetch)
+
+  window.removeEventListener('offline-map-changed', reloadOfflineBasemap)
+
   // The popup overlay belongs to this view; do not leave it on a map that outlives it.
   onFireFeatureClick(null)
   onTrackerClick(null)
@@ -1252,7 +1265,7 @@ function batClass(v) {
   width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
   background: currentColor;
 }
-.serial-ok .serial-dot { animation: sos-pulse-border .none; box-shadow: 0 0 4px currentColor; }
+.serial-ok .serial-dot { animation: sos-pulse-border none; box-shadow: 0 0 4px currentColor; }
 
 .basemap-switcher {
   position: absolute; bottom: 38px; left: 12px; z-index: 50;

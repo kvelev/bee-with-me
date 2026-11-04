@@ -7,6 +7,7 @@ export default {
     devices: 'Устройства',
     export:  'Експорт',
     about:   'За нас',
+    selectofflinemap: 'Избор на офлайн карта',
     settings:'Настройки',
   },
   login: {
@@ -77,6 +78,7 @@ export default {
       satellite:   'Сателит',
       topo:        'Топо',
       bgmountains: 'БГ Планини',
+      offline: 'Офлайн',
     },
   },
   users: {
@@ -354,6 +356,11 @@ export default {
     emailPerson: 'Изпрати имейл на {name}, {email}',
     team:        'Екип',
     license:     'Лиценз',
+  },
+  selectOfflinemap: {
+    select: 'Избери карта за офлайн работа',
+    load: 'Избери',
+    loading: 'Зареждане…',
   },
   fire: {
     layers: {
