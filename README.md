@@ -154,7 +154,7 @@ delete the `data/pgdata` folder (it is a bind mount, `down -v` does not remove i
 The start scripts use Podman when it is installed and Docker otherwise; set `CONTAINER_ENGINE=docker`
 (or `podman`) to choose explicitly.
 
-The compose project is named `bee-with-me` (containers `bee-with-me-db-1`, `bee-with-me-tiles-1`), so
+The compose project is named `bee-with-me` (container `bee-with-me-db-1`), so
 the scripts only ever pick this project's database; with the Podman-machine override the data volume
 is `bee-with-me_pgdata`. Every script passes `-p bee-with-me` to compose explicitly (older
 podman-compose versions ignore the `name:` key).
