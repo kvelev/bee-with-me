@@ -71,8 +71,8 @@ backend/
   db/migrations/         ← one numbered sequence (ADR 10); each file names its module in the header
 ```
 
-> 📝 **Naming.** The backend kernel is `backend/core/`; the frontend keeps `src/platform/`. Where this document
-> still says `platform/` for the backend (Sections 5 to 7), read `core/`; `platform/live` is `core/ws.py` until it
+> 📝 **Naming.** The backend kernel is `backend/core/`; the frontend keeps `src/platform/`. Wherever this document
+> still says `platform/` and means the backend (Sections 3.3 to 7), read `core/`; `platform/live` is `core/ws.py` until it
 > is renamed. The file list above follows the step 0 plan
 > (`docs/superpowers/plans/2026-11-07-vs-step0-kernel-and-guards.md`, T300 to T307).
 
@@ -290,9 +290,9 @@ Modelled on `EDynamix.ServiceHub.ArchitectureTests` (NetArchTest): rules written
 > that add the dependencies wait for this approval.
 
 **Ratchet.** The tests start with an allowlist of today's violations, so they pass on day one. The allowlists are
-data: import violations as `ignore_imports` lines in `backend/tests/architecture/importlinter.toml`, SQL writes in
-`backend/tests/architecture/allowlist.json`, frontend violations in `src/architecture.allowlist.json`; every entry
-names the step that removes it (`until step N`). Three tests keep the ratchet honest:
+data: import violations as `ignore_imports` lines in `backend/tests/architecture/importlinter.toml` and SQL writes in
+`backend/tests/architecture/allowlist.json`; both name the step that removes each entry (`until step N`). Frontend
+violations are keys `rule|from|to` in `src/architecture.allowlist.json`. Three tests keep the ratchet honest:
 
 - **New violations fail**, and **stale entries fail** (exact match): the failure message says "delete this line".
 - **The list may not grow:** a test compares the number of entries with the file at the merge base and fails when

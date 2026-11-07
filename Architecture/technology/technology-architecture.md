@@ -24,7 +24,7 @@ Facts from the owner (2026-10-03):
 flowchart TB
     subgraph FIELD["Command post"]
         subgraph LAPTOP["Field laptop (Windows or Linux)"]
-            subgraph HOST["Host processes, bound to 127.0.0.1"]
+            subgraph HOST["Host processes, meant to bind 127.0.0.1 (R-27 for the tile server)"]
                 BR[Browser windows<br/>operator screen + wall display]
                 VITE[Vite dev server :5173<br/>serves the map client,<br/>proxies /api /ws /tiles /uploads]
                 UV[uvicorn :8000<br/>FastAPI backend + readers]

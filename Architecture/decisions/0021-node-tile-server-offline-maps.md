@@ -26,8 +26,9 @@ Pull request #53 added `tile-server/` to the repository: a small Node.js HTTP se
 What the code does:
 
 - Reads `.mbtiles` files from `tile-server/maps/` (git-ignored, so the map data is not in the repository) and serves
-  `GET /tiles/{z}/{x}/{y}.jpg?map=<name>`, `GET /api/maps`, `GET /api/current` and `GET /api/select/<file>.mbtiles`.
-  The last one changes the map the server serves, for every client.
+  `GET /tiles/{z}/{x}/{y}.jpg`, `GET /api/maps`, `GET /api/current` and `GET /api/select/<file>.mbtiles`.
+  The last one changes the map the server serves, for every client; the server keeps one selected map and ignores
+  the `?map=` query parameter that the map client sends (it only defeats the browser cache).
 - Takes its host and port from `VITE_TILE_HOST` and `VITE_TILE_PORT` in the project `.env`
   (`.env.example`: `127.0.0.1:8081`). The map client builds tile URLs from the same variables
   (`frontend/src/composables/useMap.js`) and offers the choice in `SelectOfflineMap.vue`.
