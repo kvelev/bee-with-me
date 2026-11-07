@@ -240,7 +240,8 @@ if (-not $SkipContainers) {
     $deadline = (Get-Date).AddSeconds(60)
     $ready = $false
     do {
-        $ready = (Test-NetConnection -ComputerName 'localhost' -Port $pgPort -InformationLevel Quiet -WarningAction SilentlyContinue)
+        # 127.0.0.1, not localhost: the port is published on IPv4 only and a refused ::1 try costs ~2 s (B67)
+        $ready = (Test-NetConnection -ComputerName '127.0.0.1' -Port $pgPort -InformationLevel Quiet -WarningAction SilentlyContinue)
         if (-not $ready) { Start-Sleep -Seconds 1 }
     } until ($ready -or (Get-Date) -gt $deadline)
 

@@ -13,6 +13,9 @@ let socket = null
 let reconnectTimer = null
 let resyncTimer = null
 let hasConnectedBefore = false
+// Set by connect({ catchUp: true }) when the view's first snapshot fetch failed (backend still
+// starting). The first socket that really opens then pulls the snapshot like a reconnect would.
+let catchUpOnOpen = false
 // Set by an explicit disconnect() (logout, unmount); only the next connect() clears it.
 let stopped = false
 
@@ -39,8 +42,10 @@ export function useWebSocket() {
     sock.onopen = sock.onmessage = sock.onclose = sock.onerror = null
   }
 
-  function connect() {
+  function connect({ catchUp = false } = {}) {
     if (isUnmounted) return
+    // The reconnect timer calls connect() without options and must not clear a pending catch-up.
+    if (catchUp) catchUpOnOpen = true
     stopped = false
     clearTimeout(reconnectTimer)
     // A quick re-login must not leave the previous socket alive next to the new one.
@@ -53,7 +58,7 @@ export function useWebSocket() {
 
     sock.onopen = () => {
       store.setConnected(true)
-      if (hasConnectedBefore) {
+      if (hasConnectedBefore || catchUpOnOpen) {
         // Reconnected after a drop (sleep/wake, network blip, backend restart) — any
         // pushes missed during the gap are gone, so pull a fresh snapshot instead of
         // trusting stale/partial state.
@@ -64,6 +69,8 @@ export function useWebSocket() {
         fireStore.refreshVisible().catch(() => { /* fetchFailed drives the pill */ })
       }
       hasConnectedBefore = true
+      // Defensive: hasConnectedBefore already covers every later open; this just keeps the flag honest.
+      catchUpOnOpen = false
     }
 
     sock.onmessage = (event) => {
