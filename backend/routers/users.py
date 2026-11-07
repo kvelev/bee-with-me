@@ -21,7 +21,9 @@ from ..fire.service import notify_alerts_updated
 router = APIRouter(prefix='/api/users', tags=['users'])
 
 UPLOAD_DIR = str(Path(__file__).resolve().parent.parent / 'uploads')
-ALLOWED_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
+# The stored extension comes from the validated content type, never from the client's filename (B68).
+PHOTO_EXTENSIONS = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}
+ALLOWED_TYPES = set(PHOTO_EXTENSIONS)
 
 
 class UserCreate(BaseModel):
@@ -181,10 +183,10 @@ async def upload_photo(
     conn: Annotated[asyncpg.Connection, Depends(get_conn)],
     _: Annotated[asyncpg.Record, Depends(require_role('admin'))],
 ):
-    if file.content_type not in ALLOWED_TYPES:
+    ext = PHOTO_EXTENSIONS.get(file.content_type or '')
+    if ext is None:
         raise HTTPException(status_code=400, detail='Only JPEG, PNG and WebP images are allowed')
 
-    ext = file.filename.rsplit('.', 1)[-1].lower()
     filename = f'{uuid.uuid4()}.{ext}'
     path = os.path.join(UPLOAD_DIR, filename)
 
