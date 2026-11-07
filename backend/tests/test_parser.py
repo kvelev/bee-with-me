@@ -202,6 +202,22 @@ def test_repeater_frame():
     assert frame.event_id == 412
 
 
+@pytest.mark.Trait("Task", "B74")
+def test_protocol_frames_carry_the_rssi_snr_fields():
+    """Single pin for the four link-quality fields of each frame type, so a change to BeeFrame or
+    RepeaterFrame breaks this one test and not every hand-built fixture. The bee frame is the
+    docs/PROTOCOL.md example (-97, 7, -101, 5)."""
+    bee = parse_frame(make_frame(BEE_BODY))
+    assert isinstance(bee, BeeFrame)
+    assert (bee.curr_m_rx_bee_rssi, bee.curr_m_rx_bee_snr) == (-97, 7)
+    assert (bee.prev_bee_rx_m_rssi, bee.prev_bee_rx_m_snr) == (-101, 5)
+
+    rep = parse_frame(make_frame(REPEATER_BODY))
+    assert isinstance(rep, RepeaterFrame)
+    assert (rep.curr_m_rx_dev_rssi, rep.curr_m_rx_dev_snr) == (-88, 9)
+    assert (rep.prev_dev_rx_m_rssi, rep.prev_dev_rx_m_snr) == (-92, 8)
+
+
 # ── Confirm (Cmd=1) ───────────────────────────────────────────────────────────
 
 def test_make_confirm_shape():

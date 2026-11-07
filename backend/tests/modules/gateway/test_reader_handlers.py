@@ -33,7 +33,9 @@ def bee_frame(**over) -> BeeFrame:
         msg_id=2, dev_sn=1235, recorded_at=RECORDED, gnss_valid=True,
         latitude=42.1438409, longitude=24.7495615, mgrs='35TNH1234567890',
         speed_knots=5.0, course_deg=137, gnss_satellites=12, altitude_m=200,
-        battery_voltage=3.7, sos_active=False, repeater_mode=False, raw_flags=0, event_id=884,
+        battery_voltage=3.7,
+        curr_m_rx_bee_rssi=-90, curr_m_rx_bee_snr=5, prev_bee_rx_m_rssi=-90, prev_bee_rx_m_snr=5,
+        sos_active=False, repeater_mode=False, raw_flags=0, event_id=884,
     )
     fields.update(over)
     return BeeFrame(**fields)
@@ -193,7 +195,9 @@ async def test_inactive_user_frame_is_stored_but_not_broadcast(mock_conn):
 async def test_repeater_frame_inserts_heartbeat(mock_conn):
     install(mock_conn, device={'id': 'rep-uuid-1', 'user_id': None})
 
-    await _handle_repeater(RepeaterFrame(msg_id=100, dev_sn=1256, battery_voltage=3.4, event_id=412), mock_conn)
+    await _handle_repeater(RepeaterFrame(msg_id=100, dev_sn=1256, battery_voltage=3.4,
+                                     curr_m_rx_dev_rssi=-90, curr_m_rx_dev_snr=5,
+                                     prev_dev_rx_m_rssi=-90, prev_dev_rx_m_snr=5, event_id=412), mock_conn)
 
     assert sql_calls(mock_conn.fetchrow, 'FROM devices')[0].args[1:] == (1256, 'repeater')
     inserts = sql_calls(mock_conn.execute, 'INSERT INTO repeater_events')
