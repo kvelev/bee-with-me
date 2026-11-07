@@ -8,9 +8,9 @@
 
 **Tech Stack:** Python 3.11+, FastAPI, pydantic-settings, `import-linter` (new), pytest; Vue 3 + vitest, `dependency-cruiser` (new).
 
-**Spec:** `docs/superpowers/specs/2026-10-31-vertical-slices-programme-design.md` (workspace kit, not in this repo; sections 5 "Step 0", 6, 7), `Architecture/application/modular-monolith.md` sections 3, 4, 9, ADR 17 (Accepted), ADR 18 and ADR 19 (Proposed). `docs/PROTOCOL.md` is not touched.
+**Spec:** [`docs/superpowers/specs/2026-10-31-vertical-slices-programme-design.md`](../specs/2026-10-31-vertical-slices-programme-design.md) (sections 5 "Step 0", 6, 7), `Architecture/application/modular-monolith.md` sections 3, 4, 9, ADR 17 (Accepted), ADR 18 and ADR 19 (Proposed). `docs/PROTOCOL.md` is not touched.
 
-**Base:** `upstream/develop` at `cdc8f51` (PR #70); the code is unchanged since, `upstream/develop` is now at `4719f99` (this plan's PR #71 merged; review fixes follow in a docs PR). Branch for this plan: `docs/vs-step0-plan`. Execution branches: `feature/vs-0-<task>` off `develop`, one PR each.
+**Base:** `upstream/develop` at `cdc8f51` (PR #70) when the plan was written; the backend and frontend code is unchanged since (PR #71 added the plan, PR #77 its review fixes). Branch for this plan: `docs/vs-step0-plan`. Execution branches: `feature/vs-0-<task>` off `develop`, one PR each.
 
 ## Global Constraints
 
@@ -46,7 +46,7 @@ Measured on 2026-11-07 on this repo (Windows 11, Python 3.14 in a scratch venv, 
 | Run time | 2.3 s warm, 18 s on the first cold run on the dev laptop; budget for CI: under 30 s (measure in T304, note in the PR). | about 1 s. |
 | Maintenance | Config is data (TOML): an allowlist change is a reviewable diff of one line; callable from pytest through `importlinter.cli.lint_imports(config_filename=...) -> int` (confirm the keyword for "no cache" first: the CLI flag is `--no-cache`, the Python function may take `cache_dir=None` instead; fall back to a `lint-imports --no-cache` subprocess if neither fits) and from a hook as `lint-imports`. Version 2.x. | Rules live in test code; version 0.0.x (pre-1.0). |
 
-**Choice: import-linter.** The ratchet the programme depends on (new violations fail, finished steps must delete their lines) is built in; the alternative needs code that we would then maintain. Its weakness is that the config is a second place for an allowlist; SQL ownership and manifest completeness have no import-linter equivalent and are plain pytest with `allowlist.json` (decided by the spec). Both live in `backend/tests/architecture/`, so the kit's write scope and CI already cover them. A cold CI cache costs a few seconds; the `.import_linter_cache/` folder goes to `.gitignore`.
+**Choice: import-linter.** The ratchet the programme depends on (new violations fail, finished steps must delete their lines) is built in; the alternative needs code that we would then maintain. Its weakness is that the config is a second place for an allowlist; SQL ownership and manifest completeness have no import-linter equivalent and are plain pytest with `allowlist.json` (decided by the spec). Both live in `backend/tests/architecture/`, so the tooling's write scope and CI already cover them. A cold CI cache costs a few seconds; the `.import_linter_cache/` folder goes to `.gitignore`.
 
 Config shape (TOML, comments allowed; `# until step N` marks when a line must be gone):
 
@@ -99,11 +99,11 @@ sys.modules[__name__] = _impl   # the old name IS the new module: patches and mo
 
 ## 3. Task order and PRs
 
-| PR | Task | Content | Reviewers (kit gate) | Hardware / smoke |
+| PR | Task | Content | Reviewers (tooling gate) | Hardware / smoke |
 |----|------|---------|----------------------|------------------|
 | 0 | this plan | docs only | task-reviewer + breaker on the plan before hand-over | none |
 | 1 | T300 | `core/` package, `config` | breaker + security-reviewer | smoke |
-| 2 | T301 | `database`, `json_columns` | breaker + security-reviewer (`database.py` is on the kit list) | smoke |
+| 2 | T301 | `database`, `json_columns` | breaker + security-reviewer (`database.py` is on the tooling's security-critical list) | smoke |
 | 3 | T302 | `ws` | breaker + security-reviewer | smoke |
 | 4 | T303 | token functions of `auth` | breaker + security-reviewer | smoke |
 | 5 | T304 | backend guards: import-linter, ratchet, allowlist | breaker + security-reviewer (`requirements.txt`) | smoke |
@@ -119,7 +119,7 @@ Order is safe because T301 to T303 each stand alone once T300 exists (a leaf fir
 
 ## 4. Allowlist and ratchet
 
-- **Generation (once, in T304 and T305):** import violations come from running the contracts with empty `ignore_imports` (`.venv\Scripts\python backend\tests\architecture\regen.py --print-violations` prints `a -> b` lines grouped by contract, sorted, without line numbers); SQL violations come from the scanner (`file`, `table`, `verb`); frontend ones from the cruiser output. Each entry gets `until: step N` from the provisional module map (`backend/tests/architecture/module_map.py`: file to future module, module to step 1 to 5).
+- **Generation (once, in T304 and T305):** import violations come from running the contracts with empty `ignore_imports` (`.venv\Scripts\python backend\tests\architecture\regen.py --print-violations` prints `a -> b` lines grouped by contract, sorted, without line numbers); SQL violations come from the scanner (`file`, `table`, `verb`); frontend ones from the cruiser output. Each import and SQL entry gets `until: step N` from the provisional module map (`backend/tests/architecture/module_map.py`: file to future module, module to step 1 to 5); frontend keys are plain `rule|from|to` without a step.
 - **New violations fail:** the contracts and scanners run in the normal suites; anything not in the allowlist is red.
 - **Stale entries fail:** import-linter errors on an unmatched ignore line; the JSON ratchets compare the scanned set to the file with equality, and the failure message says "delete this line".
 - **Growth fails:** `test_allowlist_never_grows` (T304, import allowlist; `test_sql_allowlist_never_grows` in T305, `test_frontend_allowlist_never_grows` in T306) compares the total number of entries with the file at `git merge-base HEAD <base ref>` (`ARCH_BASE_REF`, else `upstream/develop`, else `origin/develop`) and fails when the count rose; a file that does not exist at the base (its own introduction) or no resolvable base (CI shallow clone) skips with a visible reason. A justified addition needs a deliberate, reviewed edit of the test, never of the data alone. Wildcards in `ignore_imports` are refused by a test.
@@ -136,7 +136,7 @@ Order is safe because T301 to T303 each stand alone once T300 exists (a leaf fir
 | Parallel branches add imports of old paths | shims stay until step 5, so such branches keep working; a new import of an old path in a PR is a new violation of the shim contract and fails there |
 | Two PRs edit the same allowlist lines | one entry per line, sorted; `regen.py --remove-stale` resolves conflicts |
 | import-linter cold run slow in CI | measured in T304; if above 30 s the architecture test gets a module-level `pytest.mark` and the contracts also run in the PR gate |
-| Kit globs for security review do not cover `backend/core/**` | proposal in section 6; until accepted, every PR of this plan lists core files in its body |
+| Tooling globs for security review do not cover `backend/core/**` | proposal in section 6; until accepted, every PR of this plan lists core files in its body |
 | bee-dev gets a broken image | smoke gate before every PR; a bad merge is undone with `git revert -m 1 <merge>` and `deploy-develop.yml` redeploys |
 
 **Rollback:** every PR is additive plus `git mv`; there is no schema or data change, so `git revert -m 1 <merge commit>` of the newest PR is complete. Reverting is always newest first, because later tasks import `backend.core` and the T304 helper. T304 to T307 are reverted newest first (T305 and T307 need `backend/core`, T305 needs the T304 base helper). Field laptops are untouched until a release.
@@ -147,9 +147,9 @@ Order is safe because T301 to T303 each stand alone once T300 exists (a leaf fir
 2. Request-ID middleware in step 0 (T307) or in step 4: decided for step 0, last PR, detachable (reasons in T307). It adds one response header and a `[request_id]` field to our log lines; if the owner wants literally zero visible change, drop T307 and the same task moves to step 4 unchanged.
 3. `ci.yml` has no full git history on PRs, so the growth tests skip there; `fetch-depth: 0` on the backend job would enforce it in CI (workflow file: owner's call).
 4. `README.md` file tree (lines 391 to 417) needs `core/` after T300 to T303, and line 527 names `ws.py` (owner-written).
-5. To the architecture agent (text proposals, not edited here): modular-monolith.md 3.1 and 9 (`core/` not `platform/`; `migrate.py`, `version.py` stay), section 8 (tool = import-linter), ADR 19 (tool decision).
-6. To Kiril (kit): add `bee-with-me/backend/core/**` to `securityCriticalPaths` in `.claude/hooks/config.json`.
-7. The programme spec lives in the workspace kit, outside this repo; say whether it should be added under `docs/` in the owner's repo.
+5. **Done** (commit `6114ef9`): the architecture owner has applied the text proposals to modular-monolith.md 3.1 and 9 (`core/` not `platform/`; `migrate.py`, `version.py` stay), section 8 (tool = import-linter), ADR 19 (tool decision).
+6. To the maintainer (tooling): add `backend/core/**` to the security-critical paths of the review tooling's hook configuration.
+7. **Done** (PR #76): the programme spec is in the repository, [`docs/superpowers/specs/2026-10-31-vertical-slices-programme-design.md`](../specs/2026-10-31-vertical-slices-programme-design.md), together with `docs/research/2026-10-31-ws-security-online-first.md`.
 8. Still open from the spec: tile-server and `SelectOfflineMap` belong to `maps` (step 5) and are untouched; RSSI/SNR fields in `BeeFrame`/`RepeaterFrame` are untouched.
 
 ---
