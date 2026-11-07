@@ -42,7 +42,7 @@ module.exports = {
   ],
   options: {
     doNotFollow: { path: 'node_modules' },
-    exclude: { path: ['\.test\.js$', '(^|/)vitest\.setup\.js$'] },
+    exclude: { path: ['\\.test\\.js$', '(^|/)vitest\\.setup\\.js$'] },
     // No tsConfig: the frontend is plain JavaScript and Vue single-file components.
     moduleSystems: ['es6', 'cjs'],
     enhancedResolveOptions: { exportsFields: ['exports'], conditionNames: ['import', 'require', 'node', 'default'] },

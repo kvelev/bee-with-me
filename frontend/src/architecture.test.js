@@ -165,7 +165,11 @@ describe('frontend architecture', () => {
 
   it('allowlist never grows against the merge base [T306]', (ctx) => {
     const sha = resolveMergeBase()
-    if (!sha) ctx.skip('no base ref resolves (set ARCH_BASE_REF); shallow clone or no upstream/origin remote')
+    if (!sha) {
+      // Locally a missing base is a visible skip; in CI it must not fail open (checkout needs fetch-depth: 0).
+      if (process.env.CI) throw new Error('no base ref resolves in CI: fetch the base branch or set ARCH_BASE_REF')
+      ctx.skip('no base ref resolves (set ARCH_BASE_REF); shallow clone or no upstream/origin remote')
+    }
     let baseText = null
     try {
       baseText = git(['show', `${sha}:./src/architecture.allowlist.json`])
