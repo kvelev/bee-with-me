@@ -1,6 +1,7 @@
 # 19. Module boundaries enforced by architecture tests with a ratchet
 
 Date: 2026-10-05
+Amended: 2026-11-07 (backend tool proposal and allowlist mechanics, from the step 0 plan)
 
 ## Status
 
@@ -25,8 +26,15 @@ the normal suites: `backend/tests/architecture/` (pytest; module and layer impor
 in `infrastructure/`, manifest completeness, no cycles) and a frontend architecture test (vitest with
 dependency-cruiser; modules import only other modules' `index.js`, pure `lib/`, platform imports no module).
 
-The tests start with an **allowlist of today's violations** (a ratchet): new violations fail at once, each migration
-step removes its own entries, and the list may only shrink.
+**Tools (proposed, waiting for the owner's approval):** `import-linter` for the backend import rules (contracts in
+a TOML file, allowlist as `ignore_imports`), plain pytest for SQL ownership and manifest completeness (allowlist in
+`allowlist.json`), and `dependency-cruiser` driven from vitest on the frontend. Reasons: the ratchet is built into
+import-linter (a stale ignore line fails the run), and the config is data, so an allowlist change is a one-line
+diff.
+
+The tests start with an **allowlist of today's violations** (a ratchet): new violations fail at once, a stale entry
+fails (exact match), each migration step removes its own entries, and a test fails when the number of entries
+grows compared with the merge base. At step 5 the allowlists are empty.
 
 ## Consequences
 
@@ -35,8 +43,9 @@ step removes its own entries, and the list may only shrink.
 - The rules are executable documentation for agents.
 
 **Negative / Trade-offs:**
-- A test dependency on each side (to be pinned).
+- A test dependency on each side: `import-linter>=2.16,<3` and `dependency-cruiser` at an exact version.
 - The SQL ownership check is a text scan; unusual SQL may need an explicit allowlist entry.
+- Allowlists live in three places (TOML, JSON, JSON); the "may not grow" tests guard all of them.
 
 ## Considered options
 
@@ -46,9 +55,11 @@ step removes its own entries, and the list may only shrink.
 | Convention plus review | Rules in standards | No tooling | Late, inconsistent |
 | Imports checked automatically, SQL by review | Mixed | Less test code | Table ownership unguarded |
 
-> ⚠️ **Requires technical clarification:** backend tool: pytest-archon (fluent rules in test code) or import-linter
-> (contracts). Either works; pin the chosen version.
+> ⚠️ **Requires stakeholder input (owner):** approve `import-linter` and `dependency-cruiser` as new dev
+> dependencies. Alternative for the backend: pytest-archon (rules in test code); a stale exclude is accepted
+> silently there, so "the list may only shrink" would need code we maintain.
 
 ## Related
 
-- [modular-monolith.md](../application/modular-monolith.md) Section 8; ADR 17
+- [modular-monolith.md](../application/modular-monolith.md) Sections 3.1, 8 and 9; ADR 17
+- Step 0 plan: `docs/superpowers/plans/2026-11-07-vs-step0-kernel-and-guards.md` (tool measurement, T304 to T306)
