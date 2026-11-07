@@ -181,10 +181,10 @@ async def test_resolve_sos_twice_keeps_the_first_resolver(migrated_conn):
     assert second['resolved_at'] == first['resolved_at']
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason='B72: /live and the push disagree on sos_active')
+@pytest.mark.Trait("Task", "B72")
 async def test_live_sos_active_follows_the_open_alert_not_the_raw_flag(migrated_conn):
-    # The push (reader.py) broadcasts "an alert is open"; /live computes raw flag AND open alert.
-    # Raw flag False with an unresolved alert: the push says True, /live says False.
+    # The push (reader.py) and /live both say "an alert is open" (B72).
+    # Raw flag False with an unresolved alert: both say True.
     from backend.routers import locations
     c = migrated_conn
     u = await _user(c, 'A')

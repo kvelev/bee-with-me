@@ -33,7 +33,7 @@ async def live_positions(
             le.mgrs, le.latitude, le.longitude,
             le.altitude_m, le.speed_knots, le.course_deg, le.battery_voltage,
             le.gnss_satellites, le.gnss_valid,
-            (le.sos_active AND sa.id IS NOT NULL) AS sos_active,
+            (sa.id IS NOT NULL) AS sos_active,  -- open alert = SOS until resolved (B72)
             le.repeater_mode,
             le.recorded_at, le.received_at,
             COALESCE(
