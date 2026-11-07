@@ -46,7 +46,8 @@ function git(args) {
 }
 
 function resolveMergeBase() {
-  const refs = [process.env.ARCH_BASE_REF, 'upstream/develop', 'origin/develop'].filter(Boolean)
+  // A ref starting with "-" would be read by git as an option: refuse it.
+  const refs = [process.env.ARCH_BASE_REF, 'upstream/develop', 'origin/develop'].filter((r) => r && !r.startsWith('-'))
   for (const ref of refs) {
     try {
       return git(['merge-base', 'HEAD', ref])
