@@ -120,6 +120,11 @@ class Report:
 
 # --------------------------------------------------------------------------- http + websocket (stdlib)
 
+# No proxies: urllib would send the admin password and tokens to HTTP_PROXY / the Windows system proxy
+# even for 127.0.0.1
+_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
 def http_request(method: str, url: str, *, token: str | None = None, json_body=None, form=None,
                  timeout: float = HTTP_TIMEOUT) -> tuple[int, bytes]:
     """One HTTP call; returns (status, body). A non-2xx status is returned, not raised."""
@@ -135,7 +140,7 @@ def http_request(method: str, url: str, *, token: str | None = None, json_body=N
         headers['Authorization'] = f'Bearer {token}'
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _OPENER.open(req, timeout=timeout) as resp:
             return resp.status, resp.read()
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read()
@@ -329,12 +334,12 @@ class Smoke:
         """Remove everything this run created. Never raises; returns the problems found."""
         problems = []
         for kind, items, args in (('container', self.containers, ('rm', '-f', '-v')),
-                                  ('network', self.networks, ('network', 'rm', '-f')),
+                                  ('network', self.networks, ('network', 'rm')),
                                   ('volume', self.created_volumes, ('volume', 'rm', '-f'))):
             for item in list(items):
                 try:
                     proc = self.eng(*args, item, timeout=60)
-                    if proc.returncode != 0 and 'no such' not in (proc.stderr or '').lower():
+                    if proc.returncode != 0 and not any(m in (proc.stderr or '').lower() for m in ('no such', 'not found')):
                         problems.append(f'{kind} {item}: {(proc.stderr or "").strip()[:200]}')
                     else:
                         items.remove(item)

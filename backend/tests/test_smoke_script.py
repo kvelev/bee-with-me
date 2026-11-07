@@ -130,7 +130,7 @@ def test_cleanup_removes_what_was_created_and_is_idempotent():
     assert s.cleanup() == []
     removed = [' '.join(c[1:]) for c in fake.calls]
     assert f'rm -f -v {s.db_name}' in removed and f'rm -f -v {s.backend_name}' in removed
-    assert f'network rm -f {s.network}' in removed
+    assert f'network rm {s.network}' in removed
     assert all(f'volume rm -f {v}' in removed for v in s.volumes)
     fake.calls.clear()
     assert s.cleanup() == []
@@ -174,7 +174,7 @@ def test_run_cleans_up_when_a_step_raises_keyboard_interrupt():
     s.s_engine = interrupted
     with pytest.raises(KeyboardInterrupt):
         s.run()
-    assert any(c[1:4] == ['network', 'rm', '-f'] for c in fake.calls)
+    assert any(c[1:3] == ['network', 'rm'] for c in fake.calls)
 
 
 # --------------------------------------------------------------------------- T201
@@ -294,13 +294,13 @@ def test_http_helper_returns_non_2xx_and_maps_connection_errors_to_fail(monkeypa
     def raise_http(req, timeout):
         raise urllib.error.HTTPError(req.full_url, 401, 'no', {}, None)
 
-    monkeypatch.setattr(smoke.urllib.request, 'urlopen', raise_http)
+    monkeypatch.setattr(smoke._OPENER, 'open', raise_http)
     assert smoke.http_request('GET', 'http://127.0.0.1:1/x')[0] == 401
 
     def refuse(req, timeout):
         raise urllib.error.URLError(ConnectionRefusedError('refused'))
 
-    monkeypatch.setattr(smoke.urllib.request, 'urlopen', refuse)
+    monkeypatch.setattr(smoke._OPENER, 'open', refuse)
     with pytest.raises(smoke.StepFail, match='failed'):
         smoke.http_request('GET', 'http://127.0.0.1:1/x')
 
@@ -489,3 +489,11 @@ def test_smoke_doc_records_a_verified_run():
     assert m, 'add a "Last verified run" line'
     line = m.group(0)
     assert re.search(r'\b[0-9a-f]{7,40}\b', line) and 'PASS' in line
+
+
+@pytest.mark.Trait("Task", "T201")
+def test_http_helper_bypasses_proxies_so_credentials_stay_on_the_host(monkeypatch):
+    monkeypatch.setenv('HTTP_PROXY', 'http://proxy.invalid:3128')
+    monkeypatch.setenv('http_proxy', 'http://proxy.invalid:3128')
+    # an empty ProxyHandler({}) registers no handler methods; the default one (reads HTTP_PROXY) must be absent
+    assert 'ProxyHandler' not in [type(h).__name__ for h in smoke._OPENER.handlers]
