@@ -459,7 +459,7 @@ def test_no_hard_coded_docker_calls(rel):
 def test_wrappers_pass_arguments_and_the_exit_code_to_smoke_py():
     ps1 = (ROOT / 'tools/smoke.ps1').read_text(encoding='utf-8')
     sh = (ROOT / 'tools/smoke.sh').read_text(encoding='utf-8')
-    assert 'smoke.py' in ps1 and '$args' in ps1 and 'exit $LASTEXITCODE' in ps1
+    assert 'smoke.py' in ps1 and '@args' in ps1 and 'exit $LASTEXITCODE' in ps1
     assert 'smoke.py' in sh and '"$@"' in sh and 'exec ' in sh
     assert sh.startswith('#!')
 

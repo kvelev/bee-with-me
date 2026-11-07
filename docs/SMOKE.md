@@ -55,4 +55,4 @@ The browser UI, the map and tiles, the USB gateway and `hardware_reader`, PDF ex
 other roles than admin, a database that already has data, the Kubernetes manifests and ingress, and upgrades
 between versions. A green `Deploy develop` does not replace this script and this script does not replace the CI.
 
-Last verified run: PENDING
+Last verified run: 2026-11-07, commit 5c558b1 on upstream/develop 1ed3de8, Podman 6.1.4 (Windows, WSL machine): all 11 steps PASS, no bee-smoke-* left behind.
