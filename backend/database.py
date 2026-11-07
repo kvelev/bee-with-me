@@ -1,32 +1,6 @@
-import asyncpg
-from .config import settings
+"""Old import path of backend.core.database, kept until step 5 (modular-monolith.md section 9)."""
+import sys
 
-_pool: asyncpg.Pool | None = None
+from .core import database as _impl
 
-
-async def init_pool() -> None:
-    global _pool
-    _pool = await asyncpg.create_pool(
-        host=settings.postgres_host,
-        port=settings.postgres_port,
-        database=settings.postgres_db,
-        user=settings.postgres_user,
-        password=settings.postgres_password,
-        min_size=2,
-        max_size=10,
-    )
-
-
-async def close_pool() -> None:
-    if _pool:
-        await _pool.close()
-
-
-def get_pool() -> asyncpg.Pool:
-    assert _pool is not None, 'Pool not initialised'
-    return _pool
-
-
-async def get_conn():
-    async with get_pool().acquire() as conn:
-        yield conn
+sys.modules[__name__] = _impl   # the old name IS the new module: patches and module state stay shared
