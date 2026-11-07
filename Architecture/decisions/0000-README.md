@@ -30,6 +30,7 @@ Index of all ADRs for Bee With Me. Format and rules: [ADR 1](0001-record-archite
 | [0018](0018-transactional-outbox.md) | Transactional outbox with idempotent handlers for cascades between modules | Proposed | 2026-10-05 | C |
 | [0019](0019-architecture-tests.md) | Module boundaries enforced by architecture tests with a ratchet | Proposed | 2026-10-05 | D, G |
 | [0020](0020-offline-start-separate-update.md) | Offline start; dependencies and migrations only in a separate update script | Proposed | 2026-10-17 | D |
+| [0021](0021-node-tile-server-offline-maps.md) | Node tile server for offline MBTiles maps | Proposed | 2026-11-07 | D |
 
 ## Writing a new ADR (people and agents)
 
