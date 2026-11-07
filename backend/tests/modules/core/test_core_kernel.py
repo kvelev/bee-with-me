@@ -41,3 +41,41 @@ def test_backup_marker_default_is_under_the_repo_root(monkeypatch):
 def test_relative_marker_path_resolves_against_the_repo_root():
     from backend.core.config import Settings
     assert Settings(_env_file=None, backup_marker_path=Path('x/y.json')).backup_marker_path == REPO / 'x' / 'y.json'
+
+
+@pytest.mark.Trait("Task", "T301")
+def test_database_old_path_is_the_new_module():
+    import backend.database as old
+    import backend.core.database as new
+    assert old is new
+    assert old.get_conn is new.get_conn
+
+
+@pytest.mark.Trait("Task", "T301")
+def test_json_columns_old_path_is_the_new_module():
+    import backend.json_columns as old
+    import backend.core.json_columns as new
+    assert old is new
+    assert old.decode_json_columns is new.decode_json_columns
+
+
+@pytest.mark.Trait("Task", "T301")
+def test_pool_state_is_shared_through_the_old_path(monkeypatch):
+    import backend.database as old
+    import backend.core.database as new
+    sentinel = object()
+    monkeypatch.setattr(new, '_pool', sentinel)
+    assert old.get_pool() is sentinel
+    # patching by the old name reaches the live module too (tests that mock backend.database.* by name)
+    other = object()
+    monkeypatch.setattr(old, '_pool', other)
+    assert new.get_pool() is other
+
+
+@pytest.mark.Trait("Task", "T301")
+def test_json_columns_logger_is_renamed(caplog):
+    import logging
+    from backend.json_columns import decode_json_columns
+    with caplog.at_level(logging.WARNING):
+        decode_json_columns({'g': 'not json'}, 'g')
+    assert [r.name for r in caplog.records] == ['backend.core.json_columns']
