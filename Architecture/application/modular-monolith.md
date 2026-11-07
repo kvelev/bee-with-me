@@ -1,9 +1,9 @@
 # Modular monolith: modules as vertical slices
 
-**Version:** 0.1
+**Version:** 0.2
 **Status:** Draft. Section 3 (structure and module anatomy) was approved on 2026-10-05; Sections 4 to 10 follow
 the decisions taken in the same session (Section 2) and wait for review.
-**Last updated:** 2026-10-05
+**Last updated:** 2026-11-07
 **Decisions:** [ADR 17](../decisions/0017-vertical-slice-modules.md),
 [ADR 18](../decisions/0018-transactional-outbox.md), [ADR 19](../decisions/0019-architecture-tests.md)
 **Builds on:** [ADR 6](../decisions/0006-modular-monolith-in-process-tasks.md) (one process),
@@ -40,7 +40,7 @@ splitting into several processes (ADR 6 stays).
 | Failure handling | Personal-data deletion: soft delete → every subscriber confirms → hard delete. Other events: dead letter, visible warning, manual retry |
 | Real-time path | Positions, SOS and fire alerts never go through the outbox (Section 5.1) |
 | Live payload | **Thin**: IDs and position data only; the browser joins names, teams and photos from data it already holds |
-| Cache | Light, in-process, in `platform/`; no cache server |
+| Cache | Light, in-process, in the backend kernel (`core/`); no cache server |
 | Module list | As in Section 4 |
 | Migration | **Step by step with a ratchet**: architecture tests start with an allowlist of today's violations that may only shrink |
 
@@ -53,9 +53,13 @@ splitting into several processes (ADR 6 stays).
 ```
 backend/
   main.py                ← assembly only: loads the module list, mounts routers, starts tasks
-  platform/              ← shared kernel; knows no module
-    config.py  db.py  auth.py  live.py (today's ws.py)
-    outbox.py  cache.py  migrate.py  version.py  modules.py (manifest contract)
+  core/                  ← shared kernel; knows no module (not `platform/`: that name shadows the stdlib module)
+    config.py  database.py  json_columns.py  ws.py (live channel, as it is today)
+    auth.py (token functions only)  modules.py (manifest contract)  request_id.py (middleware)
+    outbox.py  cache.py  (later steps)
+  config.py  database.py  json_columns.py  ws.py  ← thin re-exports of core/* (sys.modules alias) until step 5
+  auth.py                ← keeps hash_password, get_current_user, require_role until `identity` (step 5)
+  db/migrate.py  version.py   ← stay where they are
   modules/
     <name>/
       module.py          ← manifest: name, owned tables, router, tasks, subscriptions, live message types
@@ -66,6 +70,11 @@ backend/
       tasks.py           ← background tasks
   db/migrations/         ← one numbered sequence (ADR 10); each file names its module in the header
 ```
+
+> 📝 **Naming.** The backend kernel is `backend/core/`; the frontend keeps `src/platform/`. Wherever this document
+> still says `platform/` and means the backend (Sections 3.3 to 7), read `core/`; `platform/live` is `core/ws.py` until it
+> is renamed. The file list above follows the step 0 plan
+> (`docs/superpowers/plans/2026-11-07-vs-step0-kernel-and-guards.md`, T300 to T307).
 
 ### 3.2 Frontend
 
@@ -266,20 +275,29 @@ Modelled on `EDynamix.ServiceHub.ArchitectureTests` (NetArchTest): rules written
 
 | Rule | Backend (`backend/tests/architecture/`, pytest) | Frontend (`src/architecture.test.js`, vitest) |
 |------|-------------------------------------------------|-----------------------------------------------|
-| Modules import only `api` of other modules | pytest-archon rules | dependency-cruiser API inside a vitest test |
-| `domain/` has no I/O and no framework | pytest-archon: no `asyncpg`, `httpx`, `fastapi`, no `infrastructure` | `lib/` pure: no `api`, no store imports |
-| `platform` imports no module | pytest-archon | dependency-cruiser |
+| Modules import only `api` of other modules | import-linter contract `module boundary: <name>` per module | dependency-cruiser API inside a vitest test |
+| `domain/` has no I/O and no framework | import-linter contract `domain is pure`: no `asyncpg`, `httpx`, `fastapi`, no `infrastructure` | `lib/` pure: no `api`, no store imports |
+| The kernel imports no module | import-linter contract `kernel imports no module` (`core`) | dependency-cruiser (`platform` imports no module) |
 | No cycles; only allowed directions (Section 4.2) | graph test over the manifests | dependency-cruiser |
-| Writes only to owned tables | SQL scan: `INSERT/UPDATE/DELETE <table>` matched against the manifest | — |
-| Only `infrastructure/` runs SQL | scan for `conn.execute`/`fetch*` outside `infrastructure/` | — |
-| Manifest is complete | every router, task and live type of a module is declared | every route and layer declared |
+| Writes only to owned tables | SQL scan: `INSERT/UPDATE/DELETE <table>` matched against the owner of the table | none |
+| Only `infrastructure/` runs SQL | scan for `conn.execute`/`fetch*` under `modules/` outside `infrastructure/` (empty until step 1) | none |
+| Manifest is complete | every `modules/<x>/module.py` is listed and has its boundary contract; routers, tasks and live types are checked from step 1 | every route and layer declared |
 
-> ⚠️ **Requires technical clarification:** pytest-archon (fluent rules in test code, closest to NetArchTest) or
-> import-linter (contracts in configuration, more widely used). The design needs only "module imports" and "layer
-> imports" checks; either works. Pin the version (`requirements.txt` rule).
+> ⚠️ **Requires stakeholder input (owner):** the tool choice is **proposed, not approved**: `import-linter`
+> (`>=2.16,<3`, backend) and `dependency-cruiser` (exact version, frontend), both new dev dependencies. The step 0
+> plan measured both backend candidates on this repo and picked import-linter because its allowlist ratchet is
+> built in (a stale `ignore_imports` line fails the run); pytest-archon is the alternative. The step 0 pull requests
+> that add the dependencies wait for this approval.
 
-**Ratchet.** The tests start with an allowlist of today's violations, so they pass on day one. New code cannot add a
-violation; each migration step removes its lines from the allowlist; the list may only shrink.
+**Ratchet.** The tests start with an allowlist of today's violations, so they pass on day one. The allowlists are
+data: import violations as `ignore_imports` lines in `backend/tests/architecture/importlinter.toml` and SQL writes in
+`backend/tests/architecture/allowlist.json`; both name the step that removes each entry (`until step N`). Frontend
+violations are keys `rule|from|to` in `src/architecture.allowlist.json`. Three tests keep the ratchet honest:
+
+- **New violations fail**, and **stale entries fail** (exact match): the failure message says "delete this line".
+- **The list may not grow:** a test compares the number of entries with the file at the merge base and fails when
+  it rose; a justified addition is a reviewed edit of the test, never of the data alone. Wildcards are refused.
+- **End state:** at step 5 `completed_step` is 5, the allowlists are empty and the old top-level files are gone.
 
 ---
 
@@ -287,12 +305,12 @@ violation; each migration step removes its lines from the allowlist; the list ma
 
 | Step | Content | Notes |
 |------|---------|-------|
-| 0 | `platform/` (move config, db, auth, ws → live, migrate, version) with old import paths kept as thin re-exports; manifest mechanism; architecture tests with the allowlist | No behaviour change |
+| 0 | `backend/core/`: move `config`, `database`, `json_columns`, `ws` and the token functions of `auth` behind thin re-exports (old import paths stay until step 5); module manifest contract (`core/modules.py`); architecture tests with the allowlists; request-ID middleware (T307, last PR, detachable) | `migrate.py` and `version.py` do not move. No behaviour change except the logger names of the moved `ws` and `json_columns`, one response header and a request-ID field in log lines. Detailed in the step 0 plan (T300 to T307) |
 | 1 | `settings` | Small leaf module; proves the template |
 | 2 | `fire` (backend already close) + frontend map-shell with fire layers and banner as the first contributions | Largest frontend win |
 | 3 | `tracking`, `sos`, `gateway` (fast path; thin payload) | **Touches the hardware path: validate on real hardware** |
 | 4 | `devices`, `teams`, `people` + outbox, inbox, dead letter, soft delete, `PersonDeleted` | Needs migrations and the migration reviewer |
-| 5 | `identity`, `reporting`, `maps`, `simulation`, `weather` | Allowlist empty at the end |
+| 5 | `identity`, `reporting`, `maps`, `simulation`, `weather`; remove the re-exports of step 0 | Allowlist empty at the end |
 
 One module per pull request, backend and frontend together; each removes its allowlist lines; each passes the
 breaker and, for security-relevant paths, the security reviewer. Order may change with the field exercise results.

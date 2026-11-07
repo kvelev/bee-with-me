@@ -147,7 +147,7 @@ Order is safe because T301 to T303 each stand alone once T300 exists (a leaf fir
 2. Request-ID middleware in step 0 (T307) or in step 4: decided for step 0, last PR, detachable (reasons in T307). It adds one response header and a `[request_id]` field to our log lines; if the owner wants literally zero visible change, drop T307 and the same task moves to step 4 unchanged.
 3. `ci.yml` has no full git history on PRs, so the growth tests skip there; `fetch-depth: 0` on the backend job would enforce it in CI (workflow file: owner's call).
 4. `README.md` file tree (lines 391 to 417) needs `core/` after T300 to T303, and line 527 names `ws.py` (owner-written).
-5. To the architecture agent (text proposals, not edited here): modular-monolith.md 3.1 and 9 (`core/` not `platform/`; `migrate.py`, `version.py` stay), section 8 (tool = import-linter), ADR 19 (tool decision; note: `## DecisionGWIS` is still in `0019-architecture-tests.md` on `develop`, and `test_architecture_docs.py` checks only ADR 18).
+5. To the architecture agent (text proposals, not edited here): modular-monolith.md 3.1 and 9 (`core/` not `platform/`; `migrate.py`, `version.py` stay), section 8 (tool = import-linter), ADR 19 (tool decision).
 6. To Kiril (kit): add `bee-with-me/backend/core/**` to `securityCriticalPaths` in `.claude/hooks/config.json`.
 7. The programme spec lives in the workspace kit, outside this repo; say whether it should be added under `docs/` in the owner's repo.
 8. Still open from the spec: tile-server and `SelectOfflineMap` belong to `maps` (step 5) and are untouched; RSSI/SNR fields in `BeeFrame`/`RepeaterFrame` are untouched.
