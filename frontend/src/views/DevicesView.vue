@@ -4,6 +4,7 @@
       <h2>{{ t('devices.title') }}</h2>
       <button @click="openForm(null)">{{ t('devices.add') }}</button>
     </div>
+    <p v-if="pageError" class="page-error">{{ pageError }}</p>
 
     <div class="card">
       <table>
@@ -81,6 +82,7 @@ const showModal = ref(false)
 const editing   = ref(null)
 const form      = ref({})
 const formError = ref('')
+const pageError = ref('')
 
 onMounted(load)
 
@@ -115,22 +117,31 @@ async function save() {
 }
 
 async function deactivate(d) {
-  if (!confirm(`Deactivate device SN:${d.dev_sn}?`)) return
-  await deleteDevice(d.id)
-  locationsStore.removePosition(d.id)
-  await load()
+  pageError.value = ''
+  if (!confirm(t('devices.confirmDeactivate', { sn: d.dev_sn }))) return
+  try {
+    await deleteDevice(d.id)
+    locationsStore.removePosition(d.id)
+    await load()
+  } catch (e) { pageError.value = errorText(e) }
 }
 
 async function reactivate(d) {
-  await reactivateDevice(d.id)
-  await load()
+  pageError.value = ''
+  try {
+    await reactivateDevice(d.id)
+    await load()
+  } catch (e) { pageError.value = errorText(e) }
 }
 
 async function remove(d) {
-  if (!confirm(`Permanently delete device SN:${d.dev_sn}? This also deletes all its location history and cannot be undone.`)) return
-  await permanentDeleteDevice(d.id)
-  locationsStore.removePosition(d.id)
-  await load()
+  pageError.value = ''
+  if (!confirm(t('devices.confirmDelete', { sn: d.dev_sn }))) return
+  try {
+    await permanentDeleteDevice(d.id)
+    locationsStore.removePosition(d.id)
+    await load()
+  } catch (e) { pageError.value = errorText(e) }
 }
 </script>
 

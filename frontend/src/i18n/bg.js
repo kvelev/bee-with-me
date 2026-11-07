@@ -88,6 +88,7 @@ export default {
     importCreated: 'доброволци импортирани',
     importSkipped: 'пропуснати',
     importError:   'Импортът се провали',
+    loadError:     'Неуспешно зареждане на доброволците',
     edit:       'Редактирай',
     deactivate: 'Деактивирай',
     reactivate: 'Активирай',
@@ -150,6 +151,7 @@ export default {
     leader:      'Лидер',
     remove:      'Премахни',
     mapColor:    'Цвят на картата',
+    confirmDelete: 'Да се изтрие ли екипът "{name}"?',
     form: {
       title_add:  'Нов Екип',
       title_edit: 'Редактирай Екип',
@@ -179,6 +181,8 @@ export default {
     deactivate: 'Деактивирай',
     reactivate: 'Активирай',
     delete:     'Изтрий',
+    confirmDeactivate: 'Да се деактивира ли устройство SN:{sn}?',
+    confirmDelete:     'Да се изтрие ли окончателно устройство SN:{sn}? Ще бъде изтрита и цялата му история на местоположенията, а действието е необратимо.',
     form: {
       title_add:  'Регистрирай Устройство',
       title_edit: 'Редактирай Устройство',
@@ -204,6 +208,7 @@ export default {
     geojson:    '⬇ GeoJSON',
     pdf:        '⬇ PDF Отчет',
     generating: 'Генериране…',
+    failed:     'Експортът се провали',
   },
   sos: {
     active:     '🚨 SOS АКТИВЕН —',
@@ -211,6 +216,7 @@ export default {
     resolving:     'Отмяна…',
     resolveFailed: 'Неуспешно отменяне — проверете връзката и опитайте отново',
     alertTitle: 'SOS Активиран',
+    unknown:    'Неизвестен',
   },
   settings: {
     account:          'Профил',

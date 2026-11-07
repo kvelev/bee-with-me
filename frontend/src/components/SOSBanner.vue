@@ -2,7 +2,7 @@
   <div v-if="store.hasSOS" class="sos-banner sos-pulse">
     <span>{{ t('sos.active') }}</span>
     <span v-for="alert in store.sosAlerts" :key="alert.id ?? alert.device_id" class="sos-entry">
-      {{ alert.full_name || 'Unknown' }} ({{ alert.dev_sn ?? '—' }})
+      {{ alert.full_name || t('sos.unknown') }} ({{ alert.dev_sn ?? '—' }})
       <button class="resolve-btn" :disabled="busy === alert.id" @click="resolve(alert)">
         {{ busy === alert.id ? t('sos.resolving') : t('sos.resolve') }}
       </button>
