@@ -50,6 +50,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # the architecture ratchet compares with the merge-base (T304)
 
       - name: System libraries for WeasyPrint (PDF export tests)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core
