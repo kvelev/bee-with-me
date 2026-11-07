@@ -43,6 +43,31 @@ def test_relative_marker_path_resolves_against_the_repo_root():
     assert Settings(_env_file=None, backup_marker_path=Path('x/y.json')).backup_marker_path == REPO / 'x' / 'y.json'
 
 
+@pytest.mark.Trait("Task", "T302")
+def test_ws_old_path_is_the_new_module():
+    import backend.ws as old
+    import backend.core.ws as new
+    assert old is new
+    assert old.manager is new.manager
+
+
+@pytest.mark.Trait("Task", "T302")
+def test_forwarded_channels_are_unchanged():
+    from backend.core.ws import FORWARDED_CHANNELS
+    assert FORWARDED_CHANNELS == (
+        'location_update', 'sos_alert', 'fire_data_updated', 'fire_alert',
+        'fire_alert_repeat', 'fire_alert_updated', 'fire_zones_updated',
+    )
+
+
+@pytest.mark.Trait("Task", "T302")
+def test_core_ws_has_no_auth_or_origin_hook():
+    # the move changes no behaviour: WebSocket authentication/origin checks are not implemented in this step
+    src = (REPO / 'backend' / 'core' / 'ws.py').read_text(encoding='utf-8')
+    assert 'Origin' not in src and 'jwt' not in src.lower()
+    assert 'backend.core.ws' == __import__('backend.core.ws', fromlist=['x']).logger.name
+
+
 @pytest.mark.Trait("Task", "T301")
 def test_database_old_path_is_the_new_module():
     import backend.database as old

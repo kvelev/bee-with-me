@@ -441,7 +441,7 @@ def test_the_frontend_index_really_has_the_mount_point():
 def test_test_endpoint_and_ws_message_shape_match_the_checks():
     src = (ROOT / 'backend/routers/test.py').read_text(encoding='utf-8')
     assert "prefix='/api/test'" in src and "'/simulate'" in src and "'device_id':" in src
-    ws = (ROOT / 'backend/ws.py').read_text(encoding='utf-8')
+    ws = (ROOT / 'backend/core/ws.py').read_text(encoding='utf-8')
     assert "'type': channel" in ws and "'location_update'" in ws
 
 
