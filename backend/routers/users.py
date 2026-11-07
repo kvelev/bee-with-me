@@ -24,6 +24,28 @@ UPLOAD_DIR = str(Path(__file__).resolve().parent.parent / 'uploads')
 # The stored extension comes from the validated content type, never from the client's filename (B68).
 PHOTO_EXTENSIONS = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}
 ALLOWED_TYPES = set(PHOTO_EXTENSIONS)
+# Upload ceilings (B75): a phone photo is 1-4 MiB, a volunteer sheet of a few thousand rows is well under 1 MiB.
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
+MAX_IMPORT_BYTES = 10 * 1024 * 1024
+_READ_CHUNK = 64 * 1024
+
+
+async def _read_capped(file: UploadFile, limit: int) -> bytes:
+    """Read an upload into memory, answering 413 once it passes `limit` bytes.
+
+    The size Starlette recorded is checked first when present, but the chunked read is what enforces the cap.
+    """
+    too_big = HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail=f'File is too large (limit {limit // (1024 * 1024)} MiB)')
+    if file.size is not None and file.size > limit:
+        raise too_big
+    chunks, total = [], 0
+    while chunk := await file.read(_READ_CHUNK):
+        total += len(chunk)
+        if total > limit:
+            raise too_big
+        chunks.append(chunk)
+    return b''.join(chunks)
 
 
 class UserCreate(BaseModel):
@@ -187,11 +209,12 @@ async def upload_photo(
     if ext is None:
         raise HTTPException(status_code=400, detail='Only JPEG, PNG and WebP images are allowed')
 
+    data = await _read_capped(file, MAX_PHOTO_BYTES)   # before anything touches the disk
     filename = f'{uuid.uuid4()}.{ext}'
     path = os.path.join(UPLOAD_DIR, filename)
 
     with open(path, 'wb') as f:
-        f.write(await file.read())
+        f.write(data)
 
     photo_url = f'/uploads/{filename}'
     await conn.execute('UPDATE users SET photo_url = $1 WHERE id = $2', photo_url, user_id)
@@ -274,7 +297,7 @@ async def import_volunteers(
     if ext not in ('xls', 'xlsx'):
         raise HTTPException(status_code=400, detail='Only .xls and .xlsx files are accepted')
 
-    raw = await file.read()
+    raw = await _read_capped(file, MAX_IMPORT_BYTES)
     df = None
     engines = ['calamine', 'xlrd', 'openpyxl'] if ext == 'xls' else ['calamine', 'openpyxl', 'xlrd']
     for engine in engines:

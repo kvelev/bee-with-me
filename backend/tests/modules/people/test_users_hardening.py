@@ -45,3 +45,84 @@ def test_photo_with_unmapped_content_type_is_rejected_without_write(client, mock
     assert resp.status_code == 400
     assert list(upload_dir.iterdir()) == []
     mock_conn.execute.assert_not_awaited()
+
+
+# ── B75: uploads are capped, 413 before any parsing or writing ──
+
+XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+
+def _xlsx_bytes() -> bytes:
+    import io
+    from openpyxl import Workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.append(['Доброволец', 'ПИН'])
+    ws.append(['Иван Петров', '1234'])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+@pytest.mark.Trait("Bug", "B75")
+def test_upload_limits_are_the_documented_ones():
+    from backend.routers import users
+    assert users.MAX_PHOTO_BYTES == 5 * 1024 * 1024
+    assert users.MAX_IMPORT_BYTES == 10 * 1024 * 1024
+
+
+@pytest.mark.Trait("Bug", "B75")
+def test_photo_one_byte_over_the_limit_is_413_and_nothing_is_written(client, mock_conn, upload_dir, monkeypatch):
+    monkeypatch.setattr('backend.routers.users.MAX_PHOTO_BYTES', len(PNG) - 1)
+
+    resp = client.post(f'/api/users/{uuid.uuid4()}/photo', files={'file': ('a.png', PNG, 'image/png')})
+
+    assert resp.status_code == 413
+    assert list(upload_dir.iterdir()) == []
+    mock_conn.execute.assert_not_awaited()
+
+
+@pytest.mark.Trait("Bug", "B75")
+def test_photo_at_the_limit_is_stored(client, mock_conn, upload_dir, monkeypatch):
+    monkeypatch.setattr('backend.routers.users.MAX_PHOTO_BYTES', len(PNG))
+
+    resp = client.post(f'/api/users/{uuid.uuid4()}/photo', files={'file': ('a.png', PNG, 'image/png')})
+
+    assert resp.status_code == 200
+    assert len(list(upload_dir.iterdir())) == 1
+
+
+@pytest.mark.Trait("Bug", "B75")
+def test_photo_cap_holds_when_the_size_is_unknown(client, mock_conn, upload_dir, monkeypatch):
+    """The chunked read enforces the cap even when UploadFile.size is not available."""
+    from starlette.datastructures import UploadFile
+    monkeypatch.setattr(UploadFile, 'size', property(lambda self: None, lambda self, v: None), raising=False)
+    monkeypatch.setattr('backend.routers.users.MAX_PHOTO_BYTES', len(PNG) - 1)
+
+    resp = client.post(f'/api/users/{uuid.uuid4()}/photo', files={'file': ('a.png', PNG, 'image/png')})
+
+    assert resp.status_code == 413
+    assert list(upload_dir.iterdir()) == []
+
+
+@pytest.mark.Trait("Bug", "B75")
+def test_import_one_byte_over_the_limit_is_413_and_makes_no_db_call(client, mock_conn, monkeypatch):
+    raw = _xlsx_bytes()
+    monkeypatch.setattr('backend.routers.users.MAX_IMPORT_BYTES', len(raw) - 1)
+
+    resp = client.post('/api/users/import', files={'file': ('v.xlsx', raw, XLSX)})
+
+    assert resp.status_code == 413
+    mock_conn.fetchval.assert_not_awaited()
+    mock_conn.execute.assert_not_awaited()
+
+
+@pytest.mark.Trait("Bug", "B75")
+def test_import_at_the_limit_still_works(client, mock_conn, monkeypatch):
+    raw = _xlsx_bytes()
+    monkeypatch.setattr('backend.routers.users.MAX_IMPORT_BYTES', len(raw))
+
+    resp = client.post('/api/users/import', files={'file': ('v.xlsx', raw, XLSX)})
+
+    assert resp.status_code == 200
+    assert resp.json()['created'] == 1
