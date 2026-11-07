@@ -171,6 +171,8 @@ and the new project reuses it. With the Podman-machine override the old data is 
 the backend and prints the restore command for the backup it just took
 (`scripts/restore.ps1 '<dump>'` / `./scripts/restore.sh <dump>`); run it, then start again. The old
 volume is left in place until you remove it yourself.
+The `tileserver-gl` container (`tiles` service) no longer exists; an old install may keep a stopped or restart-looping
+`docker-tiles-1` / `bee-with-me-tiles-1`. Remove it: `podman rm -f <name>` (Docker: `docker rm -f <name>`).
 This happens only when the old container belongs to **this folder**: its compose `working_dir` label
 is `<this folder>/docker` or its data mount is `<this folder>/data/pgdata` (compared without regard to
 `\` vs `/`, a trailing slash, letter case on Windows, or the WSL `/mnt/<drive>/…` form). A project
