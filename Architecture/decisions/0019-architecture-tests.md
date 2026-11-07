@@ -18,7 +18,7 @@ Several agents and people work in parallel. Conventions in documents are followe
 boundary violation only at the end. The reference project EDynamix.ServiceHub keeps its module and layer rules in an
 `ArchitectureTests` project (NetArchTest, xUnit), grouped into Layering and Convention tests.
 
-## DecisionGWIS 
+## Decision
 
 We will enforce the module rules of [ADR 17](0017-vertical-slice-modules.md) with **architecture tests** that run in
 the normal suites: `backend/tests/architecture/` (pytest; module and layer import rules, owned-table writes, SQL only
