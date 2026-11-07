@@ -15,7 +15,7 @@ Proposed
 
 The owner confirmed (2026-10-03) that the wall display is a monitor attached to the field laptop and that
 Starlink internet is standard at every operation. The laptop is therefore always on a network shared with
-whoever else uses the Starlink router. Today the database, the backend, the Vite dev server and the tile server
+whoever else uses the Starlink router. Today the database, the backend, the Vite dev server and the Node tile server
 all listen on loopback by default. The live channel (`/ws`) is open by design
 ([ADR 15](0015-live-channel-open-by-design.md)); photos (`/uploads`) and CORS are not protected (R-03, R-09).
 Loopback binding is what keeps all of them off the network.

@@ -429,7 +429,7 @@ frontend/
     api/               Axios client (client.js) with JWT refresh interceptor
     nav-config.js      Navigation items with icons
 docker/
-  docker-compose.yaml  PostgreSQL 16 + PostGIS; tileserver-gl
+  docker-compose.yaml  PostgreSQL 16 + PostGIS
 deploy/
   docker/              Backend and frontend container images (+ nginx.conf)
   k8s/app/             Kubernetes manifests of the app (database, backend, frontend)

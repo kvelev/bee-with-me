@@ -41,7 +41,7 @@ C4Container
         Container(api, "Backend", "Python, FastAPI, asyncpg", "REST /api, WebSocket /ws, hardware readers, background tasks")
         ContainerDb(db, "Database", "PostgreSQL 16 + PostGIS, container", "People, devices, positions, alarms, fire data")
         Container(files, "File store", "Local folders", "Photos (uploads), offline tiles, backups")
-        Container(tileserver, "Tile server", "tileserver-gl, container", "Local vector tiles; currently broken (R-12)")
+        Container(tileserver, "Tile server", "Node.js, host process", "Offline MBTiles maps (ADR 21)")
         Container(scripts, "Ops scripts", "PowerShell, sh", "start, backup, restore")
     }
 

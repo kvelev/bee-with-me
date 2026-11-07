@@ -179,7 +179,7 @@ def test_readme_says_skip_containers_skips_the_backup():
     assert 'podman-machine' in section
 
 
-# ── B6: Postgres and tiles only reachable on loopback ────────────────────────
+# ── B6: Postgres only reachable on loopback ────────────────────────
 
 @pytest.mark.Trait("Bug", "B6")
 def test_podman_machine_override_binds_postgres_to_loopback():
@@ -189,12 +189,12 @@ def test_podman_machine_override_binds_postgres_to_loopback():
 
 
 @pytest.mark.Trait("Bug", "B6")
-def test_base_compose_publishes_db_and_tiles_on_loopback_only():
+def test_base_compose_publishes_db_on_loopback_only():
     text = _read('docker/docker-compose.yaml')
     published = re.findall(r'^\s*-\s*"([^"]+)"\s*$', text, re.MULTILINE)
     port_maps = [p for p in published if re.search(r':\d+$', p) and not p.startswith('..')]
     assert '127.0.0.1:${POSTGRES_PORT:-5432}:5432' in port_maps
-    assert '127.0.0.1:8080:8080' in port_maps
+    assert 'tileserver' not in text and not re.search(r'^  tiles:', text, re.MULTILINE)
     assert all(p.startswith('127.0.0.1:') for p in port_maps), port_maps
 
 
