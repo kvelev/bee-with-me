@@ -1,4 +1,5 @@
 import io
+import logging
 import os
 import re
 import uuid
@@ -17,6 +18,8 @@ from ..database import get_conn
 from ..json_columns import decode_json_columns
 from ..fire import repository as fire_repository
 from ..fire.service import notify_alerts_updated
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix='/api/users', tags=['users'])
 
@@ -323,7 +326,8 @@ async def import_volunteers(
             try:
                 df = _parse_xml_spreadsheet(raw)
             except Exception as e:
-                raise HTTPException(status_code=400, detail=f'Could not parse file: {e}')
+                logger.warning('import parse failed: %s', e)
+                raise HTTPException(status_code=400, detail='Could not parse file')
 
     df.columns = [str(c).strip() for c in df.columns]
     cols = list(df.columns)
@@ -372,7 +376,8 @@ async def import_volunteers(
         except asyncpg.UniqueViolationError:
             skipped.append({'row': row_num, 'reason': f'duplicate entry for "{full_name}"'})
         except Exception as e:
-            skipped.append({'row': row_num, 'reason': str(e)})
+            logger.warning('import row %s failed: %s', row_num, e)
+            skipped.append({'row': row_num, 'reason': 'could not be saved'})
 
     return {'created': created, 'skipped': skipped}
 

@@ -126,3 +126,31 @@ def test_import_at_the_limit_still_works(client, mock_conn, monkeypatch):
 
     assert resp.status_code == 200
     assert resp.json()['created'] == 1
+
+
+# ── B76: a fixed message to the client, the detail only in the log ──
+
+@pytest.mark.Trait("Bug", "B76")
+def test_unparseable_import_gives_a_fixed_400_and_logs_the_cause(client, mock_conn, caplog):
+    with caplog.at_level('WARNING', logger='backend.routers.users'):
+        resp = client.post('/api/users/import', files={'file': ('v.xlsx', b'\x00not a spreadsheet', XLSX)})
+
+    assert resp.status_code == 400
+    assert resp.json()['detail'] == 'Could not parse file'
+    assert any(r.levelname == 'WARNING' and r.exc_info is None and r.getMessage().startswith('import parse failed')
+               for r in caplog.records)
+
+
+@pytest.mark.Trait("Bug", "B76")
+def test_row_insert_failure_hides_the_exception_from_the_client_and_logs_it(client, mock_conn, caplog):
+    mock_conn.execute.side_effect = RuntimeError('secret-detail')
+
+    with caplog.at_level('WARNING', logger='backend.routers.users'):
+        resp = client.post('/api/users/import', files={'file': ('v.xlsx', _xlsx_bytes(), XLSX)})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body['created'] == 0
+    assert body['skipped'] == [{'row': 2, 'reason': 'could not be saved'}]
+    assert 'secret-detail' not in resp.text
+    assert any('import row 2 failed' in r.getMessage() and 'secret-detail' in r.getMessage() for r in caplog.records)
