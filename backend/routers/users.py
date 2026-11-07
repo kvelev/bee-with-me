@@ -303,7 +303,7 @@ async def import_volunteers(
     df.columns = [str(c).strip() for c in df.columns]
     cols = list(df.columns)
 
-    name_col  = _find_col(cols, 'volunteer', 'name', 'имe', 'доброволец')
+    name_col  = _find_col(cols, 'volunteer', 'name', 'име', 'доброволец')
     pin_col   = _find_col(cols, 'pin', 'пин')
     phone_col = _find_col(cols, 'phone', 'tel', 'телефон', 'mobile')
 

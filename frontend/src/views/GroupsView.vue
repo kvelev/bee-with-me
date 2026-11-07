@@ -4,6 +4,7 @@
       <h2>{{ t('groups.title') }}</h2>
       <button @click="openForm(null)">{{ t('groups.add') }}</button>
     </div>
+    <p v-if="pageError" class="page-error">{{ pageError }}</p>
 
     <div class="card">
       <table>
@@ -182,6 +183,7 @@ const memberCandidates  = ref([])
 const candidateChecked  = reactive({})   // uid -> boolean
 const leaderCandidateId = ref(null)
 const formError      = ref('')
+const pageError      = ref('')
 const pendingMembers     = ref([])
 const memberToAdd        = ref({ user_id: '', is_leader: false })
 const memberError        = ref('')
@@ -280,20 +282,29 @@ async function save() {
 }
 
 async function deactivate(g) {
-  await deactivateGroup(g.id)
-  await load()
+  pageError.value = ''
+  try {
+    await deactivateGroup(g.id)
+    await load()
+  } catch (e) { pageError.value = errorText(e) }
 }
 
 async function reactivate(g) {
-  await reactivateGroup(g.id)
-  await load()
+  pageError.value = ''
+  try {
+    await reactivateGroup(g.id)
+    await load()
+  } catch (e) { pageError.value = errorText(e) }
 }
 
 async function remove(g) {
-  if (!confirm(`Delete group "${g.name}"?`)) return
-  await deleteGroup(g.id)
-  if (selected.value?.id === g.id) selected.value = null
-  await load()
+  pageError.value = ''
+  if (!confirm(t('groups.confirmDelete', { name: g.name }))) return
+  try {
+    await deleteGroup(g.id)
+    if (selected.value?.id === g.id) selected.value = null
+    await load()
+  } catch (e) { pageError.value = errorText(e) }
 }
 
 function openAddMember() {
@@ -329,8 +340,11 @@ async function saveMember() {
 }
 
 async function kickMember(member) {
-  await removeMember(selected.value.id, member.id)
-  selected.value = await getGroup(selected.value.id)
+  pageError.value = ''
+  try {
+    await removeMember(selected.value.id, member.id)
+    selected.value = await getGroup(selected.value.id)
+  } catch (e) { pageError.value = errorText(e) }
 }
 </script>
 

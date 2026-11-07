@@ -88,6 +88,7 @@ export default {
     importCreated: 'volunteers imported',
     importSkipped: 'skipped',
     importError:   'Import failed',
+    loadError:     'Could not load volunteers',
     edit:       'Edit',
     deactivate: 'Deactivate',
     reactivate: 'Reactivate',
@@ -150,6 +151,7 @@ export default {
     leader:      'Leader',
     remove:      'Remove',
     mapColor:    'Map color',
+    confirmDelete: 'Delete group "{name}"?',
     form: {
       title_add:  'New Team',
       title_edit: 'Edit Team',
@@ -179,6 +181,8 @@ export default {
     deactivate: 'Deactivate',
     reactivate: 'Reactivate',
     delete:     'Delete',
+    confirmDeactivate: 'Deactivate device SN:{sn}?',
+    confirmDelete:     'Permanently delete device SN:{sn}? This also deletes all its location history and cannot be undone.',
     form: {
       title_add:  'Register Device',
       title_edit: 'Edit Device',
@@ -204,6 +208,7 @@ export default {
     geojson:    '⬇ GeoJSON',
     pdf:        '⬇ PDF Report',
     generating: 'Generating…',
+    failed:     'Export failed',
   },
   sos: {
     active:     '🚨 SOS ACTIVE —',
@@ -211,6 +216,7 @@ export default {
     resolving:     'Resolving…',
     resolveFailed: 'Could not resolve — check the connection and try again',
     alertTitle: 'SOS Activated',
+    unknown:    'Unknown',
   },
   settings: {
     account:          'Account',

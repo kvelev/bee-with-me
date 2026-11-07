@@ -84,7 +84,7 @@ async function doExport(type) {
     a.click()
     URL.revokeObjectURL(url)
   } catch (e) {
-    error.value = errorText(e, 'Export failed')
+    error.value = errorText(e, t('export.failed'))
   } finally {
     loading.value = false
   }

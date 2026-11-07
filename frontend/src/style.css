@@ -72,6 +72,8 @@ tr:hover td { background: var(--bg-card); }
 }
 .badge-sos { background: var(--danger); color: #fff; }
 
+.page-error { color: var(--danger); background: rgba(239,68,68,.08); border: 1px solid var(--danger); border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
+
 .card {
   background: var(--bg-panel); border: 1px solid var(--border);
   border-radius: 10px; padding: 20px;

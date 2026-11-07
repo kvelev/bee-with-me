@@ -41,3 +41,29 @@ def test_adr_18_has_no_stray_tokens():
     text = (ADR_DIR / '0018-transactional-outbox.md').read_text(encoding='utf-8')
     assert 'GWIS' not in text
     assert '## Decision\n' in text
+
+
+# --- all ADRs: structure and stray text (T101) -------------------------------------------------------------------
+
+REQUIRED_SECTIONS = ('## Status', '## Context', '## Decision', '## Consequences')
+ALLOWED_SECTIONS = set(REQUIRED_SECTIONS) | {'## Considered options', '## Related', '## Risks'}
+
+
+def _adr_files() -> list[Path]:
+    files = sorted(p for p in ADR_DIR.glob('[0-9][0-9][0-9][0-9]-*.md') if not p.name.startswith('0000-'))
+    assert files, 'no ADR files found'
+    return files
+
+
+@pytest.mark.parametrize('path', _adr_files(), ids=lambda p: p.name)
+def test_adr_has_required_sections_without_glued_text(path):
+    headings = [line.rstrip() for line in path.read_text(encoding='utf-8').splitlines() if line.startswith('## ')]
+    missing = [h for h in REQUIRED_SECTIONS if h not in headings]
+    unknown = [h for h in headings if h not in ALLOWED_SECTIONS]
+    assert missing == [], f'{path.name}: missing section(s) {missing}'
+    assert unknown == [], f'{path.name}: unknown or corrupted heading(s) {unknown}'
+
+
+@pytest.mark.parametrize('path', _adr_files(), ids=lambda p: p.name)
+def test_adr_has_no_stray_tokens(path):
+    assert 'GWIS' not in path.read_text(encoding='utf-8'), f'{path.name}: stray token "GWIS"'

@@ -231,16 +231,20 @@ const originalDeviceId  = ref(null)
 onMounted(load)
 
 async function load() {
-  const [res, devs] = await Promise.all([
-    getUsers({ limit: limit.value, offset: offset.value }),
-    getDevices(),
-  ])
-  users.value = res.items.map(u => ({
-    ...u,
-    groups: typeof u.groups === 'string' ? JSON.parse(u.groups) : (u.groups ?? []),
-  }))
-  total.value = res.total
-  allDevices.value = devs.filter(d => d.is_active)
+  try {
+    const [res, devs] = await Promise.all([
+      getUsers({ limit: limit.value, offset: offset.value }),
+      getDevices(),
+    ])
+    users.value = res.items.map(u => ({
+      ...u,
+      groups: typeof u.groups === 'string' ? JSON.parse(u.groups) : (u.groups ?? []),
+    }))
+    total.value = res.total
+    allDevices.value = devs.filter(d => d.is_active)
+  } catch (e) {
+    pageError.value = errorText(e, t('users.loadError'))
+  }
 }
 
 async function goToPage(newOffset) {
@@ -409,7 +413,6 @@ async function remove(user) {
 
 <style scoped>
 .page      { padding: 24px; flex: 1; }
-.page-error { color: var(--danger); background: rgba(239,68,68,.08); border: 1px solid var(--danger); border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
 .actions  { display: flex; gap: 8px; align-items: center; }
 button.warning { background: rgba(234,179,8,.15); border-color: #ca8a04; color: #ca8a04; }
 .group-chip { padding: 2px 8px; border-radius: 99px; font-size: 11px; color: #fff; margin-right: 4px; }
