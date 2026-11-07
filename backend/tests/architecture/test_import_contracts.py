@@ -1,6 +1,7 @@
 """Import contracts of the modular monolith, run through import-linter (decision: plan 2026-11-07, section 1)."""
 import importlib
 import itertools
+import logging
 import json
 import re
 import tomllib
@@ -29,7 +30,22 @@ def _contracts() -> list[dict]:
 
 
 def _lint(config_path: Path, *contracts: str) -> int:
-    return cli.lint_imports(config_filename=str(config_path), limit_to_contracts=contracts, no_logo=True, **NO_CACHE)
+    """Run import-linter in-process without leaking its logging set-up into the rest of the session.
+
+    lint_imports() calls logging.config.dictConfig(), whose default disable_existing_loggers=True silences every
+    logger created before (backend.*), which empties caplog in all later tests. Snapshot and restore them.
+    """
+    root = logging.getLogger()
+    saved = {n: (lg.disabled, lg.level, list(lg.handlers), lg.propagate)
+             for n, lg in logging.root.manager.loggerDict.items() if isinstance(lg, logging.Logger)}
+    root_state = (root.level, list(root.handlers))
+    try:
+        return cli.lint_imports(config_filename=str(config_path), limit_to_contracts=contracts, no_logo=True, **NO_CACHE)
+    finally:
+        for name, (disabled, level, handlers, propagate) in saved.items():
+            lg = logging.getLogger(name)
+            lg.disabled, lg.level, lg.handlers, lg.propagate = disabled, level, handlers, propagate
+        root.level, root.handlers = root_state[0], root_state[1]
 
 
 @pytest.mark.Trait('Task', 'T304')
@@ -181,3 +197,14 @@ def test_owners_of_resolves_exact_prefix_and_modules_rule():
     assert module_map.owners_of('modules/__init__.py') == ('core',)
     with pytest.raises(KeyError):
         module_map.owners_of('brand_new.py')
+
+
+@pytest.mark.Trait('Task', 'T304')
+def test_linting_does_not_silence_other_loggers(monkeypatch, caplog):
+    monkeypatch.chdir(REPO)
+    probe = logging.getLogger('backend.t304_probe')
+    assert _lint(TOML) == 0
+    assert not probe.disabled
+    with caplog.at_level(logging.WARNING, logger='backend.t304_probe'):
+        probe.warning('still audible')
+    assert 'still audible' in caplog.text
