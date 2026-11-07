@@ -412,7 +412,7 @@ and architecture tests that guard the boundaries ([ADR 17](decisions/0017-vertic
 [application/modular-monolith.md](application/modular-monolith.md)).
 
 **Map tiles.** Offline maps are served by a Node tile server on the host ([ADR 21](decisions/0021-node-tile-server-offline-maps.md), Proposed);
-whether it replaces `tileserver-gl` is open for the owner.
+the `tileserver-gl` container was removed on 2026-11-08 (R-12 closed).
 
 **Capabilities to components.**
 

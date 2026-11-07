@@ -15,12 +15,3 @@ services:
     # To reach the database from another machine, change this binding deliberately.
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
-
-  tiles:
-    image: maptiler/tileserver-gl:latest
-    restart: unless-stopped
-    volumes:
-      - ../tiles:/data
-    ports:
-      - "127.0.0.1:8080:8080"
-    command: --no-config --port 8080

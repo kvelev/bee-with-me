@@ -154,7 +154,7 @@ delete the `data/pgdata` folder (it is a bind mount, `down -v` does not remove i
 The start scripts use Podman when it is installed and Docker otherwise; set `CONTAINER_ENGINE=docker`
 (or `podman`) to choose explicitly.
 
-The compose project is named `bee-with-me` (containers `bee-with-me-db-1`, `bee-with-me-tiles-1`), so
+The compose project is named `bee-with-me` (container `bee-with-me-db-1`), so
 the scripts only ever pick this project's database; with the Podman-machine override the data volume
 is `bee-with-me_pgdata`. Every script passes `-p bee-with-me` to compose explicitly (older
 podman-compose versions ignore the `name:` key).
@@ -171,6 +171,8 @@ and the new project reuses it. With the Podman-machine override the old data is 
 the backend and prints the restore command for the backup it just took
 (`scripts/restore.ps1 '<dump>'` / `./scripts/restore.sh <dump>`); run it, then start again. The old
 volume is left in place until you remove it yourself.
+The `tileserver-gl` container (`tiles` service) no longer exists; an old install may keep a stopped or restart-looping
+`docker-tiles-1` / `bee-with-me-tiles-1`. Remove it: `podman rm -f <name>` (Docker: `docker rm -f <name>`).
 This happens only when the old container belongs to **this folder**: its compose `working_dir` label
 is `<this folder>/docker` or its data mount is `<this folder>/data/pgdata` (compared without regard to
 `\` vs `/`, a trailing slash, letter case on Windows, or the WSL `/mnt/<drive>/…` form). A project
@@ -429,7 +431,7 @@ frontend/
     api/               Axios client (client.js) with JWT refresh interceptor
     nav-config.js      Navigation items with icons
 docker/
-  docker-compose.yaml  PostgreSQL 16 + PostGIS; tileserver-gl
+  docker-compose.yaml  PostgreSQL 16 + PostGIS
 deploy/
   docker/              Backend and frontend container images (+ nginx.conf)
   k8s/app/             Kubernetes manifests of the app (database, backend, frontend)

@@ -19,7 +19,7 @@ The backend must open a USB HID (or serial) device, which is unreliable from ins
 
 ## Decision
 
-We will run **infrastructure in containers** (PostgreSQL/PostGIS, and the tile server if kept) from one compose
+We will run **infrastructure in containers** (PostgreSQL/PostGIS; the `tileserver-gl` container was removed on 2026-11-08) from one compose
 file, and run the **backend and the map client on the host** (`.venv`, Node). Scripts choose the engine as
 `CONTAINER_ENGINE` → `podman` → `docker`, never hard-code `docker`, and add a Podman-machine overlay on Windows
 (host network, Postgres listening on 127.0.0.1). Documentation shows the Podman command first and the Docker

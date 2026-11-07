@@ -32,7 +32,6 @@ flowchart TB
             end
             subgraph CT["Containers (Podman first, Docker alternative)"]
                 PG[(postgis/postgis:16-3.4<br/>127.0.0.1:5432<br/>restart: unless-stopped)]
-                TS[tileserver-gl :8080<br/>broken, R-12, ADR 21 open]
             end
             FS[[Project folder<br/>data/pgdata, data/backups,<br/>backend/uploads, tiles/,<br/>tile-server/maps/*.mbtiles]]
         end
@@ -61,7 +60,6 @@ flowchart TB
 | OS | Windows 10/11 or Linux | | | [ADR 2](../decisions/0002-single-field-machine-intranet-deployment.md) |
 | Container engine | Podman 6 (Windows: WSL machine) or Docker | | Engine picked by `CONTAINER_ENGINE` → `podman` → `docker` | [ADR 11](../decisions/0011-containers-for-infrastructure-host-for-app.md) |
 | Database | PostgreSQL 16 + PostGIS 3.4 | `postgis/postgis:16-3.4` | Image tag | [ADR 5](../decisions/0005-postgresql-postgis-raw-sql.md) |
-| Tile server (container) | tileserver-gl | `latest` | **Not pinned** (R-12) | ⚠️ keep or remove: open in [ADR 21](../decisions/0021-node-tile-server-offline-maps.md) |
 | Tile server (offline maps) | Node.js, `better-sqlite3`, `dotenv` | Latest at install time | **Not pinned**: no `package.json` or lock file in git; installed by hand (R-27) | [ADR 21](../decisions/0021-node-tile-server-offline-maps.md) (Proposed) |
 | Backend runtime | Python | ≥ 3.11 (3.14 on the maintainer's machine) | `.venv` | |
 | Web framework | FastAPI, uvicorn[standard] | ≥ 0.111, ≥ 0.29 | `requirements.txt` ranges | [ADR 6](../decisions/0006-modular-monolith-in-process-tasks.md) |
@@ -92,7 +90,6 @@ flowchart TB
 | Vite dev server | `localhost:5173` | Browsers on the laptop | Vite default |
 | Backend (uvicorn) | `127.0.0.1:8000` | Vite proxy, browsers on the laptop | uvicorn default (no `--host`) |
 | PostgreSQL | `127.0.0.1:5432` | Backend, scripts | Compose (`ports` or Podman host network with `listen_addresses=127.0.0.1`) |
-| tileserver-gl | `127.0.0.1:8080` | Browser | Compose |
 | Node tile server | `VITE_TILE_HOST:VITE_TILE_PORT` (`.env.example`: `127.0.0.1:8081`) | Browser (the map client builds tile URLs from the same variables) | `.env`; start scripts. **Not forced to loopback**: without the variables Node binds every interface (R-27) |
 
 Everything is meant to listen on loopback ([ADR 12](../decisions/0012-loopback-only-network-exposure.md)); the Node tile server depends on `.env` for that (R-27). With Starlink

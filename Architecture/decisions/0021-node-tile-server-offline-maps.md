@@ -51,12 +51,9 @@ a fourth local process, and treat the points below as conditions of this ADR, no
 4. The default port does not collide with another listener (the start scripts' fallback `8080` is the port of
    `tileserver-gl` in the compose file).
 
-The decision whether this server **replaces** `tileserver-gl` (compose service `tiles`, R-12) or **complements**
-it stays **open** for the owner.
-
-> ⚠️ **Requires stakeholder input (owner):** does the Node tile server replace `tileserver-gl` or complement it?
-> If it replaces it, the compose service and R-12 are removed in a separate change (`docker/` is owner-approved
-> territory).
+The question whether this server replaces `tileserver-gl` or complements it is **closed** (Kiril, 2026-11-08):
+`tileserver-gl` (compose service `tiles`, R-12) was dead and has been removed from the compose file; this server is
+the only tile service. This does not change the status of this ADR (Proposed) or conditions 1 to 4.
 
 > ⚠️ **Requires technical clarification (Kiril Penev):** why the server lives in Node instead of the existing
 > backend (`/tiles` is already proxied to it) or the container, and how `.mbtiles` files reach `tile-server/maps/`.
