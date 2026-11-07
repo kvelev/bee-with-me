@@ -1,4 +1,5 @@
 import io
+import logging
 import os
 import re
 import uuid
@@ -18,10 +19,36 @@ from ..json_columns import decode_json_columns
 from ..fire import repository as fire_repository
 from ..fire.service import notify_alerts_updated
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix='/api/users', tags=['users'])
 
 UPLOAD_DIR = str(Path(__file__).resolve().parent.parent / 'uploads')
-ALLOWED_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
+# The stored extension comes from the validated content type, never from the client's filename (B68).
+PHOTO_EXTENSIONS = {'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp'}
+ALLOWED_TYPES = set(PHOTO_EXTENSIONS)
+# Upload ceilings (B75): a phone photo is 1-4 MiB, a volunteer sheet of a few thousand rows is well under 1 MiB.
+MAX_PHOTO_BYTES = 5 * 1024 * 1024
+MAX_IMPORT_BYTES = 10 * 1024 * 1024
+_READ_CHUNK = 64 * 1024
+
+
+async def _read_capped(file: UploadFile, limit: int) -> bytes:
+    """Read an upload into memory, answering 413 once it passes `limit` bytes.
+
+    The size Starlette recorded is checked first when present, but the chunked read is what enforces the cap.
+    """
+    too_big = HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail=f'File is too large (limit {limit // (1024 * 1024)} MiB)')
+    if file.size is not None and file.size > limit:
+        raise too_big
+    chunks, total = [], 0
+    while chunk := await file.read(_READ_CHUNK):
+        total += len(chunk)
+        if total > limit:
+            raise too_big
+        chunks.append(chunk)
+    return b''.join(chunks)
 
 
 class UserCreate(BaseModel):
@@ -181,15 +208,16 @@ async def upload_photo(
     conn: Annotated[asyncpg.Connection, Depends(get_conn)],
     _: Annotated[asyncpg.Record, Depends(require_role('admin'))],
 ):
-    if file.content_type not in ALLOWED_TYPES:
+    ext = PHOTO_EXTENSIONS.get(file.content_type or '')
+    if ext is None:
         raise HTTPException(status_code=400, detail='Only JPEG, PNG and WebP images are allowed')
 
-    ext = file.filename.rsplit('.', 1)[-1].lower()
+    data = await _read_capped(file, MAX_PHOTO_BYTES)   # before anything touches the disk
     filename = f'{uuid.uuid4()}.{ext}'
     path = os.path.join(UPLOAD_DIR, filename)
 
     with open(path, 'wb') as f:
-        f.write(await file.read())
+        f.write(data)
 
     photo_url = f'/uploads/{filename}'
     await conn.execute('UPDATE users SET photo_url = $1 WHERE id = $2', photo_url, user_id)
@@ -272,7 +300,7 @@ async def import_volunteers(
     if ext not in ('xls', 'xlsx'):
         raise HTTPException(status_code=400, detail='Only .xls and .xlsx files are accepted')
 
-    raw = await file.read()
+    raw = await _read_capped(file, MAX_IMPORT_BYTES)
     df = None
     engines = ['calamine', 'xlrd', 'openpyxl'] if ext == 'xls' else ['calamine', 'openpyxl', 'xlrd']
     for engine in engines:
@@ -298,7 +326,8 @@ async def import_volunteers(
             try:
                 df = _parse_xml_spreadsheet(raw)
             except Exception as e:
-                raise HTTPException(status_code=400, detail=f'Could not parse file: {e}')
+                logger.warning('import parse failed: %s', e)
+                raise HTTPException(status_code=400, detail='Could not parse file')
 
     df.columns = [str(c).strip() for c in df.columns]
     cols = list(df.columns)
@@ -347,7 +376,8 @@ async def import_volunteers(
         except asyncpg.UniqueViolationError:
             skipped.append({'row': row_num, 'reason': f'duplicate entry for "{full_name}"'})
         except Exception as e:
-            skipped.append({'row': row_num, 'reason': str(e)})
+            logger.warning('import row %s failed: %s', row_num, e)
+            skipped.append({'row': row_num, 'reason': 'could not be saved'})
 
     return {'created': created, 'skipped': skipped}
 
