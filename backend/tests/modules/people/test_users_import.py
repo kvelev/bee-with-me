@@ -60,9 +60,9 @@ def test_import_normalises_a_numeric_pin_cell(client, mock_conn):
     assert mock_conn.execute.call_args.args[5] == '1234'
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason='B71: Latin e in the name keyword')
+@pytest.mark.Trait("Task", "B71")
 def test_import_finds_the_bulgarian_name_header(client, mock_conn):
-    # _find_col's keyword 'имe' ends in a Latin 'e', so the Cyrillic header 'Име' never matches
+    # B71: the keyword used to end in a Latin 'e', so the Cyrillic header 'Име' never matched
     resp = _post(client, [['Име', 'ПИН', 'Телефон'], ['Иван Петров', '1234', '0888']])
     assert resp.status_code == 200
     assert resp.json() == {'created': 1, 'skipped': []}
