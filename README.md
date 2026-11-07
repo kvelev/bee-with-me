@@ -59,7 +59,7 @@ at minimum set `POSTGRES_PASSWORD`, `OFFLINE_MAPS_PASSWORD` and the HID gateway'
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` / `POSTGRES_USER` | `localhost` / `5432` / `rescuer_locator` / `rescuer` | Database connection |
+| `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DB` / `POSTGRES_USER` | `127.0.0.1` / `5432` / `rescuer_locator` / `rescuer` | Database connection (`localhost` is read as `127.0.0.1`) |
 | `POSTGRES_PASSWORD` | `change_me` | Database password (also used by the compose file) |
 | `SECRET_KEY` | `change_me` | JWT signing key; a long random string |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` / `REFRESH_TOKEN_EXPIRE_DAYS` | `60` / `7` | Token lifetimes; the browser refreshes silently |

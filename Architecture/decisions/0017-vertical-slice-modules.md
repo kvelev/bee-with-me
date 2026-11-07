@@ -4,7 +4,7 @@ Date: 2026-10-05
 
 ## Status
 
-Proposed
+Accepted
 
 **TOGAF Phase:** C (Application Architecture)
 **Decision Maker(s):** Project owner (kvelev); proposed by Kiril
@@ -36,11 +36,13 @@ that never waits for any queue.
 ## Consequences
 
 **Positive:**
+
 - An agent working on one module touches only that module's folders.
 - A new module is a new folder plus one line in the module list.
 - The live payload becomes thin (IDs and position data), which also removes phones and photo paths from `/ws` (R-22).
 
 **Negative / Trade-offs:**
+
 - A large, step-by-step restructuring; every file moves once.
 - More files and an extra indirection (`api.py`) for small modules.
 - Step 3 of the migration touches the hardware path and needs real-hardware validation.
@@ -48,7 +50,7 @@ that never waits for any queue.
 ## Considered options
 
 | Option | Summary | Pros | Cons |
-|--------|---------|------|------|
+| -------- | --------- | ------ | ------ |
 | ✅ **Vertical slices, backend and frontend** | Same modules on both sides | Parallel work, easy new modules | Large migration |
 | Backend only | Frontend unchanged | Smaller | MapView stays the conflict point |
 | Folders only, no rules | Move files, keep free SQL | Fast | Hidden coupling remains |

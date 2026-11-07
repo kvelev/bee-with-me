@@ -16,7 +16,7 @@ trades off a short delay for cascades
 
 With modules owning their tables ([ADR 17](0017-vertical-slice-modules.md)), a change in one module that others
 must react to (a person deleted, a device deleted, settings changed) can no longer be a direct SQL write into their
-tables. The reaction must not be lost if a module fails, GWIS must not run twice, and a deletion of personal data must
+tables. The reaction must not be lost if a module fails, it must not run twice, and a deletion of personal data must
 not stop half-way.
 
 ## Decision
