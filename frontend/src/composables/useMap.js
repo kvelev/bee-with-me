@@ -249,7 +249,6 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   let latLonGridVisible = false
   let measurePoints = []
   let staleTimer    = null
-  let hqLabel = 'ЩАБ'
   // Repeaters have no GNSS: an admin places each one by hand, like HQ.
   let repeaterPlacedCb = null
 
@@ -307,10 +306,6 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   // Measure layer
   const measureSource = new VectorSource()
   const measureLayer  = new VectorLayer({ source: measureSource })
-
-  // HQ layer
-  const hqSource = new VectorSource()
-  const hqLayer  = new VectorLayer({ source: hqSource })
 
   const repeaterSource = new VectorSource()
   const repeaterLayer  = new VectorLayer({ source: repeaterSource })
@@ -404,7 +399,6 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   shell.addLayer({ id: 'trail',       zIndex: Z.trail,       layer: trailLayer })
   shell.addLayer({ id: 'checkpoints', zIndex: Z.checkpoints, layer: checkpointLayer })
   shell.addLayer({ id: 'repeaters',   zIndex: Z.repeaters,   layer: repeaterLayer })
-  shell.addLayer({ id: 'hq',          zIndex: Z.hq,          layer: hqLayer })
   shell.addLayer({ id: 'trackers',    zIndex: Z.trackers,    layer: vectorLayer })
   shell.addLayer({ id: 'measure',     zIndex: Z.measure,     layer: measureLayer })
 
@@ -680,12 +674,8 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     }
   }, { always: true, order: 10 })
 
-  // Placement modes: the click reports where, nothing else happens.
-  shell.onClick((evt) => {
-    const [lon, lat] = toLonLat(evt.coordinate)
-    mapCtx.onHQPlaced({ lat, lon })
-    return true
-  }, { mode: 'hq-place' })
+  // Repeater placement mode: the click reports where, nothing else happens. (HQ placement is the settings
+  // module's: modules/settings/map/index.js.)
   shell.onClick((evt) => {
     const [lon, lat] = toLonLat(evt.coordinate)
     repeaterPlacedCb?.({ lat, lon })
@@ -748,10 +738,12 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   // The shell reports one gesture once and not while a mode is active.
   shell.onContextMenu(({ coordinate, pixel }) => contextMenuCb?.({ coordinate, pixel }))
 
-  // Modules' map entries (none yet): their layers sit after the map's own.
+  // Modules' map entries: their layers sit after the map's own (the z-index decides what is drawn on top).
+  // An entry whose install failed has an empty api; the names delegated below then do nothing.
+  const moduleApis = {}
   for (const entry of MAP_MODULES) {
     const declarations = MODULES.find(m => m.name === entry.name)?.mapLayers ?? []
-    shell.install(entry, declarations, mapCtx)
+    moduleApis[entry.name] = shell.install(entry, declarations, mapCtx)
   }
 
   onMounted(() => {
@@ -804,39 +796,20 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     shell.setMode('measure', on)
   }
 
-  function makeHQStyle(label) {
-    return new Style({
-      image: new RegularShape({
-        points:  4,
-        radius:  15,
-        radius2: 4,
-        angle:   0,
-        fill:    new Fill({ color: '#fbbf24' }),
-        stroke:  new Stroke({ color: '#000', width: 2 }),
-      }),
-      text: new Text({
-        text:    label || 'ЩАБ',
-        offsetY: -22,
-        font:    'bold 13px system-ui',
-        fill:    new Fill({ color: '#fbbf24' }),
-        stroke:  new Stroke({ color: '#000', width: 3 }),
-      }),
-    })
+  // HQ: delegated to the settings module's map entry. Without it (its install failed) the two names are
+  // no-ops that log once, so the rest of the map keeps working (BP-03).
+  let hqMissingLogged = false
+  function settingsMapFn(name) {
+    const fn = moduleApis.settings?.[name]
+    if (typeof fn === 'function') return fn
+    return () => {
+      if (hqMissingLogged) return
+      hqMissingLogged = true
+      console.error('map: the settings module is not on the map, %s does nothing', name)
+    }
   }
-
-  function setHQ(loc, label) {
-    hqLabel = label || hqLabel
-    hqSource.clear()
-    if (!loc) return
-    const f = new Feature({ geometry: new Point(fromLonLat([loc.lon, loc.lat])) })
-    f.setId('hq')
-    f.setStyle(makeHQStyle(hqLabel))
-    hqSource.addFeature(f)
-  }
-
-  function setHQPlacementMode(on) {
-    shell.setMode('hq-place', on)
-  }
+  const setHQ = (loc, label) => settingsMapFn('setHQ')(loc, label)
+  const setHQPlacementMode = (on) => settingsMapFn('setHQPlacementMode')(on)
 
   function makeRepeaterStyle(label, active) {
     const color = active ? '#22d3ee' : '#64748b'
