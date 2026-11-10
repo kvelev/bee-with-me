@@ -185,7 +185,7 @@ async def run() -> None:
             break
 
         except Exception as exc:
-            from ..database import redact
+            from ..core.database import redact
             msg = redact(str(exc))
             logger.warning('HID reader error (%s) — retrying in %ds', msg, RECONNECT_DELAY)
             status['connected'] = False

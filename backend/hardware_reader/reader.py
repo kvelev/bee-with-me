@@ -43,7 +43,7 @@ async def _broadcast_status() -> None:
 
 
 def _connect_kwargs() -> dict:
-    from ..database import connect_kwargs
+    from ..core.database import connect_kwargs
     return connect_kwargs()
 
 
@@ -295,7 +295,7 @@ async def _read_loop(reader: asyncio.StreamReader, conn: asyncpg.Connection) -> 
             break
 
         except Exception as exc:
-            from ..database import redact
+            from ..core.database import redact
             msg = redact(str(exc))
             logger.warning('Serial reader error (%s) — retrying in %ds', msg, RECONNECT_DELAY)
             status['connected'] = False
