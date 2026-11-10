@@ -10,6 +10,7 @@ const LONG_PRESS_MS = 600
 const LONG_PRESS_SLOP_PX = 10
 const CONTEXT_DEDUPE_MS = 800
 const DEFAULT_ORDER = 100
+const LOG_EVERY_MS = 5000   // a handler that throws on every pointer move must not flood the console (as the banners, T421)
 
 // Stable insert: by `order`, ties in registration order.
 function insertSorted(list, entry) {
@@ -31,6 +32,15 @@ export function createMapShell({ view, controls = [], overlays = [], createLongP
   let longPress = null
   let lastContextAt = -Infinity
   let viewportListeners = []
+  let handlerSeq = 0
+  const lastLoggedAt = new Map()      // handler id -> time of its last log line
+
+  function logFailure(what, id, error) {
+    const now = Date.now()
+    if (now - (lastLoggedAt.get(id) ?? -Infinity) < LOG_EVERY_MS) return
+    lastLoggedAt.set(id, now)
+    console.error(`map ${what} handler ${id} failed`, error)
+  }
 
   function addLayer({ id, zIndex, layer }) {
     if (layers.has(id)) throw new Error(`map layer ${id} is already registered`)
@@ -67,26 +77,27 @@ export function createMapShell({ view, controls = [], overlays = [], createLongP
     return modes.find((m) => active.has(m)) ?? null
   }
 
-  function onClick(fn, { mode: forMode = null, order = DEFAULT_ORDER } = {}) {
-    const entry = { fn, mode: forMode, order }
+  // `id` names the handler in its log line (default `click-N` / `pointer-N`).
+  function onClick(fn, { mode: forMode = null, order = DEFAULT_ORDER, id = `click-${++handlerSeq}` } = {}) {
+    const entry = { fn, mode: forMode, order, id }
     insertSorted(clickHandlers, entry)
     return () => { const i = clickHandlers.indexOf(entry); if (i >= 0) clickHandlers.splice(i, 1) }
   }
 
-  function onPointerMove(fn, { mode: forMode = null, order = DEFAULT_ORDER, always = false } = {}) {
-    const entry = { fn, mode: forMode, order, always }
+  function onPointerMove(fn, { mode: forMode = null, order = DEFAULT_ORDER, always = false, id = `pointer-${++handlerSeq}` } = {}) {
+    const entry = { fn, mode: forMode, order, always, id }
     insertSorted(moveHandlers, entry)
     return () => { const i = moveHandlers.indexOf(entry); if (i >= 0) moveHandlers.splice(i, 1) }
   }
 
   // Runs the handlers in order; a handler that returns true stops the ones after it, one that throws is
-  // logged and skipped.
+  // logged (at most once per LOG_EVERY_MS for its id) and skipped.
   function run(list, evt, what) {
-    for (const { fn } of list) {
+    for (const { fn, id } of list) {
       try {
         if (fn(evt) === true) return
       } catch (error) {
-        console.error(`map ${what} handler failed`, error)
+        logFailure(what, id, error)
       }
     }
   }
