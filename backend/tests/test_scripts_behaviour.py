@@ -137,6 +137,13 @@ def _run(kind, project, tmp_path, *, engine='podman', migrate='0', wait=None, ar
     return res
 
 
+def _unwrapped(text):
+    """Console output with PowerShell's hard line breaks removed. PowerShell wraps its error text at the console
+    width, and the break can fall inside a word (B59: 'pgdata.docker-2026111' + '0-124843'). Without it the
+    assertions depend on the length of the temp path."""
+    return re.sub(r'\r?\n', '', text).replace('\\', '/')
+
+
 def _backups(res):
     return [c for c in res.calls if c.startswith('backup ')]
 
@@ -150,7 +157,7 @@ def _migrates(res):
 def test_up_to_date_database_starts_without_a_backup(kind, project, tmp_path):
     res = _run(kind, project, tmp_path, migrate='0')
     assert res.returncode == 0, res.out
-    assert DRY in res.out
+    assert DRY in _unwrapped(res.out)
     assert _migrates(res) == ['migrate status']
     assert _backups(res) == []
     assert any(' compose -p bee-with-me ' in c and c.rstrip().endswith('up -d') for c in res.calls), res.calls
@@ -164,15 +171,15 @@ def test_pending_migrations_back_up_before_the_start(kind, project, tmp_path):
     backups = _backups(res)
     assert len(backups) == 1 and 'backups' in backups[0], res.calls
     assert res.calls.index('migrate status') < res.calls.index(backups[0]) < res.calls.index('migrate up')
-    assert res.out.index('STUB BACKUP DONE') < res.out.index(DRY)
+    assert _unwrapped(res.out).index('STUB BACKUP DONE') < _unwrapped(res.out).index(DRY)
 
 
 @pytest.mark.parametrize('kind', KINDS)
 def test_failing_migrate_up_refuses_to_start_and_names_the_backup(kind, project, tmp_path):
     res = _run(kind, project, tmp_path, migrate='10', migrate_up_exit='1')
     assert res.returncode != 0
-    assert DRY not in res.out and len(_backups(res)) == 1
-    assert 'Migrating failed' in res.out and 'backups' in res.out
+    assert DRY not in _unwrapped(res.out) and len(_backups(res)) == 1
+    assert 'Migrating failed' in _unwrapped(res.out) and 'backups' in _unwrapped(res.out)
 
 
 # ── Plain start (no --update): offline, never installs or migrates ────────────
@@ -181,7 +188,7 @@ def test_failing_migrate_up_refuses_to_start_and_names_the_backup(kind, project,
 def test_plain_start_installs_nothing_and_never_touches_the_schema(kind, project, tmp_path):
     res = _run(kind, project, tmp_path, migrate='10', update=False)
     assert res.returncode == 0, res.out
-    assert DRY in res.out
+    assert DRY in _unwrapped(res.out)
     assert not any(c.startswith('pip ') for c in res.calls), res.calls
     assert _migrates(res) == [] and _backups(res) == []
     assert any(' compose -p bee-with-me ' in c and c.rstrip().endswith('up -d') for c in res.calls), res.calls
@@ -192,7 +199,7 @@ def test_plain_start_without_a_venv_points_to_the_update_script(kind, project, t
     shutil.rmtree(project / '.venv')
     res = _run(kind, project, tmp_path, update=False)
     assert res.returncode != 0
-    assert DRY not in res.out and 'update' in res.out and 'not installed yet' in res.out
+    assert DRY not in _unwrapped(res.out) and 'update' in _unwrapped(res.out) and 'not installed yet' in _unwrapped(res.out)
 
 
 @pytest.mark.parametrize('kind', KINDS)
@@ -211,8 +218,8 @@ def test_update_skips_pip_when_requirements_are_unchanged(kind, project, tmp_pat
 def test_failing_backup_refuses_to_start(kind, project, tmp_path):
     res = _run(kind, project, tmp_path, migrate='10', backup_fail='1')
     assert res.returncode != 0
-    assert DRY not in res.out
-    assert 'Backup failed - not starting' in res.out
+    assert DRY not in _unwrapped(res.out)
+    assert 'Backup failed - not starting' in _unwrapped(res.out)
 
 
 @pytest.mark.Trait("Bug", "B14")
@@ -220,8 +227,8 @@ def test_failing_backup_refuses_to_start(kind, project, tmp_path):
 def test_database_newer_than_the_app_refuses(kind, project, tmp_path):
     res = _run(kind, project, tmp_path, migrate='2')
     assert res.returncode != 0
-    assert DRY not in res.out and _backups(res) == []
-    assert 'newer than this version' in res.out
+    assert DRY not in _unwrapped(res.out) and _backups(res) == []
+    assert 'newer than this version' in _unwrapped(res.out)
 
 
 @pytest.mark.Trait("Bug", "B14")
@@ -229,9 +236,9 @@ def test_database_newer_than_the_app_refuses(kind, project, tmp_path):
 def test_invalid_migration_files_refuse_at_once(kind, project, tmp_path):
     res = _run(kind, project, tmp_path, migrate='1', wait=30)
     assert res.returncode != 0
-    assert DRY not in res.out and _backups(res) == []
+    assert DRY not in _unwrapped(res.out) and _backups(res) == []
     assert _migrates(res) == ['migrate status']
-    assert 'migration files are invalid' in res.out
+    assert 'migration files are invalid' in _unwrapped(res.out)
 
 
 @pytest.mark.Trait("Bug", "B14")
@@ -239,9 +246,9 @@ def test_invalid_migration_files_refuse_at_once(kind, project, tmp_path):
 def test_unreachable_database_refuses_after_the_retries(kind, project, tmp_path):
     res = _run(kind, project, tmp_path, migrate='3', wait=5)   # longer than one status call: at least one retry
     assert res.returncode != 0
-    assert DRY not in res.out and _backups(res) == []
+    assert DRY not in _unwrapped(res.out) and _backups(res) == []
     assert len(_migrates(res)) >= 2   # retried at least once
-    assert 'database not reachable?' in res.out and 'never migrated without a backup' in res.out
+    assert 'database not reachable?' in _unwrapped(res.out) and 'never migrated without a backup' in _unwrapped(res.out)
 
 
 @pytest.mark.Trait("Bug", "B14")
@@ -250,7 +257,7 @@ def test_database_coming_up_late_is_retried_then_backed_up(kind, project, tmp_pa
     res = _run(kind, project, tmp_path, migrate='3,10', wait=30)
     assert res.returncode == 0, res.out
     assert _migrates(res) == ['migrate status', 'migrate status', 'migrate up'] and len(_backups(res)) == 1
-    assert DRY in res.out
+    assert DRY in _unwrapped(res.out)
 
 
 @pytest.mark.Trait("Bug", "B14")
@@ -267,7 +274,7 @@ def test_old_docker_project_is_backed_up_and_stopped_before_compose_up(kind, pro
     up = next(i for i, c in enumerate(res.calls) if ' compose -p bee-with-me ' in c and c.rstrip().endswith('up -d'))
     assert res.calls.index(backups[0]) < down < up
     assert ' -v' not in res.calls[down]
-    assert DRY in res.out
+    assert DRY in _unwrapped(res.out)
 
 
 @pytest.mark.Trait("Bug", "B14")
@@ -279,7 +286,7 @@ def test_old_project_backup_failure_leaves_it_running(kind, project, tmp_path):
     assert res.returncode != 0
     assert not any(' down' in c for c in res.calls if c.startswith('engine '))
     assert not any('up -d' in c for c in res.calls)
-    assert 'Backup of the old database failed' in res.out
+    assert 'Backup of the old database failed' in _unwrapped(res.out)
 
 
 @pytest.mark.Trait("Bug", "B14")
@@ -292,8 +299,8 @@ def test_old_podman_machine_volume_stops_with_restore_steps(project, tmp_path):
     res = _run(kind, project, tmp_path, engine='podman', migrate='0', old_db='olddb123',
                old_workdir=str(project / 'docker'), old_mount='/var/lib/containers/storage/volumes/docker_pgdata/_data')
     assert res.returncode != 0
-    assert DRY not in res.out
-    assert 'docker_pgdata' in res.out and 'restore.' in res.out and 'beewithme_stub.dump' in res.out
+    assert DRY not in _unwrapped(res.out)
+    assert 'docker_pgdata' in _unwrapped(res.out) and 'restore.' in _unwrapped(res.out) and 'beewithme_stub.dump' in _unwrapped(res.out)
     assert any(' compose -p docker -f ' in c for c in res.calls)
 
 
@@ -303,7 +310,7 @@ def test_old_podman_machine_volume_stops_with_restore_steps(project, tmp_path):
 def test_engine_warning_on_stderr_does_not_abort(kind, project, tmp_path):
     res = _run(kind, project, tmp_path, migrate='0', info_warn='1')
     assert res.returncode == 0, res.out
-    assert DRY in res.out
+    assert DRY in _unwrapped(res.out)
 
 
 # ── B17: only an old install of THIS folder is backed up and stopped ──────────
@@ -338,7 +345,7 @@ def test_old_container_of_this_folder_by_working_dir_is_backed_up_and_stopped(ki
                old_workdir=variants[variant], old_mount='/somewhere/else')
     assert res.returncode == 0, res.out
     assert _backups(res) and _old_stopped(res), res.calls
-    assert DRY in res.out
+    assert DRY in _unwrapped(res.out)
 
 
 @pytest.mark.Trait("Bug", "B17")
@@ -351,21 +358,36 @@ def test_old_container_of_this_folder_by_data_mount_is_backed_up_and_stopped(kin
                old_workdir='/home/other/app/docker', old_mount=mount)
     assert res.returncode == 0, res.out
     assert _backups(res) and _old_stopped(res), res.calls
-    assert DRY in res.out
+    assert DRY in _unwrapped(res.out)
 
 
-@pytest.mark.Trait("Bug", "B17")
-@pytest.mark.parametrize('kind', KINDS)
-def test_old_container_of_another_folder_is_left_alone_with_instructions(kind, project, tmp_path):
+def _assert_old_container_left_alone(kind, project, tmp_path):
     other = tmp_path / 'other-app'
     res = _run(kind, project, tmp_path, engine='docker', migrate='0', old_db='olddb123',
                old_workdir=str(other / 'docker'), old_mount=str(other / 'data' / 'pgdata'))
     assert res.returncode != 0
     assert _backups(res) == [] and not _old_stopped(res), res.calls
     assert not any('up -d' in c for c in res.calls)
-    assert DRY not in res.out
+    assert DRY not in _unwrapped(res.out)
     flag = '-Container olddb123' if kind == 'ps' else '--container olddb123'
-    assert flag in res.out and 'restore.' in res.out and 'another folder' in res.out, res.out
+    out = _unwrapped(res.out)
+    assert flag in out and 'restore.' in out and 'another folder' in out, res.out
+
+
+@pytest.mark.Trait("Bug", "B17")
+@pytest.mark.parametrize('kind', KINDS)
+def test_old_container_of_another_folder_is_left_alone_with_instructions(kind, project, tmp_path):
+    _assert_old_container_left_alone(kind, project, tmp_path)
+
+
+@pytest.mark.Trait("Bug", "B92")
+@pytest.mark.skipif(PS_EXE is None or os.name != 'nt', reason='needs Windows PowerShell')
+@pytest.mark.parametrize('pad', [10, 55, 85])
+def test_old_container_message_survives_a_long_temp_path(pad, tmp_path, _venv, postgres_port):
+    # Same as the B91 regression for the engine guard: where PowerShell's line break falls depends on the length of
+    # the temp path (55 and 85 break inside the flag with the plain `res.out`), so the B17 assertions read the unwrapped text.
+    proj = _make_project(tmp_path / ('long-' + 'x' * pad) / 'proj', _venv, postgres_port)
+    _assert_old_container_left_alone('ps', proj, tmp_path)
 
 
 @pytest.mark.Trait("Bug", "B17")
@@ -375,7 +397,7 @@ def test_old_container_without_inspect_information_is_left_alone(kind, project, 
     assert res.returncode != 0
     assert _backups(res) == [] and not _old_stopped(res), res.calls
     assert not any('up -d' in c for c in res.calls)
-    assert DRY not in res.out
+    assert DRY not in _unwrapped(res.out)
 
 
 # ── B18: pip failures are reported (not fatal), stderr from native calls never aborts ─
@@ -386,8 +408,8 @@ def test_failing_pip_install_warns_and_the_start_continues(kind, project, tmp_pa
     res = _run(kind, project, tmp_path, migrate='0', pip_fail='1')
     assert res.returncode == 0, res.out
     assert any(c.startswith('pip ') for c in res.calls)
-    assert 'pip install failed' in res.out
-    assert res.out.index('pip install failed') < res.out.index(DRY)
+    assert 'pip install failed' in _unwrapped(res.out)
+    assert _unwrapped(res.out).index('pip install failed') < _unwrapped(res.out).index(DRY)
 
 
 @pytest.mark.Trait("Bug", "B18")
@@ -395,7 +417,7 @@ def test_failing_pip_install_warns_and_the_start_continues(kind, project, tmp_pa
 def test_migrate_status_warning_on_stderr_does_not_abort(kind, project, tmp_path):
     res = _run(kind, project, tmp_path, migrate='10', migrate_warn='1')
     assert res.returncode == 0, res.out
-    assert len(_backups(res)) == 1 and DRY in res.out
+    assert len(_backups(res)) == 1 and DRY in _unwrapped(res.out)
 
 
 # ── B20: a trailing or doubled separator in the project path or the old working_dir still matches ─
@@ -411,7 +433,7 @@ def test_project_path_with_a_trailing_separator_still_matches_the_old_container(
                old_workdir=str(project / 'docker'), old_mount='/somewhere/else', args=args)
     assert res.returncode == 0, res.out
     assert _backups(res) and _old_stopped(res), res.calls
-    assert DRY in res.out
+    assert DRY in _unwrapped(res.out)
 
 
 @pytest.mark.Trait("Bug", "B20")
@@ -422,7 +444,7 @@ def test_old_working_dir_with_doubled_separators_still_matches(kind, project, tm
                old_workdir=doubled, old_mount='/somewhere/else')
     assert res.returncode == 0, res.out
     assert _backups(res) and _old_stopped(res), res.calls
-    assert DRY in res.out
+    assert DRY in _unwrapped(res.out)
 
 
 # ── B21: the project folder is printed without a trailing separator ───────────────────────────
@@ -482,8 +504,8 @@ def test_data_backups_that_cannot_be_made_stops_with_a_next_step(kind, project, 
     (project / 'data').write_text('a file where the data folder should be', encoding='utf-8')
     res = _run(kind, project, tmp_path, migrate='0')
     assert res.returncode != 0
-    assert DRY not in res.out and not any('up -d' in c for c in res.calls), res.calls
-    assert 'Cannot write to the backup folder' in res.out, res.out
+    assert DRY not in _unwrapped(res.out) and not any('up -d' in c for c in res.calls), res.calls
+    assert 'Cannot write to the backup folder' in _unwrapped(res.out), res.out
 
 
 # backup.sh / backup.ps1 themselves (real scripts, a stub database container)
@@ -561,7 +583,7 @@ def test_backup_sh_streams_the_dump_when_docker_cp_fails(tmp_path):
     out = tmp_path / 'out'
     res = _run_backup('sh', tmp_path, out, engine='docker', extra_env={'BWM_STUB_CP_FAIL': '1'})
     assert res.returncode == 0, res.out
-    assert 'streaming the dump' in res.out, res.out
+    assert 'streaming the dump' in _unwrapped(res.out), res.out
     assert any(c.startswith('engine exec') and ' cat /tmp/beewithme_' in c for c in res.calls), res.calls
     assert (out / _marker(out)['dump']).read_bytes() == b'PGDMP'
 
@@ -596,7 +618,7 @@ def test_backup_into_a_folder_it_cannot_use_stops_before_any_engine_call(kind, t
     out.write_text('a file', encoding='utf-8')
     res = _run_backup(kind, tmp_path, out)
     assert res.returncode != 0, res.out
-    assert 'Cannot write to the backup folder' in res.out, res.out
+    assert 'Cannot write to the backup folder' in _unwrapped(res.out), res.out
     assert not [c for c in res.calls if c.startswith('engine exec')], res.calls
     assert out.read_text(encoding='utf-8') == 'a file'
 
@@ -613,7 +635,7 @@ def test_backup_sh_into_a_read_only_folder_names_the_chown_fix(tmp_path):
     finally:
         out.chmod(0o755)
     assert res.returncode != 0, res.out
-    assert 'Cannot write to the backup folder' in res.out and 'chown' in res.out, res.out
+    assert 'Cannot write to the backup folder' in _unwrapped(res.out) and 'chown' in _unwrapped(res.out), res.out
     assert not [c for c in res.calls if c.startswith('engine exec')], res.calls
 
 
@@ -652,7 +674,7 @@ def test_fresh_install_replaces_the_example_secret_key_with_a_random_one(kind, p
     assert key != 'change-me-example-key' and len(key) >= 48 and not re.search(r'\s|["\']', key), key
     assert [l for l in lines if not l.startswith('SECRET_KEY=')] == \
         ['POSTGRES_PORT=5432', 'export POSTGRES_DB=stub_db', 'OTHER_SETTING=1']
-    assert key not in res.out   # never printed
+    assert key not in _unwrapped(res.out)   # never printed
     again = _fresh_install(kind, project, tmp_path, EXAMPLE)
     assert again.returncode == 0, again.out
     assert _secret_lines(project)[0].split('=', 1)[1] != key   # random each time
@@ -698,8 +720,8 @@ def test_existing_bind_mount_data_stops_the_podman_machine_override(project, tmp
     (pgdata / 'PG_VERSION').write_text('16\n', encoding='utf-8')
     res = _run(kind, project, tmp_path, engine='podman', migrate='0')
     assert res.returncode != 0, res.out
-    assert DRY not in res.out and not any('up -d' in c for c in res.calls), res.calls
-    assert 'CONTAINER_ENGINE' in res.out and 'docker' in res.out and 'data' in res.out, res.out
+    assert DRY not in _unwrapped(res.out) and not any('up -d' in c for c in res.calls), res.calls
+    assert 'CONTAINER_ENGINE' in _unwrapped(res.out) and 'docker' in _unwrapped(res.out) and 'data' in _unwrapped(res.out), res.out
     assert (pgdata / 'PG_VERSION').is_file()
 
 
@@ -708,7 +730,7 @@ def test_podman_machine_override_without_old_data_still_starts(project, tmp_path
     kind = _machine_override_kind()
     res = _run(kind, project, tmp_path, engine='podman', migrate='0')
     assert res.returncode == 0, res.out
-    assert DRY in res.out
+    assert DRY in _unwrapped(res.out)
 
 
 @pytest.mark.Trait("Bug", "B57")
@@ -719,7 +741,7 @@ def test_docker_with_existing_bind_mount_data_starts(kind, project, tmp_path):
     (pgdata / 'PG_VERSION').write_text('16\n', encoding='utf-8')
     res = _run(kind, project, tmp_path, engine='docker', migrate='0')
     assert res.returncode == 0, res.out
-    assert DRY in res.out
+    assert DRY in _unwrapped(res.out)
 
 
 # ── B59: the engine guard explains the rename; private, atomically written secrets file; private backups folder ──
@@ -729,13 +751,6 @@ def _pgdata_with_files(project):
     pgdata.mkdir(parents=True)
     (pgdata / 'PG_VERSION').write_text('16\n', encoding='utf-8')
     return pgdata
-
-
-def _unwrapped(text):
-    """Console output with PowerShell's hard line breaks removed. PowerShell wraps its error text at the console
-    width, and the break can fall inside a word (B59: 'pgdata.docker-2026111' + '0-124843'). Without it the
-    assertions depend on the length of the temp path."""
-    return re.sub(r'\r?\n', '', text).replace('\\', '/')
 
 
 def _assert_guard_names_rename_and_restore(kind, project, tmp_path):
@@ -775,7 +790,7 @@ def test_after_the_rename_podman_starts(project, tmp_path):
     pgdata.rename(project / 'data' / 'pgdata.docker-20261004')
     res = _run(kind, project, tmp_path, engine='podman', migrate='0')
     assert res.returncode == 0, res.out
-    assert DRY in res.out
+    assert DRY in _unwrapped(res.out)
 
 
 @pytest.mark.Trait("Bug", "B59")
@@ -787,8 +802,8 @@ def test_failing_icacls_leaves_no_secrets_file_and_stops_with_a_message(project,
     assert res.returncode != 0, res.out
     leftovers = sorted(p.name for p in project.iterdir() if p.name.startswith('.env') and p.name != '.env.example')
     assert leftovers == [], leftovers    # neither the file nor a temp copy of the key
-    assert 'icacls' in res.out, res.out
-    assert 'change-me-example-key' not in res.out
+    assert 'icacls' in _unwrapped(res.out), res.out
+    assert 'change-me-example-key' not in _unwrapped(res.out)
 
 
 @pytest.mark.Trait("Bug", "B59")
@@ -854,7 +869,7 @@ def test_start_sh_stops_naming_both_attempts_when_nothing_can_make_a_key(project
     assert res.returncode != 0, res.out
     assert 'fake openssl' in res.calls and 'fake base64' in res.calls, res.calls
     assert not (project / '.env').exists()
-    assert 'openssl' in res.out and '/dev/urandom' in res.out, res.out
+    assert 'openssl' in _unwrapped(res.out) and '/dev/urandom' in _unwrapped(res.out), res.out
 
 
 # ── B60: engine-guard steps use the right engine; temp secrets file cleanup ──
