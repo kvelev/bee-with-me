@@ -1,6 +1,7 @@
 """Rules of the module architecture that are data: table owners, allowed module edges and the checks over them."""
 from __future__ import annotations
 
+import functools
 import importlib
 import inspect
 import tomllib
@@ -195,6 +196,28 @@ def check_boundary_contracts(toml_text: str, module_names: Iterable[str], backen
         missing = sorted(want_sources - set(contract.get('source_modules', [])))
         if missing:
             problems.append(f'"{label}": source_modules lack {missing}')
+        # B95: without allow_indirect_imports = true the contract also fails on legal chains (a legacy file imports
+        # `api`, which imports a private child); import-linter's default is false.
+        if contract.get('allow_indirect_imports') is not True:
+            problems.append(f'"{label}": allow_indirect_imports must be true (import-linter defaults to false, '
+                            f'which flags imports through the public api)')
+        problems += _ignore_import_problems(label, contract, name, want_forbidden)
+    return problems
+
+
+def _ignore_import_problems(label: str, contract: dict, name: str, private: set[str]) -> list[str]:
+    """ignore_imports of a boundary contract may only open one edge: a source into this module's own private child."""
+    problems: list[str] = []
+    sources = list(contract.get('source_modules', []))
+    for entry in contract.get('ignore_imports', []):
+        importer, arrow, imported = (part.strip() for part in str(entry).partition('->'))
+        if not arrow or '*' in entry:
+            problems.append(f'"{label}": ignore_imports entry {entry!r} must be "<importer> -> <imported>" without wildcards')
+        elif imported not in private:
+            problems.append(f'"{label}": ignore_imports entry {entry!r} may only open an import into a private child of '
+                            f'backend.modules.{name} ({sorted(private)})')
+        elif not any(importer == src or importer.startswith(src + '.') for src in sources):
+            problems.append(f'"{label}": ignore_imports entry {entry!r} must start in one of the source_modules of the contract')
     return problems
 
 
@@ -217,13 +240,17 @@ def check_manifest_wiring(manifests: Iterable[ModuleManifest], backend: Path) ->
         for msg in m.live_messages:
             if msg not in FORWARDED_CHANNELS:
                 problems.append(f'{m.name}: live message {msg!r} is not in backend.core.ws.FORWARDED_CHANNELS')
+        tasks_module = f'backend.modules.{m.name}.tasks'
         for task in m.tasks:
-            name = getattr(task, '__name__', repr(task))
+            inner = task
+            while isinstance(inner, functools.partial):   # B95: a task with bound arguments is judged by what it wraps
+                inner = inner.func
+            name = getattr(inner, '__name__', None) or repr(inner)
+            where = getattr(inner, '__module__', None)
             if not inspect.iscoroutinefunction(task):
                 problems.append(f'{m.name}: task {name} is not a coroutine function')
-            elif getattr(task, '__module__', None) != f'backend.modules.{m.name}.tasks':
-                problems.append(f'{m.name}: task {name} must live in backend.modules.{m.name}.tasks, '
-                                f'is in {getattr(task, "__module__", None)}')
+            elif where != tasks_module and not (where or '').startswith(tasks_module + '.'):   # tasks.py or a tasks/ package
+                problems.append(f'{m.name}: task {name} must live in {tasks_module}, is in {where}')
     return problems
 
 
