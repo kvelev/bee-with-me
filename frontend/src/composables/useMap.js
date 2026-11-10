@@ -1,6 +1,5 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import Overlay from 'ol/Overlay'
-import Map from 'ol/Map'
 import View from 'ol/View'
 import TileLayer from 'ol/layer/Tile'
 import OSM from 'ol/source/OSM'
@@ -29,13 +28,12 @@ import { hotspotStyleKey } from '../lib/fireStyle'
 import { hexToRgba } from '../lib/color'
 import { PHOTO_SIZE, markerZIndex, onPhotoLoaded, photoCanvas, photoImage, ringFor, safePhotoUrl } from '../lib/photoMarker'
 import { getWeatherTile } from '../api'
+import { createMapShell } from '../platform/map-shell/createMapShell'
+import { Z } from '../platform/map-shell/zorder'
+import { MODULES } from '../modules'
+import { MAP_MODULES } from '../modules/mapEntries'
 
 const DEFAULT_COLOR = '#3b82f6'
-
-// Long press on touch: 600 ms held within 10 px.
-const LONG_PRESS_MS = 600
-const LONG_PRESS_SLOP_PX = 10
-const LONG_PRESS_DEDUPE_MS = 800
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371
@@ -356,43 +354,72 @@ function makeCheckpointStyle(color, index, isLast, showLabels, recordedAt) {
 }
 
 export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, groupsMap, onHQPlaced, showPhotos = ref(true)) {
-  let map = null
   let basemapLayer = makeBasemapLayer('osm')
   let checkpointNumbersVisible = false
   let mgrsLabelMode = false
   let latLonGridVisible = false
-  let measureMode   = false
   let measurePoints = []
   let staleTimer    = null
-  let hqPlacementMode = false
   let hqLabel = 'ЩАБ'
   // Repeaters have no GNSS: an admin places each one by hand, like HQ.
-  let repeaterPlacementMode = false
   let repeaterPlacedCb = null
-  const placing = () => hqPlacementMode || repeaterPlacementMode
+
+  // The map shell owns the ol/Map, the layer z-order, the three modes (HQ placement, repeater
+  // placement, measuring; first in the list wins) and the click / pointer / context-menu dispatch.
+  // It is created here, at set-up, and mounted in onMounted, so every call below that arrives before
+  // the map exists (setHQ, setHotspots, setZones, setRepeaters, a mode) keeps working.
+  const tooltipEl = document.createElement('div')
+  Object.assign(tooltipEl.style, {
+    position:        'absolute',
+    background:      'rgba(15,15,20,0.88)',
+    color:           '#fff',
+    padding:         '6px 10px',
+    borderRadius:    '6px',
+    fontSize:        '12px',
+    pointerEvents:   'none',
+    whiteSpace:      'nowrap',
+    boxShadow:       '0 2px 8px rgba(0,0,0,0.5)',
+    border:          '1px solid rgba(255,255,255,0.1)',
+    lineHeight:      '1.5',
+    display:         'none',
+  })
+  const tooltip = new Overlay({
+    element:     tooltipEl,
+    offset:      [14, 0],
+    positioning: 'center-left',
+    stopEvent:   false,
+  })
+  const shell = createMapShell({
+    view:     new View({ center: fromLonLat([25.0, 42.5]), zoom: 7 }),
+    controls: [new ScaleLine({ units: 'metric', bar: false, minWidth: 100 })],
+    overlays: [tooltip],
+    createLongPress,
+    modes:    ['hq-place', 'repeater-place', 'measure'],
+    basemap:  basemapLayer,
+  })
 
   // Marker layer
   const source      = new VectorSource()
-  const vectorLayer = new VectorLayer({ source, zIndex: 10 })
+  const vectorLayer = new VectorLayer({ source })
 
   // Trail line layer
   const trailSource = new VectorSource()
-  const trailLayer  = new VectorLayer({ source: trailSource, zIndex: 5, visible: false })
+  const trailLayer  = new VectorLayer({ source: trailSource, visible: false })
 
   // Checkpoint dot layer
   const checkpointSource = new VectorSource()
-  const checkpointLayer  = new VectorLayer({ source: checkpointSource, zIndex: 6, visible: false })
+  const checkpointLayer  = new VectorLayer({ source: checkpointSource, visible: false })
 
   // Fire layers: history (burnt areas) and detections (hotspots) sit under the trackers and
   // trails, hidden until the operator turns them on.
   const geojson       = new GeoJSON()
   const burntSource   = new VectorSource()
-  const burntLayer    = new VectorLayer({ source: burntSource, zIndex: 3, visible: false })
+  const burntLayer    = new VectorLayer({ source: burntSource, visible: false })
   const hotspotSource = new VectorSource()
   const hotspotStyles = {}
   let   fieldReportLabel = ''
   const hotspotLayer  = new VectorLayer({
-    source: hotspotSource, zIndex: 3.5, visible: false,
+    source: hotspotSource, visible: false,
     style: (feature) => {
       const key = hotspotStyleKey(feature.getProperties(), Date.now())
       return (hotspotStyles[key] ??= makeHotspotStyle(key, fieldReportLabel))
@@ -402,23 +429,22 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   burntLayer.setStyle(() => (burntStyleCache ??= makeBurntStyle()))
   // Suppression zones sit under the hotspots so a detection inside a zone stays clickable.
   const zoneSource = new VectorSource()
-  const zoneLayer  = new VectorLayer({ source: zoneSource, zIndex: 3.4, visible: false })
+  const zoneLayer  = new VectorLayer({ source: zoneSource, visible: false })
   let fireTimer = null
   let fireClickCb = null
   let trackerClickCb = null
   let contextMenuCb = null
-  let onContextMenuEvent = null, onPressDown = null, onPressMove = null, endPressFn = null, longPress = null
 
   // Measure layer
   const measureSource = new VectorSource()
-  const measureLayer  = new VectorLayer({ source: measureSource, zIndex: 20 })
+  const measureLayer  = new VectorLayer({ source: measureSource })
 
   // HQ layer
   const hqSource = new VectorSource()
-  const hqLayer  = new VectorLayer({ source: hqSource, zIndex: 15 })
+  const hqLayer  = new VectorLayer({ source: hqSource })
 
   const repeaterSource = new VectorSource()
-  const repeaterLayer  = new VectorLayer({ source: repeaterSource, zIndex: 14 })
+  const repeaterLayer  = new VectorLayer({ source: repeaterSource })
 
   // Weather overlay layer — created/destroyed on demand
   let activeWeatherLayer = null
@@ -453,10 +479,11 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     lonLabelFormatter: (lon) => {
       if (mgrsLabelMode) {
         try {
-          const center = map?.getView().getCenter()
+          const m = shell.map
+          const center = m?.getView().getCenter()
           if (center) {
             const [, lat] = toLonLat(center)
-            const zoom = map.getView().getZoom() ?? 7
+            const zoom = m.getView().getZoom() ?? 7
             const acc = zoom >= 14 ? 2 : zoom >= 11 ? 1 : 0
             return toMGRS([lon, lat], acc)
           }
@@ -469,10 +496,11 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     latLabelFormatter: (lat) => {
       if (mgrsLabelMode) {
         try {
-          const center = map?.getView().getCenter()
+          const m = shell.map
+          const center = m?.getView().getCenter()
           if (center) {
             const [lon] = toLonLat(center)
-            const zoom = map.getView().getZoom() ?? 7
+            const zoom = m.getView().getZoom() ?? 7
             const acc = zoom >= 14 ? 2 : zoom >= 11 ? 1 : 0
             return toMGRS([lon, lat], acc)
           }
@@ -483,22 +511,35 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
       return `${abs}°${lat >= 0 ? 'N' : 'S'}`
     },
     visible: false,
-    zIndex: 4,
   })
+
+  // The map's own layers, in the order they have always been on the map. Their z-index comes from
+  // the shell's z-order table; the basemap (first) is the shell's own.
+  shell.addLayer({ id: 'burnt',       zIndex: Z.burnt,       layer: burntLayer })
+  shell.addLayer({ id: 'zones',       zIndex: Z.zones,       layer: zoneLayer })
+  shell.addLayer({ id: 'hotspots',    zIndex: Z.hotspots,    layer: hotspotLayer })
+  shell.addLayer({ id: 'graticule',   zIndex: Z.graticule,   layer: graticule })
+  shell.addLayer({ id: 'trail',       zIndex: Z.trail,       layer: trailLayer })
+  shell.addLayer({ id: 'checkpoints', zIndex: Z.checkpoints, layer: checkpointLayer })
+  shell.addLayer({ id: 'repeaters',   zIndex: Z.repeaters,   layer: repeaterLayer })
+  shell.addLayer({ id: 'hq',          zIndex: Z.hq,          layer: hqLayer })
+  shell.addLayer({ id: 'trackers',    zIndex: Z.trackers,    layer: vectorLayer })
+  shell.addLayer({ id: 'measure',     zIndex: Z.measure,     layer: measureLayer })
 
   let activeBasemapId = 'osm'
 
   // `recolor(data, width)` (lib/weatherTiles.js) repaints each tile's RGBA bytes in place; without it the
   // provider's tiles are shown as they come.
   function setWeatherLayer(url, recolor = null) {
+    const map = shell.map
     if (activeWeatherLayer) {
-      map.removeLayer(activeWeatherLayer)
+      map?.removeLayer(activeWeatherLayer)
       activeWeatherLayer = null
     }
     if (!url || !map) return
     const source = new XYZ({ url })
     source.setTileLoadFunction((tile, src) => loadWeatherTile(tile, src, recolor))
-    activeWeatherLayer = new TileLayer({ source, opacity: 1.0, zIndex: 2 })
+    activeWeatherLayer = new TileLayer({ source, opacity: 1.0, zIndex: Z.weather })
     map.addLayer(activeWeatherLayer)
   }
 
@@ -543,7 +584,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   }
 
   function setBasemap(id) {
-    if (!map) return
+    if (!shell.map) return
     activeBasemapId = id
 
     // 1. Изчистваме източника на стария слой от паметта
@@ -554,12 +595,10 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
       }
     }
 
-    // 2. Премахваме стария слой от картата
-    map.getLayers().removeAt(0)
-
-    // 3. Създаваме новия слой (който ще извика обновения makeOfflineSource())
+    // 2. Създаваме новия слой (който ще извика обновения makeOfflineSource()) и го слагаме на мястото
+    //    на стария (първи слой на картата)
     basemapLayer = makeBasemapLayer(id)
-    map.getLayers().insertAt(0, basemapLayer)
+    shell.setBasemap(basemapLayer)
   }
 
   watch(bgMountainsOffline, () => {
@@ -568,7 +607,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
 
   function forceGraticuleRedraw() {
     graticule.renderedExtent_ = null
-    map?.render()
+    shell.map?.render()
   }
 
   function setMGRSGrid(visible) {
@@ -726,188 +765,156 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     })
   }
 
+  // What a contribution (a module's map entry) needs from the facade. Each function reads the facade's
+  // callback variable at call time, so a callback set or cleared later (onTrackerClick(null) on
+  // unmount) is honoured.
+  const trackerHit = (pixel) => !!shell.map?.hasFeatureAtPixel(pixel, { layerFilter: l => l === vectorLayer, hitTolerance: 5 })
+  const mapCtx = {
+    trackerHit,
+    reportTrackerClick: (id) => trackerClickCb?.(id),
+    fireClickRegistered: () => !!fireClickCb,
+    reportFireClick: (selection) => fireClickCb?.(selection),
+    onHQPlaced: (loc) => onHQPlaced?.(loc),
+  }
+
+  // Hover: tooltip of the tracker under the pointer, pointer cursor, coordinate read-out. Runs in every mode.
+  shell.onPointerMove((evt) => {
+    const map = shell.map
+    const feature = map.forEachFeatureAtPixel(evt.pixel, f => f, {
+      layerFilter: l => l === vectorLayer,
+      hitTolerance: 5,
+    })
+    if (feature) {
+      const stored = feature.get('pos')
+      const pos    = positionList.value?.find(p => p.device_id === feature.getId()) ?? stored
+      const leaderGroup = pos.displayLabel ? pos.groups?.find(g => g.is_leader) : null
+      const gDetail     = leaderGroup ? (groupsMap?.value ?? {})[leaderGroup.id] : null
+      renderTrackerTooltip(tooltipEl, pos, gDetail, { showPhotos: showPhotos.value !== false })
+      tooltipEl.style.display = 'block'
+      tooltip.setPosition(evt.coordinate)
+      map.getTargetElement().style.cursor = 'pointer'
+    } else {
+      tooltipEl.style.display = 'none'
+      tooltip.setPosition(undefined)
+      map.getTargetElement().style.cursor = ''
+    }
+
+    // cursor coordinate readout
+    if (onCursorMGRS) {
+      try {
+        const [lon, lat] = toLonLat(evt.coordinate)
+        onCursorMGRS({ mgrs: toMGRS([lon, lat], 5), lat, lon })
+      } catch {
+        onCursorMGRS(null)
+      }
+    }
+  }, { always: true, order: 10 })
+
+  // Placement modes: the click reports where, nothing else happens.
+  shell.onClick((evt) => {
+    const [lon, lat] = toLonLat(evt.coordinate)
+    mapCtx.onHQPlaced({ lat, lon })
+    return true
+  }, { mode: 'hq-place' })
+  shell.onClick((evt) => {
+    const [lon, lat] = toLonLat(evt.coordinate)
+    repeaterPlacedCb?.({ lat, lon })
+    return true
+  }, { mode: 'repeater-place' })
+
+  // Measure click handler
+  const ptStyle = (label) => new Style({
+    image: new Circle({
+      radius: 6,
+      fill:   new Fill({ color: '#1d4ed8' }),
+      stroke: new Stroke({ color: '#fff', width: 2 }),
+    }),
+    text: new Text({
+      text: label, offsetY: -16,
+      fill:   new Fill({ color: '#1d4ed8' }),
+      stroke: new Stroke({ color: '#000', width: 3 }),
+      font: 'bold 12px system-ui',
+    }),
+  })
+
+  shell.onClick((evt) => {
+    const [lon, lat] = toLonLat(evt.coordinate)
+
+    if (measurePoints.length >= 2) {
+      measurePoints = []
+      measureSource.clear()
+      onMeasure?.(null)
+    }
+
+    measurePoints.push({ lat, lon, coord: evt.coordinate })
+
+    const f = new Feature({ geometry: new Point(evt.coordinate) })
+    f.setStyle(ptStyle(measurePoints.length === 1 ? 'A' : 'B'))
+    measureSource.addFeature(f)
+
+    if (measurePoints.length === 2) {
+      const [a, b] = measurePoints
+      const line = new Feature({ geometry: new LineString([a.coord, b.coord]) })
+      line.setStyle(new Style({ stroke: new Stroke({ color: '#1d4ed8', width: 2, lineDash: [6, 4] }) }))
+      measureSource.addFeature(line)
+      onMeasure?.({ distKm: haversineKm(a.lat, a.lon, b.lat, b.lon), bearing: bearingDeg(a.lat, a.lon, b.lat, b.lon) })
+    }
+    return true
+  }, { mode: 'measure' })
+
+  // Fire features: a tracker wins when both are hit; clicking bare map closes the popup. Without a
+  // mode only (a placement or measure click never reaches them).
+  const fireHit = (pixel) => {
+    const map = shell.map
+    const hotspot = map.forEachFeatureAtPixel(pixel, f => f, { layerFilter: l => l === hotspotLayer, hitTolerance: 6 })
+    if (hotspot) return { kind: 'hotspot', feature: hotspot }
+    const burnt = map.forEachFeatureAtPixel(pixel, f => f, { layerFilter: l => l === burntLayer })
+    return burnt ? { kind: 'burnt_area', feature: burnt } : null
+  }
+
+  // A tracker click opens the tracker popup and closes any fire popup.
+  shell.onClick((evt) => {
+    if (!mapCtx.fireClickRegistered()) return false
+    if (!mapCtx.trackerHit(evt.pixel)) return false
+    mapCtx.reportFireClick(null)
+    const marker = shell.map.forEachFeatureAtPixel(evt.pixel, f => f, { layerFilter: l => l === vectorLayer, hitTolerance: 5 })
+    if (marker && marker.getId() != null) mapCtx.reportTrackerClick(String(marker.getId()))
+    return true
+  }, { order: 10 })
+
+  shell.onClick((evt) => {
+    if (!mapCtx.fireClickRegistered()) return false
+    const hit = fireHit(evt.pixel)
+    if (!hit) { mapCtx.reportFireClick(null); mapCtx.reportTrackerClick(null); return true }
+    const props = { ...hit.feature.getProperties() }
+    delete props.geometry
+    mapCtx.reportFireClick({
+      kind: hit.kind,
+      properties: props,
+      coordinate: hit.kind === 'hotspot' ? hit.feature.getGeometry().getCoordinates() : evt.coordinate,
+    })
+    return true
+  }, { order: 20 })
+
+  shell.onPointerMove((evt) => {
+    if (mapCtx.trackerHit(evt.pixel)) return
+    if (fireHit(evt.pixel)) shell.map.getTargetElement().style.cursor = 'pointer'
+  })
+
+  // "Report fire here": right-click on a mouse, long-press on touch. Both hand over the clicked
+  // coordinate (EPSG:3857) and its pixel inside the map element; the view decides what to offer.
+  // The shell reports one gesture once and not while a mode is active.
+  shell.onContextMenu(({ coordinate, pixel }) => contextMenuCb?.({ coordinate, pixel }))
+
+  // Modules' map entries (none yet): their layers sit after the map's own.
+  for (const entry of MAP_MODULES) {
+    const declarations = MODULES.find(m => m.name === entry.name)?.mapLayers ?? []
+    shell.install(entry, declarations, mapCtx)
+  }
+
   onMounted(() => {
     resolveBgMountainsDefault()   // offline BG Mountains tiles only if this server has them (useSettings.js)
-    // Hover tooltip element — created programmatically so it lives inside OL's viewport
-    const tooltipEl = document.createElement('div')
-    Object.assign(tooltipEl.style, {
-      position:        'absolute',
-      background:      'rgba(15,15,20,0.88)',
-      color:           '#fff',
-      padding:         '6px 10px',
-      borderRadius:    '6px',
-      fontSize:        '12px',
-      pointerEvents:   'none',
-      whiteSpace:      'nowrap',
-      boxShadow:       '0 2px 8px rgba(0,0,0,0.5)',
-      border:          '1px solid rgba(255,255,255,0.1)',
-      lineHeight:      '1.5',
-      display:         'none',
-    })
-
-    const tooltip = new Overlay({
-      element:     tooltipEl,
-      offset:      [14, 0],
-      positioning: 'center-left',
-      stopEvent:   false,
-    })
-
-    map = new Map({
-      target:   mapRef.value,
-      layers:   [basemapLayer, burntLayer, zoneLayer, hotspotLayer, graticule, trailLayer, checkpointLayer, repeaterLayer, hqLayer, vectorLayer, measureLayer],
-      view:     new View({ center: fromLonLat([25.0, 42.5]), zoom: 7 }),
-      overlays: [tooltip],
-      controls: [new ScaleLine({ units: 'metric', bar: false, minWidth: 100 })],
-    })
-
-    map.on('pointermove', (evt) => {
-      if (evt.dragging) return
-      const feature = map.forEachFeatureAtPixel(evt.pixel, f => f, {
-        layerFilter: l => l === vectorLayer,
-        hitTolerance: 5,
-      })
-      if (feature) {
-        const stored = feature.get('pos')
-        const pos    = positionList.value?.find(p => p.device_id === feature.getId()) ?? stored
-        const leaderGroup = pos.displayLabel ? pos.groups?.find(g => g.is_leader) : null
-        const gDetail     = leaderGroup ? (groupsMap?.value ?? {})[leaderGroup.id] : null
-        renderTrackerTooltip(tooltipEl, pos, gDetail, { showPhotos: showPhotos.value !== false })
-        tooltipEl.style.display = 'block'
-        tooltip.setPosition(evt.coordinate)
-        map.getTargetElement().style.cursor = 'pointer'
-      } else {
-        tooltipEl.style.display = 'none'
-        tooltip.setPosition(undefined)
-        map.getTargetElement().style.cursor = ''
-      }
-
-      // cursor coordinate readout
-      if (onCursorMGRS) {
-        try {
-          const [lon, lat] = toLonLat(evt.coordinate)
-          onCursorMGRS({ mgrs: toMGRS([lon, lat], 5), lat, lon })
-        } catch {
-          onCursorMGRS(null)
-        }
-      }
-    })
-
-    // Measure click handler
-    const ptStyle = (label) => new Style({
-      image: new Circle({
-        radius: 6,
-        fill:   new Fill({ color: '#1d4ed8' }),
-        stroke: new Stroke({ color: '#fff', width: 2 }),
-      }),
-      text: new Text({
-        text: label, offsetY: -16,
-        fill:   new Fill({ color: '#1d4ed8' }),
-        stroke: new Stroke({ color: '#000', width: 3 }),
-        font: 'bold 12px system-ui',
-      }),
-    })
-
-    // The release of a long press raises a click: it belongs to the menu, not to the map.
-    const clickSwallowed = () => !!longPress?.shouldSwallowClick()
-
-    map.on('click', (evt) => {
-      if (clickSwallowed()) return
-      if (hqPlacementMode) {
-        const [lon, lat] = toLonLat(evt.coordinate)
-        onHQPlaced?.({ lat, lon })
-        return
-      }
-      if (repeaterPlacementMode) {
-        const [lon, lat] = toLonLat(evt.coordinate)
-        repeaterPlacedCb?.({ lat, lon })
-        return
-      }
-      if (!measureMode) return
-      const [lon, lat] = toLonLat(evt.coordinate)
-
-      if (measurePoints.length >= 2) {
-        measurePoints = []
-        measureSource.clear()
-        onMeasure?.(null)
-      }
-
-      measurePoints.push({ lat, lon, coord: evt.coordinate })
-
-      const f = new Feature({ geometry: new Point(evt.coordinate) })
-      f.setStyle(ptStyle(measurePoints.length === 1 ? 'A' : 'B'))
-      measureSource.addFeature(f)
-
-      if (measurePoints.length === 2) {
-        const [a, b] = measurePoints
-        const line = new Feature({ geometry: new LineString([a.coord, b.coord]) })
-        line.setStyle(new Style({ stroke: new Stroke({ color: '#1d4ed8', width: 2, lineDash: [6, 4] }) }))
-        measureSource.addFeature(line)
-        onMeasure?.({ distKm: haversineKm(a.lat, a.lon, b.lat, b.lon), bearing: bearingDeg(a.lat, a.lon, b.lat, b.lon) })
-      }
-    })
-
-    // Fire features: a tracker wins when both are hit; clicking bare map closes the popup.
-    const fireHit = (pixel) => {
-      const hotspot = map.forEachFeatureAtPixel(pixel, f => f, { layerFilter: l => l === hotspotLayer, hitTolerance: 6 })
-      if (hotspot) return { kind: 'hotspot', feature: hotspot }
-      const burnt = map.forEachFeatureAtPixel(pixel, f => f, { layerFilter: l => l === burntLayer })
-      return burnt ? { kind: 'burnt_area', feature: burnt } : null
-    }
-    const trackerHit = (pixel) => map.hasFeatureAtPixel(pixel, { layerFilter: l => l === vectorLayer, hitTolerance: 5 })
-
-    map.on('click', (evt) => {
-      if (clickSwallowed()) return
-      if (placing() || measureMode || !fireClickCb) return
-      // A tracker click opens the tracker popup and closes any fire popup.
-      if (trackerHit(evt.pixel)) {
-        fireClickCb(null)
-        const marker = map.forEachFeatureAtPixel(evt.pixel, f => f, { layerFilter: l => l === vectorLayer, hitTolerance: 5 })
-        if (marker && marker.getId() != null) trackerClickCb?.(String(marker.getId()))
-        return
-      }
-      const hit = fireHit(evt.pixel)
-      if (!hit) { fireClickCb(null); trackerClickCb?.(null); return }
-      const props = { ...hit.feature.getProperties() }
-      delete props.geometry
-      fireClickCb({
-        kind: hit.kind,
-        properties: props,
-        coordinate: hit.kind === 'hotspot' ? hit.feature.getGeometry().getCoordinates() : evt.coordinate,
-      })
-    })
-
-    map.on('pointermove', (evt) => {
-      if (evt.dragging || placing() || measureMode) return
-      if (trackerHit(evt.pixel)) return
-      if (fireHit(evt.pixel)) map.getTargetElement().style.cursor = 'pointer'
-    })
-
-    // "Report fire here": right-click on a mouse, long-press on touch. Both hand over the clicked
-    // coordinate (EPSG:3857) and its pixel inside the map element; the view decides what to offer.
-    // Touch browsers may fire `contextmenu` after a long press as well, so one gesture is reported
-    // once (a second report within LONG_PRESS_DEDUPE_MS is dropped).
-    const viewport = map.getViewport()
-    let lastContextAt = -Infinity
-    const reportContext = (clientX, clientY) => {
-      const now = performance.now()
-      if (now - lastContextAt < LONG_PRESS_DEDUPE_MS) return
-      lastContextAt = now
-      if (!contextMenuCb || placing() || measureMode) return
-      const pixel = map.getEventPixel({ clientX, clientY })
-      const coordinate = map.getCoordinateFromPixel(pixel)
-      if (coordinate) contextMenuCb({ coordinate, pixel })
-    }
-    onContextMenuEvent = (e) => { e.preventDefault(); reportContext(e.clientX, e.clientY) }
-    viewport.addEventListener('contextmenu', onContextMenuEvent)
-
-    longPress = createLongPress({ onLongPress: reportContext, ms: LONG_PRESS_MS, slopPx: LONG_PRESS_SLOP_PX })
-    onPressDown = longPress.down
-    onPressMove = longPress.move
-    viewport.addEventListener('pointerdown', onPressDown)
-    viewport.addEventListener('pointermove', onPressMove)
-    viewport.addEventListener('pointerup', longPress.end)
-    viewport.addEventListener('pointercancel', longPress.end)
-    endPressFn = longPress.end
+    shell.mount(mapRef.value)
 
     // Hotspots fade with age; repaint each minute so they do so without a refetch.
     fireTimer = setInterval(() => { if (hotspotLayer.getVisible()) hotspotLayer.changed() }, 60_000)
@@ -945,28 +952,18 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
       restyleViaRaf ? cancelAnimationFrame(restyleHandle) : clearTimeout(restyleHandle)
       restyleHandle = null
     }
-    const viewport = map?.getViewport()
-    if (viewport) {
-      viewport.removeEventListener('contextmenu', onContextMenuEvent)
-      viewport.removeEventListener('pointerdown', onPressDown)
-      viewport.removeEventListener('pointermove', onPressMove)
-      viewport.removeEventListener('pointerup', endPressFn)
-      viewport.removeEventListener('pointercancel', endPressFn)
-    }
-    endPressFn?.()
-    map?.setTarget(null)
+    shell.dispose()
     clearInterval(staleTimer)
     clearInterval(fireTimer)
   })
 
   function setMeasureMode(on) {
-    measureMode = on
     if (!on) {
       measurePoints = []
       measureSource.clear()
       onMeasure?.(null)
     }
-    if (map) map.getTargetElement().style.cursor = on ? 'crosshair' : ''
+    shell.setMode('measure', on)
   }
 
   function makeHQStyle(label) {
@@ -1000,8 +997,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   }
 
   function setHQPlacementMode(on) {
-    hqPlacementMode = on
-    if (map) map.getTargetElement().style.cursor = on ? 'crosshair' : ''
+    shell.setMode('hq-place', on)
   }
 
   function makeRepeaterStyle(label, active) {
@@ -1039,8 +1035,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   }
 
   function setRepeaterPlacementMode(on) {
-    repeaterPlacementMode = on
-    if (map) map.getTargetElement().style.cursor = on ? 'crosshair' : ''
+    shell.setMode('repeater-place', on)
   }
   function onRepeaterPlaced(cb) { repeaterPlacedCb = cb }
 
@@ -1104,5 +1099,5 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     removeStaleFeatures(list.map(p => p.device_id))
   }
 
-  return { map: () => map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, setWeatherLayer, refreshMarkers, setHQ, setHQPlacementMode, setRepeaters, setRepeaterPlacementMode, onRepeaterPlaced, setBurntAreas, setHotspots, setFireLayerVisible, setFireLabels, onFireFeatureClick, setZones, onTrackerClick, onMapContextMenu }
+  return { map: () => shell.map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, setWeatherLayer, refreshMarkers, setHQ, setHQPlacementMode, setRepeaters, setRepeaterPlacementMode, onRepeaterPlaced, setBurntAreas, setHotspots, setFireLayerVisible, setFireLabels, onFireFeatureClick, setZones, onTrackerClick, onMapContextMenu }
 }
