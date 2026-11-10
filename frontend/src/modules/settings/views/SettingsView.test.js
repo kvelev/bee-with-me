@@ -2,16 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 
-vi.mock('../api', () => ({
+vi.mock('../../../api', () => ({
   getSettings: vi.fn(), putSettings: vi.fn(), putHQ: vi.fn(), putHQInitial: vi.fn(), getMe: vi.fn(),
   getFireStatus: vi.fn(), getSuppressionZones: vi.fn(), updateSuppressionZone: vi.fn(), disableSuppressionZone: vi.fn(),
 }))
 
-import { getSettings, putSettings, getFireStatus, getSuppressionZones } from '../api'
+import { getSettings, putSettings, getFireStatus, getSuppressionZones } from '../../../api'
 import SettingsView from './SettingsView.vue'
-import { useSettingsStore } from '../stores/settings'
-import { i18n } from '../i18n/index.js'
-import en from '../i18n/en.js'
+import { useSettingsStore } from '../store'
+import { i18n } from '../../../i18n/index.js'
+import en from '../../../i18n/en.js'
 
 const BASE = {
   hq_latitude: null, hq_longitude: null, is_hq_alarm_enabled: false, is_rescuer_alarm_enabled: true,
@@ -135,7 +135,7 @@ describe('SettingsView against a changing server', () => {
 describe('logout in Settings', () => {
   it('Settings has a Log out button that signs out and returns to the login page [LOGOUT]', async () => {
     const { createRouter, createMemoryHistory } = await import('vue-router')
-    const { useAuthStore } = await import('../stores/auth')
+    const { useAuthStore } = await import('../../../stores/auth')
     const pinia = createPinia()
     setActivePinia(pinia)
     localStorage.setItem('token', 't'); localStorage.setItem('refresh_token', 'r')

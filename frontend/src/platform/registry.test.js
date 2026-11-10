@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import { checkModules, collectNav, collectRoutes, leafKeys, mergeMessages, messageCollisions } from './registry.js'
+import { checkModules, collectNav, collectRoutes, corePathsOf, leafKeys, mergeMessages, messageCollisions } from './registry.js'
 
 const comp = () => null
 const mod = (name, extra = {}) => ({
@@ -95,5 +95,40 @@ describe('module registry', () => {
     const hit = router.resolve('/x')
     expect(hit.matched.length).toBe(2)
     expect(hit.meta.adminOnly).toBe(true)
+  })
+})
+
+describe('module route rules', () => {
+  const route = (extra = {}) => ({ path: '/x', name: 'x', component: comp, ...extra })
+  const problems = (r, corePaths = ['/map']) => checkModules([mod('m', { routes: [r] })], corePaths).join('\n')
+
+  it('a plain module route passes [T404]', () => {
+    expect(problems(route({ meta: { adminOnly: true } }))).toBe('')
+  })
+
+  it('a module route cannot be public [T404]', () => {
+    expect(problems(route({ meta: { public: true } }))).toContain('meta.public')
+  })
+
+  it('a module route cannot redirect [T404]', () => {
+    expect(problems(route({ redirect: '/map' }))).toContain('redirect')
+  })
+
+  it('a module route cannot have children [T404]', () => {
+    expect(problems(route({ children: [] }))).toContain('children')
+  })
+
+  it('a module route cannot take the path of a core route, whatever the case or a trailing slash [T404]', () => {
+    expect(problems(route({ path: '/map' }))).toContain('core route')
+    expect(problems(route({ path: '/Map/' }))).toContain('core route')
+    expect(problems(route({ path: '/' }), ['/'])).toContain('core route')
+  })
+
+  it('corePathsOf lists the absolute paths of the top routes and their children [T404]', () => {
+    const routes = [
+      { path: '/login' },
+      { path: '/', children: [{ path: '' }, { path: 'map' }, { path: 'users' }] },
+    ]
+    expect(corePathsOf(routes)).toEqual(['/login', '/', '/map', '/users'])
   })
 })
