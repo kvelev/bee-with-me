@@ -1,10 +1,12 @@
 """Rules of the module architecture that are data: table owners, allowed module edges and the checks over them."""
 from __future__ import annotations
 
+import functools
 import importlib
 import inspect
 import tomllib
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 from backend.core.modules import ModuleManifest, validate_manifest
@@ -194,6 +196,28 @@ def check_boundary_contracts(toml_text: str, module_names: Iterable[str], backen
         missing = sorted(want_sources - set(contract.get('source_modules', [])))
         if missing:
             problems.append(f'"{label}": source_modules lack {missing}')
+        # B95: without allow_indirect_imports = true the contract also fails on legal chains (a legacy file imports
+        # `api`, which imports a private child); import-linter's default is false.
+        if contract.get('allow_indirect_imports') is not True:
+            problems.append(f'"{label}": allow_indirect_imports must be true (import-linter defaults to false, '
+                            f'which flags imports through the public api)')
+        problems += _ignore_import_problems(label, contract, name, want_forbidden)
+    return problems
+
+
+def _ignore_import_problems(label: str, contract: dict, name: str, private: set[str]) -> list[str]:
+    """ignore_imports of a boundary contract may only open one edge: a source into this module's own private child."""
+    problems: list[str] = []
+    sources = list(contract.get('source_modules', []))
+    for entry in contract.get('ignore_imports', []):
+        importer, arrow, imported = (part.strip() for part in str(entry).partition('->'))
+        if not arrow or '*' in entry:
+            problems.append(f'"{label}": ignore_imports entry {entry!r} must be "<importer> -> <imported>" without wildcards')
+        elif imported not in private:
+            problems.append(f'"{label}": ignore_imports entry {entry!r} may only open an import into a private child of '
+                            f'backend.modules.{name} ({sorted(private)})')
+        elif not any(importer == src or importer.startswith(src + '.') for src in sources):
+            problems.append(f'"{label}": ignore_imports entry {entry!r} must start in one of the source_modules of the contract')
     return problems
 
 
@@ -216,13 +240,17 @@ def check_manifest_wiring(manifests: Iterable[ModuleManifest], backend: Path) ->
         for msg in m.live_messages:
             if msg not in FORWARDED_CHANNELS:
                 problems.append(f'{m.name}: live message {msg!r} is not in backend.core.ws.FORWARDED_CHANNELS')
+        tasks_module = f'backend.modules.{m.name}.tasks'
         for task in m.tasks:
-            name = getattr(task, '__name__', repr(task))
+            inner = task
+            while isinstance(inner, functools.partial):   # B95: a task with bound arguments is judged by what it wraps
+                inner = inner.func
+            name = getattr(inner, '__name__', None) or repr(inner)
+            where = getattr(inner, '__module__', None)
             if not inspect.iscoroutinefunction(task):
                 problems.append(f'{m.name}: task {name} is not a coroutine function')
-            elif getattr(task, '__module__', None) != f'backend.modules.{m.name}.tasks':
-                problems.append(f'{m.name}: task {name} must live in backend.modules.{m.name}.tasks, '
-                                f'is in {getattr(task, "__module__", None)}')
+            elif where != tasks_module and not (where or '').startswith(tasks_module + '.'):   # tasks.py or a tasks/ package
+                problems.append(f'{m.name}: task {name} must live in {tasks_module}, is in {where}')
     return problems
 
 
@@ -242,3 +270,71 @@ def end_state_problems(allowlist: dict, toml_text: str, backend: Path) -> list[s
             problems.append(f'backend/{shim}.py must be gone at step 5')
     return problems
 
+
+
+# ── auth by default ───────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class EffectiveRoute:
+    """One served route: its full path, its methods (`WEBSOCKET` for a socket) and every dependency it reaches."""
+    path: str
+    methods: frozenset[str]
+    calls: frozenset[Callable]
+
+
+def _dependant_calls(dependant) -> set[Callable]:
+    if dependant is None:
+        return set()
+    found = {dependant.call} if dependant.call is not None else set()
+    for sub in dependant.dependencies:
+        found |= _dependant_calls(sub)
+    return found
+
+
+def effective_routes(routes: Iterable) -> list[EffectiveRoute]:
+    """Flatten a route table the way a request meets it, in order, including `include_in_schema=False` routes.
+
+    FastAPI 0.142 keeps an included router as one lazy `_IncludedRouter` that knows its prefix and dependencies only
+    through `effective_candidates()`; earlier versions copy the routes into the app. Both shapes are read here by
+    duck typing, so this is the one place that depends on the layout (not `app.openapi()`, which hides routes).
+    """
+    from starlette.routing import WebSocketRoute
+
+    found: list[EffectiveRoute] = []
+    for route in routes:
+        if hasattr(route, 'effective_candidates'):                      # a lazy included router: look inside
+            found += effective_routes(route.effective_candidates())
+            continue
+        target = getattr(route, 'starlette_route', None) or route         # an effective context wraps the real route
+        if hasattr(target, 'routes') and not hasattr(target, 'methods'):    # a Mount or sub-application
+            found += effective_routes(target.routes)
+            continue
+        path = getattr(target, 'path', None)
+        if path is None:
+            continue
+        methods = frozenset(m.upper() for m in (getattr(target, 'methods', None) or ()))
+        if not methods and isinstance(target, WebSocketRoute):
+            methods = frozenset({'WEBSOCKET'})
+        calls = _dependant_calls(getattr(target, 'dependant', None))
+        calls |= {d.dependency for d in (getattr(target, 'dependencies', None) or ())}
+        found.append(EffectiveRoute(path=path, methods=methods, calls=frozenset(calls)))
+    return found
+
+
+def check_module_route_auth(app_routes: Iterable, manifests: Iterable[ModuleManifest], auth: Callable) -> list[str]:
+    """Every route a module serves reaches `auth` (directly or through `require_role`) or its manifest declares it public."""
+    served = effective_routes(app_routes)
+    problems: list[str] = []
+    for m in manifests:
+        if m.router is None:
+            continue
+        public = set(m.public_routes)
+        for own in effective_routes(m.router.routes):
+            label = f'{"/".join(sorted(own.methods))} {own.path}'
+            mounted = [r for r in served if r.path == own.path and r.methods == own.methods]
+            if not mounted:
+                problems.append(f'{m.name}: {label} is not mounted in the app')
+            for r in mounted:
+                if auth not in r.calls and not {(meth, own.path) for meth in own.methods} <= public:
+                    problems.append(f'{m.name}: {label} has no auth dependency and is not declared in public_routes')
+    return problems

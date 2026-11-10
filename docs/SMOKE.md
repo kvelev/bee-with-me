@@ -38,7 +38,7 @@ starts an empty PostGIS 16 and the backend with the environment of `deploy/k8s/a
 | d. live / users / devices | `GET /api/locations/live`, `/api/users/`, `/api/devices/` with the token: 200 |
 | e. simulated frame reaches /ws | opens `/ws`, creates a user and device, `POST /api/test/simulate`, expects the `location_update` for that device |
 | f. frontend image | nginx answers `GET /` with 200 and HTML containing `<div id="app">` (no browser) |
-| g. GET /api/settings | with the token: 200 and a JSON object with `hq_radius_m` (the settings row exists; the first module's route is mounted) |
+| g. GET /api/settings | with the token: 200 and a JSON object with `hq_radius_m` (the settings row exists; the route is served by the `settings` module, which the module list mounts behind the default auth, so this is the one step that exercises the loader and the module) |
 | cleanup | containers, network and volumes are removed, also after a FAIL or Ctrl+C |
 
 ## Read the result
