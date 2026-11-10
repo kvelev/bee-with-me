@@ -110,26 +110,27 @@
     <!-- Licence attribution (text only: the offline build loads nothing from the network). -->
     <div v-if="fireDataLayerOn" class="fire-attribution">{{ t('fire.attribution') }}</div>
 
-    <!-- OpenLayers moves this element into its overlay; the popup inside is a Vue component. -->
     <!-- "Show on map" from a fire alarm: a ring on the exact spot for a few seconds. -->
     <div ref="focusRingEl" class="fire-focus-anchor" aria-hidden="true">
       <div v-if="focusRingKey" :key="focusRingKey" class="fire-focus-ring" data-testid="fire-focus-ring" />
     </div>
-    <div ref="firePopupEl" class="fire-popup-anchor">
-      <FirePopup
-        v-if="firePopup"
-        :kind="firePopup.kind"
-        :properties="firePopup.properties"
-        :lon-lat="firePopupLonLat"
-        :is-admin="isAdmin"
-        :busy="fireBusy"
-        :error-text="fireError"
-        @close="closeFirePopup"
-        @dismiss="onPopupDismiss"
-        @extinguish="onPopupExtinguish"
-        @create-zone="onPopupCreateZone"
-      />
-    </div>
+    <MapPopupHost :map="hostMap" :popups="popups" :selection="firePopup" anchor-class="fire-popup-anchor">
+      <template #default="{ popup, selection }">
+        <component
+          :is="popup.component"
+          :kind="selection.kind"
+          :properties="selection.properties"
+          :lon-lat="firePopupLonLat"
+          :is-admin="isAdmin"
+          :busy="fireBusy"
+          :error-text="fireError"
+          @close="closeFirePopup"
+          @dismiss="onPopupDismiss"
+          @extinguish="onPopupExtinguish"
+          @create-zone="onPopupCreateZone"
+        />
+      </template>
+    </MapPopupHost>
 
     <!-- Right-click / long-press on the map: the only item is "Report fire here". -->
     <div v-if="ctxMenu" ref="ctxMenuEl" class="map-context" role="menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
@@ -314,7 +315,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted, onActivated, onDeactivated, nextTick } from 'vue'
+import { ref, shallowRef, computed, watch, onMounted, onUnmounted, onActivated, onDeactivated, nextTick } from 'vue'
 
 defineOptions({ name: 'MapView' })
 import { useI18n } from 'vue-i18n'
@@ -334,6 +335,9 @@ import { compassFrom, windPoint, gridPoints, openMeteoUrl, parseOpenMeteo, neare
 import { unByKey } from 'ol/Observable'
 import SOSToast from '../components/SOSToast.vue'
 import FirePopup from '../components/FirePopup.vue'
+import MapPopupHost from '../platform/map-shell/MapPopupHost.vue'
+import { collectPopups } from '../platform/map-shell/contributions.js'
+import { MODULES } from '../modules'
 import FieldReportForm from '../components/FieldReportForm.vue'
 import SuppressionZoneForm from '../components/SuppressionZoneForm.vue'
 import { fireErrorKey } from '../lib/fireErrors'
@@ -491,15 +495,16 @@ const FIRE_LAYER_BUTTONS = ['burnt', 'hotspots', 'zones']
 const fireLayerButtons = computed(() => FIRE_LAYER_BUTTONS.filter(n => n !== 'zones' || isAdmin.value))
 // The freshness pill and the licence line describe EFFIS data; zones are our own and need neither.
 const fireDataLayerOn = computed(() => fireStore.layers.burnt || fireStore.layers.hotspots)
-const firePopupEl = ref(null)
 const focusRingEl = ref(null)
 const focusRingKey = ref(0)   // 0 = hidden; a new value restarts the pulse
 const FOCUS_RING_MS = 8000
 let focusOverlay = null
 let focusRingTimer = null
 const firePopup   = ref(null)   // { kind, properties, coordinate } | null
-let   fireOverlay = null
-let   fireMap = null
+// Popups come from contributions; the fire popup is a legacy entry until step 2.
+const popups = collectPopups(MODULES, [{ id: 'fire', component: FirePopup, kinds: ['hotspot', 'burnt_area'] }]) // until step 2
+const hostMap = shallowRef(null)   // set once the map exists; the popup host puts its overlay on it
+let   focusMap = null
 
 function toggleFire(name) {
   const on = !fireStore.layers[name]
@@ -522,7 +527,6 @@ const firePopupLonLat = computed(() => {
 function closeFirePopup() {
   firePopup.value = null
   fireError.value = ''
-  fireOverlay?.setPosition(undefined)
 }
 
 // ── Popup actions (admin: dismiss, create zone; anyone: extinguish a field report) ──────────
@@ -706,25 +710,13 @@ const firePill = computed(() => {
 onMounted(() => {
   const m = map()
   if (!m) return
-  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  fireOverlay = new Overlay({
-    element: firePopupEl.value,
-    positioning: 'bottom-center',
-    offset: [0, -16],
-    stopEvent: true,
-    autoPan: { animation: { duration: reduce ? 0 : 200 }, margin: 24 },
-  })
-  fireMap = m
-  m.addOverlay(fireOverlay)
+  hostMap.value = m
+  focusMap = m
   focusOverlay = new Overlay({ element: focusRingEl.value, positioning: 'center-center', stopEvent: false })
   m.addOverlay(focusOverlay)
-  onFireFeatureClick(async (sel) => {
+  onFireFeatureClick((sel) => {
     fireError.value = ''
     firePopup.value = sel
-    // The popup has no size until Vue renders it; position after that so OpenLayers
-    // anchors it by its real width and height.
-    await nextTick()
-    fireOverlay.setPosition(sel ? sel.coordinate : undefined)
   })
   setFireLabels({ fieldReport: t('fire.source.field_report') })
   // Layers remembered from the last session show again after a reload.
@@ -856,12 +848,11 @@ onUnmounted(() => {
   onMapContextMenu(null)
   onRepeaterPlaced(null)
   closeContextMenu()
-  if (fireOverlay) fireMap?.removeOverlay(fireOverlay)
-  if (focusOverlay) fireMap?.removeOverlay(focusOverlay)
+  hostMap.value = null
+  if (focusOverlay) focusMap?.removeOverlay(focusOverlay)
   clearTimeout(focusRingTimer)
-  fireOverlay = null
   focusOverlay = null
-  fireMap = null
+  focusMap = null
 })
 
 function switchBasemap(id) {

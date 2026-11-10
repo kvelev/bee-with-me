@@ -2,17 +2,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 
-vi.mock('../api', () => ({
+vi.mock('../../../api', () => ({
   getSettings: vi.fn(), putSettings: vi.fn(), putHQ: vi.fn(), putHQInitial: vi.fn(), getMe: vi.fn(),
   getFireStatus: vi.fn(), getSuppressionZones: vi.fn(), updateSuppressionZone: vi.fn(), disableSuppressionZone: vi.fn(),
 }))
 
-import { getSettings, putSettings, getFireStatus, getSuppressionZones } from '../api'
+import { getSettings, putSettings, getFireStatus, getSuppressionZones } from '../../../api'
 import SettingsView from './SettingsView.vue'
-import { useSettingsStore } from '../stores/settings'
-import { i18n } from '../i18n/index.js'
-import en from '../i18n/en.js'
-import bg from '../i18n/bg.js'
+import { useSettingsStore } from '../store'
+import { i18n } from '../../../i18n/index.js'
+import en from '../../../i18n/en.js'
+import bg from '../../../i18n/bg.js'
 
 const BASE = {
   hq_latitude: null, hq_longitude: null, is_hq_alarm_enabled: false, is_rescuer_alarm_enabled: true,

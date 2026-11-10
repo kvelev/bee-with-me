@@ -24,3 +24,34 @@ describe('module routes in the real router', () => {
     expect(text).toContain('...collectRoutes(MODULES)')
   })
 })
+
+describe('the router checks the module list when it is created', () => {
+  const bad = (route) => ({
+    name: 'bad', routes: [route], nav: [], mapLayers: [], panels: [], banners: [], liveHandlers: {}, depends: [],
+    i18n: { en: {}, bg: {} },
+  })
+  const load = async (module) => {
+    vi.resetModules()
+    vi.doMock('../modules/index.js', () => ({ MODULES: [module] }))
+    return import('./index.js')
+  }
+  const route = (extra) => ({ path: '/bad', name: 'bad', component: {}, ...extra })
+
+  it('refuses a public module route [T404]', async () => {
+    await expect(load(bad(route({ meta: { public: true } })))).rejects.toThrow(/meta\.public/)
+  })
+
+  it('refuses a module route that takes a core path [T404]', async () => {
+    await expect(load(bad(route({ path: '/users' })))).rejects.toThrow(/core route/)
+  })
+
+  it('starts with a valid module [T404]', async () => {
+    const { default: r } = await load(bad(route()))
+    expect(r.resolve('/bad').name).toBe('bad')
+  })
+
+  it('the real router file calls checkModules on the module list [T404]', () => {
+    const text = readFileSync(join(process.cwd(), 'src', 'router', 'index.js'), 'utf8')
+    expect(text).toMatch(/checkModules\(MODULES,/)
+  })
+})
