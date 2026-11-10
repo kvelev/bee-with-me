@@ -124,7 +124,7 @@ describe('frontend modules', () => {
   })
 
   it('the merged dictionaries are the core plus the module files [T403]', () => {
-    const union = (core, dicts) => [...new Set([...leafKeys(core), ...dicts.flatMap(leafKeys)])].sort()
+    const union = (core, dicts) => [...new Set([...leafKeys(core), ...dicts.flatMap((d) => leafKeys(d))])].sort()
     expect(leafKeys(enFull)).toEqual(union(enCore, dictionaries('en').map(([, d]) => d)))
     expect(leafKeys(bgFull)).toEqual(union(bgCore, dictionaries('bg').map(([, d]) => d)))
   })

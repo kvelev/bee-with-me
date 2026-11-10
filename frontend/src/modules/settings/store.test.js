@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
-vi.mock('../api', () => ({
+vi.mock('../../api', () => ({
   getSettings:  vi.fn(),
   putSettings:  vi.fn(),
   putHQ:        vi.fn(),
@@ -9,10 +9,10 @@ vi.mock('../api', () => ({
   getMe:        vi.fn(),
 }))
 
-import { getSettings, putSettings, putHQ, putHQInitial, getMe } from '../api'
-import { useSettingsStore, isTransientFailure } from './settings'
-import { ApiError } from '../api/client'
-import { useAuthStore } from './auth'
+import { getSettings, putSettings, putHQ, putHQInitial, getMe } from '../../api'
+import { useSettingsStore, isTransientFailure } from './store'
+import { ApiError } from '../../api/client'
+import { useAuthStore } from '../../stores/auth'
 
 const DEFAULTS = {
   hq_latitude: null, hq_longitude: null, is_hq_alarm_enabled: true, is_rescuer_alarm_enabled: true,
