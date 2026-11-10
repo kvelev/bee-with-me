@@ -167,8 +167,8 @@ import {
   getGroups, getGroup, createGroup, updateGroup, deleteGroup,
   deactivateGroup, reactivateGroup,
   addMember, removeMember, getUsers,
-} from '../api'
-import { errorText } from '../api/client'
+} from '../../../api'
+import { errorText } from '../../../api/client'
 
 const { t } = useI18n()
 
