@@ -10,9 +10,7 @@ import VectorSource from 'ol/source/Vector'
 import Feature from 'ol/Feature'
 import Point from 'ol/geom/Point'
 import LineString from 'ol/geom/LineString'
-import { circular as circularPolygon } from 'ol/geom/Polygon'
 import { fromLonLat, toLonLat } from 'ol/proj'
-import GeoJSON from 'ol/format/GeoJSON'
 import { Circle, Fill, Stroke, Style, Text } from 'ol/style'
 import RegularShape from 'ol/style/RegularShape'
 import Icon from 'ol/style/Icon'
@@ -24,7 +22,6 @@ import { normaliseGroups } from '../lib/groups'
 import { freshnessOf, LIVE, LOST } from '../lib/freshness'
 import { renderTrackerTooltip } from '../lib/trackerTooltip'
 import { createLongPress } from '../lib/longPress'
-import { hotspotStyleKey } from '../lib/fireStyle'
 import { hexToRgba } from '../lib/color'
 import { PHOTO_SIZE, markerZIndex, onPhotoLoaded, photoCanvas, photoImage, ringFor, safePhotoUrl } from '../lib/photoMarker'
 import { getWeatherTile } from '../api'
@@ -32,6 +29,8 @@ import { createMapShell } from '../platform/map-shell/createMapShell'
 import { Z } from '../platform/map-shell/zorder'
 import { MODULES } from '../modules'
 import { MAP_MODULES } from '../modules/mapEntries'
+import { FIRE_MAP_LAYERS } from './map/fireLayerList'
+import { LEGACY_FIRE_MAP } from './map/fireLayers'
 
 const DEFAULT_COLOR = '#3b82f6'
 
@@ -144,116 +143,6 @@ function makeBasemapLayer(id) {
 
   return new TileLayer({
     source,
-  })
-}
-
-// Fire colours live as tokens in style.css (--fire-*). OpenLayers paints on a canvas and
-// cannot read CSS variables, so resolve them when a style is built. Fallbacks only matter
-// without a DOM.
-function fireToken(name, fallback) {
-  try {
-    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
-    return v || fallback
-  } catch { return fallback }
-}
-
-// Hotspot look per style key. Age fades fill and ring so the newest detections read first;
-// state (dismissed / suppressed / extinguished) goes hollow and grey; a field report is a
-// diamond, never a circle, so it cannot pass for a satellite detection.
-function makeHotspotStyle(key, fieldReportLabel) {
-  const ember    = fireToken('--fire-hotspot', '#ad1e57')
-  const inactive = fireToken('--fire-inactive', '#8892aa')
-  const ring     = fireToken('--text', '#e2e8f0')
-  const circle = (radius, fill, stroke) => new Style({
-    image: new Circle({ radius, fill: fill ? new Fill({ color: fill }) : undefined, stroke }),
-  })
-  // The ember is dark on a dark map (about 2.8:1 on --bg), so every hotspot carries a thin
-  // light ring: newest is solid, older ones fade, but the ring never drops below what keeps
-  // the dot findable on dark and satellite basemaps. No glow: glow is an alarm signal.
-  const E = (alpha) => hexToRgba(ember, alpha, '#ad1e57')
-  const R = (alpha) => hexToRgba(ring, alpha, '#e2e8f0')
-  switch (key) {
-    case 'age_24h': return circle(6, E(1),   new Stroke({ color: R(1),    width: 1.75 }))
-    case 'age_3d':  return circle(5, E(0.7), new Stroke({ color: R(0.8),  width: 1.5 }))
-    case 'age_7d':  return circle(4, E(0.45), new Stroke({ color: R(0.6), width: 1.25 }))
-    case 'field_report':
-      return new Style({
-        image: new RegularShape({
-          points: 4, radius: 9, angle: 0,
-          fill: new Fill({ color: ember }), stroke: new Stroke({ color: ring, width: 2 }),
-        }),
-        text: fieldReportLabel ? new Text({
-          text: fieldReportLabel, offsetY: 20,
-          font: 'bold 12px system-ui',
-          fill: new Fill({ color: ring }), stroke: new Stroke({ color: '#000', width: 3 }),
-        }) : undefined,
-      })
-    case 'suppressed':
-      return circle(5, null, new Stroke({ color: hexToRgba(inactive, 0.9, '#8892aa'), width: 1.5, lineDash: [3, 3] }))
-    default: // dismissed, extinguished
-      return circle(4, null, new Stroke({ color: hexToRgba(inactive, 0.8, '#8892aa'), width: 1.5 }))
-  }
-}
-
-// Diagonal hatch: the cartographic sign for a burn scar, and unlike a flat wash it cannot be
-// mistaken for a basemap fill. Sized in device pixels (the map canvas is), so the spacing looks
-// the same on HiDPI screens. Null without a 2D canvas (jsdom): the caller falls back to a wash.
-function makeHatchPattern(color) {
-  try {
-    const ratio = Math.max(1, Math.round(globalThis.devicePixelRatio || 1))
-    const size = 9 * ratio
-    const canvas = document.createElement('canvas')
-    canvas.width = canvas.height = size
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return null
-    ctx.strokeStyle = color
-    ctx.lineWidth = 1.5 * ratio
-    ctx.lineCap = 'square'
-    ctx.beginPath()
-    // the main diagonal plus the two corner stubs, so the tiles join into unbroken lines
-    ctx.moveTo(0, size); ctx.lineTo(size, 0)
-    ctx.moveTo(-size / 2, size / 2); ctx.lineTo(size / 2, -size / 2)
-    ctx.moveTo(size / 2, size * 1.5); ctx.lineTo(size * 1.5, size / 2)
-    ctx.stroke()
-    return ctx.createPattern(canvas, 'repeat')
-  } catch { return null }
-}
-
-// Burnt areas are history, not alarm: charcoal, never red. Three passes so the area reads on
-// light, dark and satellite basemaps alike: a light halo under the edge, a faint light wash plus
-// a charcoal hatch inside, and a solid charcoal edge on top.
-function makeBurntStyle() {
-  const char = fireToken('--fire-burnt', '#4a2f1f')
-  const halo = fireToken('--fire-burnt-halo', '#fff7ed')
-  const hatch = makeHatchPattern(hexToRgba(char, 0.75, '#4a2f1f'))
-  return [
-    new Style({
-      fill:   new Fill({ color: hexToRgba(halo, 0.22, '#fff7ed') }),
-      stroke: new Stroke({ color: hexToRgba(halo, 0.85, '#fff7ed'), width: 5 }),
-    }),
-    new Style({
-      fill:   new Fill({ color: hatch ?? hexToRgba(char, 0.3, '#4a2f1f') }),
-      stroke: new Stroke({ color: char, width: 2 }),
-    }),
-  ]
-}
-
-// Suppression zones: an operator's "ignore detections here" circle. Muted, dashed and hollow like a
-// suppressed hotspot (inactive grey-blue), never red, no glow. The label is canvas text, so a
-// user-typed label can never act as markup; it is clipped so a long one cannot cover the map.
-const ZONE_LABEL_MAX = 28
-function makeZoneStyle(label) {
-  const inactive = fireToken('--fire-inactive', '#8892aa')
-  const ring     = fireToken('--text', '#e2e8f0')
-  const text = String(label ?? '')
-  return new Style({
-    fill:   new Fill({ color: hexToRgba(inactive, 0.1, '#8892aa') }),
-    stroke: new Stroke({ color: hexToRgba(inactive, 0.95, '#8892aa'), width: 1.5, lineDash: [6, 5] }),
-    text: text ? new Text({
-      text: text.length > ZONE_LABEL_MAX ? `${text.slice(0, ZONE_LABEL_MAX - 1)}…` : text,
-      font: '600 12px system-ui',
-      fill: new Fill({ color: ring }), stroke: new Stroke({ color: '#000', width: 3 }),
-    }) : undefined,
   })
 }
 
@@ -410,27 +299,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   const checkpointSource = new VectorSource()
   const checkpointLayer  = new VectorLayer({ source: checkpointSource, visible: false })
 
-  // Fire layers: history (burnt areas) and detections (hotspots) sit under the trackers and
-  // trails, hidden until the operator turns them on.
-  const geojson       = new GeoJSON()
-  const burntSource   = new VectorSource()
-  const burntLayer    = new VectorLayer({ source: burntSource, visible: false })
-  const hotspotSource = new VectorSource()
-  const hotspotStyles = {}
-  let   fieldReportLabel = ''
-  const hotspotLayer  = new VectorLayer({
-    source: hotspotSource, visible: false,
-    style: (feature) => {
-      const key = hotspotStyleKey(feature.getProperties(), Date.now())
-      return (hotspotStyles[key] ??= makeHotspotStyle(key, fieldReportLabel))
-    },
-  })
-  let burntStyleCache = null
-  burntLayer.setStyle(() => (burntStyleCache ??= makeBurntStyle()))
-  // Suppression zones sit under the hotspots so a detection inside a zone stays clickable.
-  const zoneSource = new VectorSource()
-  const zoneLayer  = new VectorLayer({ source: zoneSource, visible: false })
-  let fireTimer = null
+  // Callbacks of the map's clicks; the fire layers (map/fireLayers.js) reach them through mapCtx.
   let fireClickCb = null
   let trackerClickCb = null
   let contextMenuCb = null
@@ -513,11 +382,24 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     visible: false,
   })
 
+  // What a contribution (a module's map entry) needs from the facade. Each function reads the facade's
+  // callback variable at call time, so a callback set or cleared later (onTrackerClick(null) on
+  // unmount) is honoured.
+  const trackerHit = (pixel) => !!shell.map?.hasFeatureAtPixel(pixel, { layerFilter: l => l === vectorLayer, hitTolerance: 5 })
+  const mapCtx = {
+    trackerHit,
+    reportTrackerClick: (id) => trackerClickCb?.(id),
+    fireClickRegistered: () => !!fireClickCb,
+    reportFireClick: (selection) => fireClickCb?.(selection),
+    onHQPlaced: (loc) => onHQPlaced?.(loc),
+  }
+
+  // Fire (burnt areas, zones, hotspots) is one contribution: its three layers keep their place at the
+  // bottom of the stack and its five functions are delegated below. A failed install gives an empty api.
+  const fire = shell.install(LEGACY_FIRE_MAP, FIRE_MAP_LAYERS, mapCtx)
+
   // The map's own layers, in the order they have always been on the map. Their z-index comes from
   // the shell's z-order table; the basemap (first) is the shell's own.
-  shell.addLayer({ id: 'burnt',       zIndex: Z.burnt,       layer: burntLayer })
-  shell.addLayer({ id: 'zones',       zIndex: Z.zones,       layer: zoneLayer })
-  shell.addLayer({ id: 'hotspots',    zIndex: Z.hotspots,    layer: hotspotLayer })
   shell.addLayer({ id: 'graticule',   zIndex: Z.graticule,   layer: graticule })
   shell.addLayer({ id: 'trail',       zIndex: Z.trail,       layer: trailLayer })
   shell.addLayer({ id: 'checkpoints', zIndex: Z.checkpoints, layer: checkpointLayer })
@@ -765,18 +647,6 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     })
   }
 
-  // What a contribution (a module's map entry) needs from the facade. Each function reads the facade's
-  // callback variable at call time, so a callback set or cleared later (onTrackerClick(null) on
-  // unmount) is honoured.
-  const trackerHit = (pixel) => !!shell.map?.hasFeatureAtPixel(pixel, { layerFilter: l => l === vectorLayer, hitTolerance: 5 })
-  const mapCtx = {
-    trackerHit,
-    reportTrackerClick: (id) => trackerClickCb?.(id),
-    fireClickRegistered: () => !!fireClickCb,
-    reportFireClick: (selection) => fireClickCb?.(selection),
-    onHQPlaced: (loc) => onHQPlaced?.(loc),
-  }
-
   // Hover: tooltip of the tracker under the pointer, pointer cursor, coordinate read-out. Runs in every mode.
   shell.onPointerMove((evt) => {
     const map = shell.map
@@ -862,17 +732,8 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     return true
   }, { mode: 'measure' })
 
-  // Fire features: a tracker wins when both are hit; clicking bare map closes the popup. Without a
-  // mode only (a placement or measure click never reaches them).
-  const fireHit = (pixel) => {
-    const map = shell.map
-    const hotspot = map.forEachFeatureAtPixel(pixel, f => f, { layerFilter: l => l === hotspotLayer, hitTolerance: 6 })
-    if (hotspot) return { kind: 'hotspot', feature: hotspot }
-    const burnt = map.forEachFeatureAtPixel(pixel, f => f, { layerFilter: l => l === burntLayer })
-    return burnt ? { kind: 'burnt_area', feature: burnt } : null
-  }
-
-  // A tracker click opens the tracker popup and closes any fire popup.
+  // A tracker click opens the tracker popup and closes any fire popup (the fire click handler, order 20,
+  // is in map/fireLayers.js; this one runs first and stops the click).
   shell.onClick((evt) => {
     if (!mapCtx.fireClickRegistered()) return false
     if (!mapCtx.trackerHit(evt.pixel)) return false
@@ -881,25 +742,6 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     if (marker && marker.getId() != null) mapCtx.reportTrackerClick(String(marker.getId()))
     return true
   }, { order: 10 })
-
-  shell.onClick((evt) => {
-    if (!mapCtx.fireClickRegistered()) return false
-    const hit = fireHit(evt.pixel)
-    if (!hit) { mapCtx.reportFireClick(null); mapCtx.reportTrackerClick(null); return true }
-    const props = { ...hit.feature.getProperties() }
-    delete props.geometry
-    mapCtx.reportFireClick({
-      kind: hit.kind,
-      properties: props,
-      coordinate: hit.kind === 'hotspot' ? hit.feature.getGeometry().getCoordinates() : evt.coordinate,
-    })
-    return true
-  }, { order: 20 })
-
-  shell.onPointerMove((evt) => {
-    if (mapCtx.trackerHit(evt.pixel)) return
-    if (fireHit(evt.pixel)) shell.map.getTargetElement().style.cursor = 'pointer'
-  })
 
   // "Report fire here": right-click on a mouse, long-press on touch. Both hand over the clicked
   // coordinate (EPSG:3857) and its pixel inside the map element; the view decides what to offer.
@@ -915,9 +757,6 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   onMounted(() => {
     resolveBgMountainsDefault()   // offline BG Mountains tiles only if this server has them (useSettings.js)
     shell.mount(mapRef.value)
-
-    // Hotspots fade with age; repaint each minute so they do so without a refetch.
-    fireTimer = setInterval(() => { if (hotspotLayer.getVisible()) hotspotLayer.changed() }, 60_000)
 
     // Re-evaluate stale state every minute without needing a new WS frame
     staleTimer = setInterval(() => {
@@ -954,7 +793,6 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     }
     shell.dispose()
     clearInterval(staleTimer)
-    clearInterval(fireTimer)
   })
 
   function setMeasureMode(on) {
@@ -1039,55 +877,14 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   }
   function onRepeaterPlaced(cb) { repeaterPlacedCb = cb }
 
-  // Read before clearing: a payload OpenLayers cannot parse keeps the previous features on
-  // screen. Returns false so the caller can show the feed as failed (BP-03). The log line
-  // carries no feature content.
-  function replaceFeatures(source, fc, what) {
-    let features
-    try {
-      features = geojson.readFeatures(fc, { featureProjection: 'EPSG:3857' })
-    } catch {
-      console.warn('fire layer: unreadable %s GeoJSON, keeping previous features', what)
-      return false
-    }
-    source.clear(true)
-    source.addFeatures(features)
-    return true
-  }
-
-  function setBurntAreas(fc)  { return replaceFeatures(burntSource, fc, 'burnt-area') }
-  function setHotspots(fc)    { return replaceFeatures(hotspotSource, fc, 'hotspot') }
-
-  // Zones arrive as plain rows ({ id, label, latitude, longitude, radius_m }). Each becomes a true
-  // geodesic circle (a Web Mercator circle would be about a third too large at 42 N). A row that
-  // cannot be drawn is skipped, so one bad zone never hides the rest.
-  function setZones(list) {
-    const features = []
-    for (const z of Array.isArray(list) ? list : []) {
-      const lon = Number(z?.longitude), lat = Number(z?.latitude), r = Number(z?.radius_m)
-      if (!Number.isFinite(lon) || !Number.isFinite(lat) || !Number.isFinite(r) || r <= 0) continue
-      const geometry = circularPolygon([lon, lat], r, 64).transform('EPSG:4326', 'EPSG:3857')
-      const f = new Feature({ geometry, zoneId: z.id })
-      f.setId(z.id)
-      f.setStyle(makeZoneStyle(z.label))
-      features.push(f)
-    }
-    zoneSource.clear(true)
-    zoneSource.addFeatures(features)
-    return features.length
-  }
-
-  function setFireLayerVisible(name, visible) {
-    if (name === 'burnt')    burntLayer.setVisible(visible)
-    if (name === 'hotspots') hotspotLayer.setVisible(visible)
-    if (name === 'zones')    zoneLayer.setVisible(visible)
-  }
-
-  function setFireLabels({ fieldReport }) {
-    fieldReportLabel = fieldReport || ''
-    for (const k of Object.keys(hotspotStyles)) delete hotspotStyles[k]
-    hotspotLayer.changed()
-  }
+  // Fire functions: delegated to the fire contribution (map/fireLayers.js). They work before the map
+  // is mounted. When its install failed the api is empty: the two GeoJSON setters report false (the
+  // pill then shows the feed as failed, which is true) and the other three do nothing.
+  const setBurntAreas      = (fc)      => fire.setBurntAreas?.(fc) ?? false
+  const setHotspots        = (fc)      => fire.setHotspots?.(fc) ?? false
+  const setZones           = (list)    => fire.setZones?.(list)
+  const setFireLayerVisible = (n, v)   => { fire.setFireLayerVisible?.(n, v) }
+  const setFireLabels      = (labels)  => { fire.setFireLabels?.(labels) }
 
   function onFireFeatureClick(cb) { fireClickCb = cb }
   // A click on a tracker marker passes its device id; a click on bare map passes null.
