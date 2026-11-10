@@ -72,7 +72,7 @@ Not touched: `api/index.js`, `api/client.js`, `stores/locations.js`, `stores/aut
 |-----------|-----|-------------------------|
 | `src/modules/index.js` | T440 and T404 | adjacent lines; keep both, alphabetical |
 | `src/router/index.js`, `src/nav-config.js` | T440 and T404 | T440 deletes the `users`, `groups`, `devices` lines, T404 the `settings` line; two unchanged lines lie between them, so git merges them cleanly; if not, keep both deletions |
-| `src/i18n/en.js`, `bg.js` | T440 and T404 | different namespaces; keep both deletions; the collision and parity tests (T403) and the before/after leaf count show the result |
+| `src/i18n/en.js`, `bg.js` | T440 and T404 | different namespaces; keep both deletions; the tests `no text key was lost`, no collision and key parity (T403) show the result |
 | `src/lib/groups.js` | T442 (re-export) and plan 2 | plan 2 does not edit `lib/groups.js`; `useMap.js` line 24 keeps its import |
 | `MapView.vue`, `useMap.js`, `AppLayout.vue` | plan 2 only | this plan never edits them |
 
