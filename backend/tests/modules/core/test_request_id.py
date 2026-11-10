@@ -176,5 +176,25 @@ def test_main_registers_middleware_and_log_filter():
     from backend.main import app as main_app
 
     assert any(m.cls is RequestIdMiddleware for m in main_app.user_middleware)
-    assert any(isinstance(f, RequestIdLogFilter)
-               for h in logging.getLogger().handlers for f in h.filters)
+    import backend.main as m
+
+    assert any(isinstance(f, RequestIdLogFilter) for f in m._log_handler.filters)
+
+
+@pytest.mark.Trait("Task", "T307")
+def test_main_imports_and_logs_with_request_id_outside_pytest():
+    """Clean interpreter (no pytest log handler on root), like uvicorn: basicConfig must work."""
+    import subprocess
+    import sys
+
+    code = (
+        "import logging, backend.main\n"
+        "from backend.core.request_id import use_request_id\n"
+        "with use_request_id('rid-1'):\n"
+        "    logging.getLogger('probe').info('hello')\n"
+        "logging.getLogger('probe').info('outside')\n"
+    )
+    r = subprocess.run([sys.executable, '-c', code], capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    assert 'INFO:probe:[rid-1] hello' in r.stderr
+    assert 'INFO:probe:[-] outside' in r.stderr
