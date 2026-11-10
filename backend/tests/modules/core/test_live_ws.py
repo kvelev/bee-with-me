@@ -68,8 +68,8 @@ async def test_broadcast_drops_a_dead_client_and_still_reaches_the_others():
 async def test_listener_reconnects_after_a_connect_error(monkeypatch, caplog):
     attempts = []
 
-    async def fake_connect(dsn):
-        attempts.append(dsn)
+    async def fake_connect(**kwargs):
+        attempts.append(kwargs)
         if len(attempts) == 1:
             raise OSError('db down')
         raise asyncio.CancelledError()
@@ -110,7 +110,7 @@ async def test_listener_listens_on_every_forwarded_channel(monkeypatch):
 
     conn = FakeConn()
 
-    async def fake_connect(dsn):
+    async def fake_connect(**kwargs):
         return conn
 
     async def fake_sleep(delay):

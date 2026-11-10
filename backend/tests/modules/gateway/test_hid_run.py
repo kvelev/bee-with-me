@@ -80,7 +80,7 @@ def harness(monkeypatch):
     conn.close = AsyncMock()
     connect = AsyncMock(return_value=conn)
     monkeypatch.setattr(hid_reader.asyncpg, 'connect', connect)
-    monkeypatch.setattr(hid_reader, '_dsn', lambda: 'postgresql://fake')
+    monkeypatch.setattr(hid_reader, '_connect_kwargs', lambda: {})
     monkeypatch.setattr(hid_reader, '_vid_pid', lambda: (0x1234, 0x5678))
     monkeypatch.setattr(hid_reader, '_broadcast_status', AsyncMock())
 
@@ -157,7 +157,7 @@ async def test_device_opened_nonblocking_and_released_on_stop(harness):
 
     assert harness.dev.opened_with == (0x1234, 0x5678)
     assert harness.dev.nonblocking is True
-    assert harness.connect.await_args.args == ('postgresql://fake',)
+    assert harness.connect.await_args.args == ()
     assert harness.dev.closed is True
     harness.conn.close.assert_awaited_once()
     assert hid_reader.status['connected'] is False
