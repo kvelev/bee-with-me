@@ -19,6 +19,8 @@ from .db.migrate import BackupRequiredError, MigrationError, UpdateRequiredError
 from .routers import auth, devices, export, fire, groups, locations, users, ws, test, hardware_reader, tiles, weather
 from .routers import settings as settings_router
 from .ws import manager
+from .core.modules import include_module_routers, start_module_tasks, stop_module_tasks
+from .modules import MODULES
 from .core.request_id import RequestIdLogFilter, RequestIdMiddleware, make_log_formatter
 from .fire import poller as fire_poller
 from .fire.repository import anonymise_alerts, anonymise_hotspots, prune_fire_data
@@ -181,6 +183,7 @@ async def lifespan(app: FastAPI):
     settings_router.after_change = fire_alarm.request_evaluation
     alarm_task = asyncio.create_task(fire_alarm.run())
     alarm_task.add_done_callback(lambda t: _log_task_failure(t, 'Fire alarm'))
+    module_tasks = start_module_tasks(MODULES, _log_task_failure)
 
     # Serial (LoRaWAN) reader — runs only when a real port is available
     serial_task = None
@@ -218,6 +221,7 @@ async def lifespan(app: FastAPI):
     # The alarm task may hold a pooled connection mid-tick: let its cancellation finish before the pool closes.
     with suppress(asyncio.CancelledError):
         await alarm_task
+    await stop_module_tasks(module_tasks)
     await close_pool()
 
 
@@ -263,6 +267,7 @@ app.include_router(locations.router)
 app.include_router(export.router)
 app.include_router(fire.router)
 app.include_router(settings_router.router)
+include_module_routers(app, MODULES)
 app.include_router(ws.router)
 if settings.enable_test_endpoints:
     app.include_router(test.router)

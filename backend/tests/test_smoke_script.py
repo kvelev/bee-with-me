@@ -497,3 +497,35 @@ def test_http_helper_bypasses_proxies_so_credentials_stay_on_the_host(monkeypatc
     monkeypatch.setenv('http_proxy', 'http://proxy.invalid:3128')
     # an empty ProxyHandler({}) registers no handler methods; the default one (reads HTTP_PROXY) must be absent
     assert 'ProxyHandler' not in [type(h).__name__ for h in smoke._OPENER.handlers]
+
+
+# --------------------------------------------------------------------------- T400
+
+def _settings_step(monkeypatch, status, body):
+    s, _ = make()
+    s.ctx['api'] = 'http://127.0.0.1:1'
+    s.ctx['token'] = 'tok'
+    seen = []
+
+    def fake(method, url, **kw):
+        seen.append((method, url, kw.get('token')))
+        return status, body
+
+    monkeypatch.setattr(smoke, 'http_request', fake)
+    return s, seen
+
+
+@pytest.mark.Trait("Task", "T400")
+def test_settings_step_passes_on_200_with_a_settings_row(monkeypatch):
+    s, seen = _settings_step(monkeypatch, 200, b'{"hq_radius_m": 5000}')
+    assert s.step('g. GET /api/settings = 200', s.s_settings)
+    assert seen == [('GET', 'http://127.0.0.1:1/api/settings', 'tok')]
+    assert s.report.results[-1].status == 'PASS'
+
+
+@pytest.mark.Trait("Task", "T400")
+def test_settings_step_fails_on_503(monkeypatch):
+    s, _ = _settings_step(monkeypatch, 503, b'')
+    assert not s.step('g. GET /api/settings = 200', s.s_settings)
+    last = s.report.results[-1]
+    assert last.status == 'FAIL' and 'GET /api/settings' in last.detail
