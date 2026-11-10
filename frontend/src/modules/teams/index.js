@@ -4,9 +4,8 @@ import en from './i18n/en.js'
 
 export default {
   name: 'teams',
-  // The page still lives in src/views/ until its own move task; the path changes then.
   routes: [
-    { path: '/groups', name: 'groups', component: () => import('../../views/GroupsView.vue') },
+    { path: '/groups', name: 'groups', component: () => import('./views/GroupsView.vue') },
   ],
   nav: [{ to: '/groups', labelKey: 'nav.groups', icon: '👥', order: 30 }],
   mapLayers: [],

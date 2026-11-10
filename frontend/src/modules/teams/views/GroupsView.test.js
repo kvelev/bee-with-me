@@ -2,16 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 
-vi.mock('../api', () => ({
+vi.mock('../../../api', () => ({
   getGroups: vi.fn(), getGroup: vi.fn(), createGroup: vi.fn(), updateGroup: vi.fn(), deleteGroup: vi.fn(),
   deactivateGroup: vi.fn(), reactivateGroup: vi.fn(), addMember: vi.fn(), removeMember: vi.fn(), getUsers: vi.fn(),
 }))
 
-import { getGroups, getGroup, getUsers, createGroup, deactivateGroup, reactivateGroup, deleteGroup, removeMember } from '../api'
-import { ApiError } from '../api/client'
+import { getGroups, getGroup, getUsers, createGroup, deactivateGroup, reactivateGroup, deleteGroup, removeMember } from '../../../api'
+import { ApiError } from '../../../api/client'
 import GroupsView from './GroupsView.vue'
-import { i18n } from '../i18n/index.js'
-import en from '../i18n/en.js'
+import { i18n } from '../../../i18n/index.js'
+import en from '../../../i18n/en.js'
 
 const G1 = { id: 'g1', name: 'Alpha', color: '#ff0000', is_active: true, member_count: 2 }
 const G2 = { id: 'g2', name: 'Bravo', color: '#00ff00', is_active: false, member_count: 0 }
