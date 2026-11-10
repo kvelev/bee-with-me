@@ -128,6 +128,54 @@ describe('map-shell contributions', () => {
     expect(joined([sosLow])).toContain('sos')
   })
 
+  it('contributionProblems sees legacy entries and rejects an array legacy [T420]', () => {
+    const m = mod('m', {
+      mapLayers: [{ id: 'q', zIndex: 1 }],
+      banners: [{ id: 'f', priority: 20, component: C }],
+    })
+    const legacy = {
+      mapLayers: [{ id: 'q', zIndex: 2 }],
+      banners: [{ id: 'g', priority: 20, component: C }, { id: 'x', priority: 10, component: C }],
+    }
+    const text = contributionProblems([m], legacy).join('\n')
+    expect(text).toContain('"q"')
+    expect(text).toMatch(/share priority 20/)
+    expect(text).toContain('"x"')
+    expect(() => contributionProblems([m], [])).toThrow(TypeError)
+    expect(() => contributionProblems([m], [{ id: 'a' }])).toThrow(/legacy must be/)
+  })
+
+  it('sorting is deterministic and total [T420]', () => {
+    const m = mod('m', {
+      banners: [
+        { id: 'a', priority: 30, component: C },
+        { id: 'n', priority: NaN, component: C },
+        { id: 'b', priority: 20, component: C },
+        { id: 'u', priority: undefined, component: C },
+      ],
+    })
+    const want = ['b', 'a', 'n', 'u']
+    expect(ids(collectBanners([m]))).toEqual(want)
+    expect(ids(collectBanners([{ ...m, banners: [...m.banners].reverse() }]))).toEqual(want)
+    const t = mod('t', { mapLayers: [{ id: 'é', zIndex: 1 }, { id: 'z', zIndex: 1 }, { id: 'a', zIndex: 1 }] })
+    expect(ids(collectMapLayers([t]))).toEqual(['a', 'z', 'é'])
+  })
+
+  it('null items are skipped, not thrown on [T420]', () => {
+    const m = mod('m', {
+      banners: [null, { id: 'b', priority: 20, component: C }, undefined],
+      mapLayers: [null, { id: 'l', zIndex: 1, toggle: { labelKey: 'k', order: 1 } }],
+      popups: [null, { id: 'p', component: C, kinds: ['k'] }],
+      contextMenu: [null, { id: 'c', order: 1, labelKey: 'k', onSelect() {} }],
+    })
+    expect(ids(collectBanners([m, null], [null]))).toEqual(['b'])
+    expect(ids(collectMapLayers([m]))).toEqual(['l'])
+    expect(collectLayerToggles([m]).length).toBe(1)
+    expect(ids(collectContextMenu([m]))).toEqual(['c'])
+    expect(popupFor([null, ...collectPopups([m])], 'k').id).toBe('p')
+    expect(contributionProblems([m, null], { banners: [null] })).toEqual([])
+  })
+
   it('validateManifest accepts the optional fields and names each malformed one [T420]', () => {
     const complete = () => ({
       name: 'demo',

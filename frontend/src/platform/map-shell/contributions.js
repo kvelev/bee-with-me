@@ -10,12 +10,24 @@ const SOS_ID = 'sos'
 const fromModules = (modules, field) =>
   (Array.isArray(modules) ? modules : []).flatMap((m) => (m && Array.isArray(m[field]) ? m[field] : []))
 
+const isItem = (x) => x !== null && typeof x === 'object'
+
 const gather = (modules, field, legacy) => [
   ...fromModules(modules, field),
   ...(Array.isArray(legacy) ? legacy : []),
-]
+].filter(isItem)
 
-const byNumberThenId = (key) => (a, b) => (a[key] - b[key]) || String(a.id).localeCompare(String(b.id))
+// Total order: finite numbers ascending, non-finite or missing keys last, ties by plain id compare.
+const finite = (n) => typeof n === 'number' && Number.isFinite(n)
+const byNumberThenId = (key) => (a, b) => {
+  const fa = finite(a[key])
+  const fb = finite(b[key])
+  if (fa !== fb) return fa ? -1 : 1
+  if (fa && a[key] !== b[key]) return a[key] < b[key] ? -1 : 1
+  const ia = String(a.id)
+  const ib = String(b.id)
+  return ia < ib ? -1 : ia > ib ? 1 : 0
+}
 
 export function collectBanners(modules, legacy = []) {
   return gather(modules, 'banners', legacy).sort(byNumberThenId('priority'))
@@ -42,7 +54,7 @@ export function collectPopups(modules, legacy = []) {
 }
 
 export function popupFor(popups, kind) {
-  return (Array.isArray(popups) ? popups : []).find((p) => Array.isArray(p.kinds) && p.kinds.includes(kind)) || null
+  return (Array.isArray(popups) ? popups : []).find((p) => isItem(p) && Array.isArray(p.kinds) && p.kinds.includes(kind)) || null
 }
 
 export function collectContextMenu(modules, legacy = []) {
@@ -51,7 +63,10 @@ export function collectContextMenu(modules, legacy = []) {
 
 /** Cross-module checks the single-manifest validator cannot do. One message per problem; [] is clean. */
 export function contributionProblems(modules, legacy = {}) {
-  const extra = legacy && !Array.isArray(legacy) ? legacy : {}
+  if (Array.isArray(legacy) || (legacy !== undefined && legacy !== null && typeof legacy !== 'object')) {
+    throw new TypeError('contributionProblems: legacy must be { banners, mapLayers, popups, contextMenu }')
+  }
+  const extra = legacy || {}
   const problems = []
 
   const lists = {
