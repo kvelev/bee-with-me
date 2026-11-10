@@ -72,7 +72,7 @@ Not touched: `api/index.js`, `api/client.js`, `stores/locations.js`, `stores/aut
 |-----------|-----|-------------------------|
 | `src/modules/index.js` | T440 and T404 | adjacent lines; keep both, alphabetical |
 | `src/router/index.js`, `src/nav-config.js` | T440 and T404 | T440 deletes the `users`, `groups`, `devices` lines, T404 the `settings` line; two unchanged lines lie between them, so git merges them cleanly; if not, keep both deletions |
-| `src/i18n/en.js`, `bg.js` | T440 and T404 | different namespaces; keep both deletions; `the merged dictionaries keep every key` (T403) proves the result |
+| `src/i18n/en.js`, `bg.js` | T440 and T404 | different namespaces; keep both deletions; the collision and parity tests (T403) and the before/after leaf count show the result |
 | `src/lib/groups.js` | T442 (re-export) and plan 2 | plan 2 does not edit `lib/groups.js`; `useMap.js` line 24 keeps its import |
 | `MapView.vue`, `useMap.js`, `AppLayout.vue` | plan 2 only | this plan never edits them |
 
@@ -99,15 +99,17 @@ Order between T404 and T440: whichever is merged second merges `upstream/develop
 
 ## 4. Existing tests
 
-`UsersView.test.js`, `UsersView.b69.test.js`, `GroupsView.test.js`, `GroupsView.b70.test.js`, `DevicesView.test.js`, `DevicesView.b70.test.js` move with their view and change only relative paths: `'../api'` to `'../../../api'`, `'../api/client'` to `'../../../api/client'`, `'../stores/locations'` to `'../../../stores/locations'`, `'../i18n/index.js'`, `'../i18n/en.js'`, `'../i18n/bg.js'` to `'../../../i18n/...'` (the merged dictionaries), in imports and in `vi.mock(...)`. All other test files are unedited. The T403 tests of plan 1 (`modules.test.js`: valid list, folders and list agree, key parity, no collision, leaf count, navigation order, re-exports are pure) run against every task of this plan and must stay green; B77 raises the pinned leaf counts by exactly 2 (`groups.loadError`, `devices.loadError`) in both languages and edits the two literals in the same commit.
+`UsersView.test.js`, `UsersView.b69.test.js`, `GroupsView.test.js`, `GroupsView.b70.test.js`, `DevicesView.test.js`, `DevicesView.b70.test.js` move with their view and change only relative paths: `'../api'` to `'../../../api'`, `'../api/client'` to `'../../../api/client'`, `'../stores/locations'` to `'../../../stores/locations'`, `'../i18n/index.js'`, `'../i18n/en.js'`, `'../i18n/bg.js'` to `'../../../i18n/...'` (the merged dictionaries), in imports and in `vi.mock(...)`. All other test files are unedited. The T403 tests of plan 1 (`modules.test.js` and `router/moduleRoutes.test.js`: valid list, folders and list agree, key parity, no collision, merged dictionary equals core plus module files, navigation order, re-exports are pure, the real router serves every module route) run against every task of this plan and must stay green. T440 runs the leaf-count one-liner of T403 step 1 before and after the move (both numbers unchanged, in the PR body); B77 adds exactly 2 keys per language (`groups.loadError`, `devices.loadError`).
 
 ## 5. Open to the owner and hand-offs
 
 1. **Stores now or in step 3?** The spec creates these modules so that they "supply names, teams and photos to the map" in step 3, when the live payload goes thin. T444 builds the stores now, without a consumer, because the task list asks for them. The alternative is to drop T444 and let step 3 write them with their first consumer. Recommendation: keep T444 small as written, or drop it; do not grow it.
 2. **More than 500 people or teams.** One request returns at most 500 rows; the views already ask for 500 and ignore the rest. The stores report `truncated` instead of paging. Paging in the stores is a step 3 decision (it depends on how the map joins names).
 3. **`users`, `groups` naming.** The modules are `people` and `teams`; routes (`/users`, `/groups`), i18n namespaces (`users.*`, `groups.*`) and API paths keep today's names, so nothing visible changes. Renaming them is a later, separate decision.
-4. **B77 and B78 status lines** in the phase 0-1 bugs file are set by the fixing PRs; the bugs file is shared with other sessions.
-5. **To the architecture owner (text proposal, not edited here):** modular-monolith.md section 9 notes that the frontend `people`, `teams`, `devices` modules exist from wave 1 (the spec placed them in step 3).
+4. **`lib/groups.js` is about live positions.** `normaliseGroups` repairs the `groups` column of a position row (B50) and is used by `useMap.js` and `stores/locations.js`; by content it belongs to `tracking` (step 3). This plan moves it into `teams` because the task list says so; the alternative is to leave it in `src/lib/` until step 3 and save one move. T442 keeps it in its own commit so it can be dropped.
+5. **B78 is fixed by clearing the error on success**, not at the start of `load()` as the bug entry words it (reason in the task).
+6. **B77 and B78 status lines** in the phase 0-1 bugs file are set by the fixing PRs; the bugs file is shared with other sessions.
+7. **To the architecture owner (text proposal, not edited here):** modular-monolith.md section 9 notes that the frontend `people`, `teams`, `devices` modules exist from wave 1 (the spec placed them in step 3).
 
 ---
 
@@ -131,10 +133,10 @@ Order between T404 and T440: whichever is merged second merges `upstream/develop
   - All three: `mapLayers: []`, `panels: []`, `banners: []`, `liveHandlers: {}`; `people` has `depends: []`. No route has `meta.adminOnly` and no nav item has `adminOnly` (as today).
 - The texts move verbatim; the icons are copied from `nav-config.js`.
 
-- [ ] **Step 1: Write the failing tests**, each `[T440]`: `the three manifests are valid` (`validateManifest` gives `[]` for each); `their routes are the old paths, named, not admin-only` (paths `/users`, `/groups`, `/devices`; names `users`, `groups`, `devices`; no `meta.adminOnly`); `their navigation items keep place and icon` (orders 20, 30, 40 and the three icons; none has `adminOnly`); `teams and devices depend on people` (the `depends` arrays above; every dependency is a module in `MODULES`); `the texts are in the merged dictionaries in both languages` (`en.users`, `en.groups`, `en.devices`, `en.nav.users`, `en.nav.groups`, `en.nav.devices` are defined in `src/i18n/en.js`, the same for `bg.js`, and `en.nav.users !== bg.nav.users`); `the router serves the three pages under the layout` (`router.resolve('/users').matched.length === 2`, the same for `/groups` and `/devices`, with the real router of `src/router/index.js`).
+- [ ] **Step 1: Write the failing tests**, each `[T440]`: `the three manifests are valid` (`validateManifest` gives `[]` for each); `their routes are the old paths, named, not admin-only` (paths `/users`, `/groups`, `/devices`; names `users`, `groups`, `devices`; no `meta.adminOnly`); `their navigation items keep place and icon` (orders 20, 30, 40 and the three icons; none has `adminOnly`); `teams and devices depend on people` (the `depends` arrays above; every dependency is a module in `MODULES`); `the texts are in the merged dictionaries in both languages` (`en.users`, `en.groups`, `en.devices`, `en.nav.users`, `en.nav.groups`, `en.nav.devices` are defined in `src/i18n/en.js`, the same for `bg.js`, and `en.nav.users !== bg.nav.users`); `the router serves the three pages under the layout` (with `vi.mock('../api', ...)` as `router/index.test.js` does and the real router of `src/router/index.js`: `router.resolve('/users')` has `matched.length === 2`, the name `users` and no `meta.adminOnly`, the same for `/groups` and `/devices`; `await guard(router.resolve('/users'))` is `undefined` for a viewer with a token).
 - [ ] **Step 2: Run, expect FAIL.** Run: `cd bee-with-me\frontend; npm test -- src/modules/people-teams-devices.test.js`. Expected: FAIL (`Failed to resolve import "./people/index.js"`).
 - [ ] **Step 3: Implement.** Cut the three namespaces and the three `nav` lines out of `en.js` and `bg.js` into the six module dictionaries; write the manifests; add the three `MODULES` lines (alphabetical: `devices`, `people`, `settings`, `teams`); delete the three router children and the three static nav items.
-- [ ] **Step 4: Run** the new test, the T403 invariants and the six view tests (they still sit in `src/views/` and read the merged dictionaries). Run: `cd bee-with-me\frontend; npm test -- src/modules src/platform src/router src/i18n src/views src/components/AppLayout.test.js src/architecture.test.js; npm run build`. Expected: PASS and a clean build with the three view chunks.
+- [ ] **Step 4: Run** the new test, the T403 invariants and the six view tests (they still sit in `src/views/` and read the merged dictionaries). Run: `cd bee-with-me\frontend; npm test -- src/modules src/platform src/router src/i18n src/views src/components/AppLayout.test.js src/architecture.test.js; npm run build`. Expected: PASS and a clean build with the three view chunks. Run the leaf-count one-liner of T403 step 1 before and after: both numbers are unchanged.
 - [ ] **Step 5: Commit** `refactor(modules): T440 people, teams and devices contribute their routes, navigation and texts`.
 
 dod:
@@ -183,7 +185,7 @@ dod:
 - [ ] **Step 2: Run, expect FAIL.** Run: `cd bee-with-me\frontend; npm test -- src/modules/teams`. Expected: FAIL (`Failed to resolve import "./groups.js"`).
 - [ ] **Step 3: Check, then move.** `git grep -n "vi.mock('[^']*lib/groups" -- frontend/src` prints nothing. `git mv` the four files, change only relative paths, write the re-export and the manifest line.
 - [ ] **Step 4: Run** the module, the two unedited importers' tests and the re-export purity check. Run: `cd bee-with-me\frontend; npm test -- src/modules src/stores src/composables src/architecture.test.js; npm run build`. Expected: PASS and a clean build.
-- [ ] **Step 5: Commit** `refactor(teams): T442 move GroupsView and the groups helper into the teams module`.
+- [ ] **Step 5: Commit** in two commits: `refactor(teams): T442 move the groups helper into the teams module` and `refactor(teams): T442 move GroupsView into the teams module`.
 
 dod:
 - `cd bee-with-me\frontend; npm test -- src/modules src/stores src/composables src/architecture.test.js`
@@ -223,9 +225,9 @@ dod:
 
 **Interfaces:**
 - Consumes: the moved view (T441).
-- Produces: `load()` clears `pageError` only when the request succeeded (set it to `''` after the awaited `Promise.all`, before the rows are assigned), so a failed reload keeps its message and a successful one removes the old message without a flash.
+- Produces: `load()` clears `pageError` only when the request succeeded (set it to `''` after the awaited `Promise.all`, before the rows are assigned), so a failed reload keeps its message and a successful one removes the old message without a flash. This deviates from the wording of the bug entry ("reset `pageError` at the start of `load()`"): clearing at the start would blank the message while a retry is still running and flash it back on a second failure. The observable requirement of the entry and its DoD (the error is gone after a successful reload) is met; say so in the PR body.
 
-- [ ] **Step 1: Write the failing tests** with the mock set-up of `UsersView.b69.test.js` (copied): `it('a successful reload removes the old load error [B78]')` (`getUsers` rejects once, the page shows `.page-error`; `getUsers` then resolves `{ items: [], total: 0 }` and the page is reloaded by a click on the pagination control that calls `goToPage`; `.page-error` no longer exists); `it('a failed reload keeps the rows and shows the error [B78]')` (first load resolves one user, second rejects: the row is still rendered and `.page-error` shows the text of `users.loadError`).
+- [ ] **Step 1: Write the failing tests** with the mock set-up of `UsersView.b69.test.js` (copied): `it('a successful reload removes the old load error [B78]')` (`getUsers` rejects once, the page shows `.page-error`; `getUsers` then resolves `{ items: [], total: 0 }` and the page is reloaded with `await wrapper.vm.goToPage(0)` (the pagination buttons are rendered only when `total > limit`, which is not the case after a failed first load); `.page-error` no longer exists); `it('a failed reload keeps the rows and shows the error [B78]')` (first load resolves one user, second rejects: the row is still rendered and `.page-error` shows the text of `users.loadError`).
 - [ ] **Step 2: Run, expect FAIL.** Run: `cd bee-with-me\frontend; npm test -- -t "B78"`. Expected: FAIL (the first test still finds `.page-error`).
 - [ ] **Step 3: Fix** `load()` as described.
 - [ ] **Step 4: Run.** Run: `cd bee-with-me\frontend; npm test -- src/modules/people; npm run build`. Expected: PASS and a clean build.
@@ -243,7 +245,6 @@ dod:
 - Modify: `frontend/src/modules/teams/views/GroupsView.vue` (`load`, `selectGroup`, the member add and remove paths that await without a `catch`)
 - Modify: `frontend/src/modules/devices/views/DevicesView.vue` (`load`)
 - Modify: `frontend/src/modules/teams/i18n/en.js`, `bg.js` (`groups.loadError`), `frontend/src/modules/devices/i18n/en.js`, `bg.js` (`devices.loadError`)
-- Modify: `frontend/src/modules/modules.test.js` (the two pinned leaf counts, each plus 2)
 - Test: `frontend/src/modules/teams/views/GroupsView.b77.test.js`, `frontend/src/modules/devices/views/DevicesView.b77.test.js`
 - Modify: `docs/superpowers/plans/2026-10-31-vs-phase0-1.bugs.md` (the B77 status line only)
 
@@ -253,13 +254,14 @@ dod:
 
 - [ ] **Step 1: Read, then write the failing tests.** Read `GroupsView.vue` from `load` to the last member handler and list every `await` that has no `catch`; each gets a test. Tests with the mock set-ups of `GroupsView.b70.test.js` and `DevicesView.b70.test.js` (copied), each `[B77]`, each registering a `process.on('unhandledRejection', ...)` listener that fails the test if it fires: `a rejected first load shows the load error in the page language` (for `getGroups`, for `getUsers` inside the groups load, for `getDevices`; English and Bulgarian text); `a rejected getGroup shows the load error and keeps the previous selection`; `a load that succeeds after a failure removes the error`; `a failed reload keeps the rows already shown`; one test per unguarded member path found in the reading, asserting the error element and no unhandled rejection.
 - [ ] **Step 2: Run, expect FAIL.** Run: `cd bee-with-me\frontend; npm test -- -t "B77"`. Expected: FAIL (unhandled rejection, no `.page-error`).
-- [ ] **Step 3: Fix** the two views, add the two keys in both languages, raise the two leaf-count literals by 2.
+- [ ] **Step 3: Fix** the two views and add the two keys in both languages (the parity test of plan 1 fails if one language is missing).
 - [ ] **Step 4: Run.** Run: `cd bee-with-me\frontend; npm test -- src/modules; npm run build`. Expected: PASS and a clean build.
 - [ ] **Step 5: Commit** `fix(teams,devices): B77 guard the first load and the group selection`, then set `**status:** fixed (<sha>)` on B77 in the bugs file in a second commit.
 
 dod:
 - `cd bee-with-me\frontend; npm test -- -t "B77"`
 - `cd bee-with-me\frontend; npm test -- src/modules`
+- `cd bee-with-me\frontend; npm run build`
 
 ### Task 444: stores of `people`, `teams` and `devices`
 

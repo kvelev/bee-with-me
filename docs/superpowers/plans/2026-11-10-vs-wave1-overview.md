@@ -43,6 +43,7 @@ flowchart LR
     T403 --> T404
     T403 --> T440
     T403 --> T421
+    T403 --> T422
     T403 --> T424
     T420 --> T421
     T420 --> T422 --> T423 --> T427
@@ -72,7 +73,7 @@ Starting points with no dependency: T400, T401, T403, T420.
 
 **How many sessions:** at most 4 at the same time is the recommendation, 6 is the ceiling the file ownership allows (stage D). The limit is not the files but the gates: every PR needs a smoke run (about 2 minutes, one container engine per machine), a breaker run, for 5 of the 20 tasks a security review, for 14 of them a manual look at the page, and each merge redeploys bee-dev. Of the frontend-designer sessions never more than one per chain: chain U (`useMap.js`: T422, T423, T427), chain V (`MapView.vue`: T424, T425, T426), `AppLayout.vue` (T421), and one per module view (T441, T442, T443).
 
-Fixed orders inside the stages: T400 and T401 before T402; T403 before T404, T440, T421, T424; T404 before T440 (preferred) and before T427; T423 before T426.
+Fixed orders inside the stages: T400 and T401 before T402; T403 before T404, T440, T421, T422, T424 (everything that imports from `src/modules/`); T404 before T440 (preferred) and before T427; T423 before T426.
 
 ## 3. Expected conflicts
 
@@ -81,9 +82,10 @@ Fixed orders inside the stages: T400 and T401 before T402; T403 before T404, T44
 | `frontend/src/modules/index.js` | T404, T440 | adjacent lines in the list | keep both; alphabetical order |
 | `frontend/src/router/index.js` | T403, then T404 and T440 | T403 restructures the children; T404 and T440 delete different lines | merge T403 first; the two deletions do not touch (two lines between them) |
 | `frontend/src/nav-config.js` | T403, then T404 and T440 | as the router | as the router |
-| `frontend/src/i18n/en.js`, `bg.js` | T403, T404, T440 | T403 edits the first and last lines; the others cut different namespaces and non-adjacent `nav` lines | keep every deletion; `the merged dictionaries keep every key` (T403) is the proof |
-| `frontend/src/modules/modules.test.js` | T403 creates; B77 edits two literals | none with another open task | |
-| `frontend/src/modules/settings/index.js` | T404 creates; T427 adds two fields | ordered | T427 after T404 |
+| `frontend/src/i18n/en.js`, `bg.js` | T403, T404, T440 | T403 edits the first and last lines; the others cut different namespaces and non-adjacent `nav` lines | keep every deletion; the collision and parity tests (T403) and the before/after leaf count in each PR body are the proof |
+| `frontend/src/modules/settings/index.js` | T404 creates; T427 adds one field | ordered | T427 after T404 |
+| `frontend/src/modules/map.js` | T422 creates; T427 adds one line | ordered (chain U) | |
+| `backend/modules/registry.py` | T402 creates | none in this wave; later backend modules add one line each | keep both lines |
 | `backend/main.py` | T400, T402 | ordered | T402 after T400 |
 | `backend/tests/architecture/importlinter.toml`, `approved_additions.py`, `allowlist.json` | T401, T402 | ordered | T402 after T401; a conflict in the TOML is solved by taking both sides and running `regen.py --remove-stale` |
 | `frontend/src/views/MapView.vue` | T424, T425, T426 | ordered chain | one session at a time |
@@ -106,20 +108,21 @@ The plans themselves were reviewed by `task-reviewer` and `breaker` before hand-
 
 ## 5. State after the wave
 
-- Backend: `backend/modules/settings/` is the first module; `main.py` mounts routers and starts tasks from `MODULES`; `allowlist.json` has `completed_step: 1`; the import allowlist has 45 lines (44 before: 3 deleted, 4 added).
-- Frontend: `src/modules/{devices,people,settings,teams}/`; routes, navigation and i18n come from the module list; `src/platform/map-shell/` holds the shell and four contribution points; the HQ marker is a manifest contribution; fire, SOS and the tracker features go through legacy entries marked with the step that moves them; `architecture.allowlist.json` is empty with `completed_step: 1`.
+- Backend: `backend/modules/settings/` is the first module; `main.py` mounts routers and starts tasks from `MODULES` (listed in `backend/modules/registry.py`, loaded lazily); `allowlist.json` has `completed_step: 1`; the import allowlist has 45 lines (44 before: 3 deleted, 4 added).
+- Frontend: `src/modules/{devices,people,settings,teams}/`; routes, navigation and i18n come from the module list; `src/platform/map-shell/` holds the shell and four contribution points; the HQ marker is the `settings` module's map contribution (`src/modules/map.js`); no manifest imports OpenLayers; fire, SOS and the tracker features go through legacy entries marked with the step that moves them; `architecture.allowlist.json` is empty with `completed_step: 1`.
 - Not done on purpose: backend `fire` (step 2), `tracking`, `sos`, `gateway` and the thin payload (step 3), the backends of `people`, `teams`, `devices` and the outbox (step 4), `identity`, `reporting`, `maps`, `simulation`, `weather` and the removal of the re-exports (step 5).
 
 ## 6. Open questions (collected from the three plans)
 
 1. Step 1 leaves the backend import allowlist one line longer (settings calling fire until step 4). Accept, or bring the `HQCleared` event forward? (plan 1, item 1)
-2. `useSettings.js` holds the tile-source choice and belongs to `maps`: move it into `settings` now as asked, or leave it until step 5? (plan 1, item 3)
+2. `useSettings.js` holds the tile-source choice and belongs to `maps`; `lib/groups.js` repairs position rows and belongs to `tracking`: move them into `settings` and `teams` now as asked, or leave them until steps 5 and 3? (plan 1, item 3; plan 3, item 4)
 3. The Settings page embeds fire zones, test mode and offline maps: step 2 needs a way for a module to contribute a section to that page. (plan 1, item 4)
 4. Map shell scope: tracker, repeater, weather and basemap layers stay inside the `useMap` facade in this wave. Confirm, or ask for the tracker layers now. (plan 2, item 1)
 5. The three stores have no consumer until step 3: build them now (T444) or with their first consumer? (plan 3, item 1)
 6. `get_current_user` and `require_role`: every module imports them from `backend/auth.py`; proposal to move them to `backend/core/auth.py` in step 5. (plan 1, item 5)
 7. To the owner: `fetch-depth: 0` in `ci.yml` so the growth tests run on PRs; `README.md` file tree; the `main` to `develop` reconcile (B62 to B67) before or during the wave.
-8. To the architecture owner: the text proposals listed in each plan (modular-monolith.md sections 3.1, 3.2, 7, 8, 9).
+8. Error isolation for banners and map contributions is the one deliberate behaviour addition of the map-shell plan: keep or drop? (plan 2, item 6)
+9. To the architecture owner: the text proposals listed in each plan (modular-monolith.md sections 3.1, 3.2, 7, 8, 9).
 
 ---
 
@@ -133,10 +136,10 @@ The plans themselves were reviewed by `task-reviewer` and `breaker` before hand-
 
 **Interfaces:**
 - Consumes: the merged result of every task of the three plans.
-- Produces: two small test files that pin the state of section 5, so a later step that undoes part of the wave fails loudly. They are permanent tests, not a script.
+- Produces: two small test files that pin what wave 1 reached and later steps only extend, so a step that undoes part of the wave fails loudly. They assert lower bounds and membership, never an exact list or count: step 2 adds `fire` and removes allowlist lines without editing them.
 
 - [ ] **Step 1: Merge check.** On a branch off the current `upstream/develop`, confirm with `git log --oneline upstream/develop` that the merge commits of T400 to T404, T420 to T427, T440 to T444, B77 and B78 are present; a missing one stops this task and is reported.
-- [ ] **Step 2: Write the tests.** Backend, tagged `T460`: `test_settings_is_the_only_module_and_step_1_is_recorded` (`[m.name for m in backend.modules.MODULES] == ['settings']`; `allowlist.json` has `completed_step == 1`); `test_main_names_no_module_router` (the text of `backend/main.py` has no `settings_router`); `test_import_allowlist_size_after_wave_1` (`count_entries(<TOML text>, 'toml') == 45`; the message says which step is expected to lower it). Frontend, each `[T460]`: `the module list is devices, people, settings, teams` (names of `MODULES`, sorted); `the four pages are served by module routes` (`/settings`, `/users`, `/groups`, `/devices` resolve to routes named `settings`, `users`, `groups`, `devices`); `src/views holds no moved view` (`SettingsView.vue`, `UsersView.vue`, `GroupsView.vue`, `DevicesView.vue` do not exist there); `the frontend allowlist is empty at step 1` (`violations` is `[]`, `completed_step` is 1); `SOS is above the fire alarm and the HQ layer comes from the settings module` (`collectBanners(MODULES, LEGACY_BANNERS)` starts with `sos`; `collectMapLayers(MODULES)` contains the id `settings-hq`).
+- [ ] **Step 2: Write the tests.** Backend, tagged `T460`: `test_settings_is_a_module_and_step_1_is_recorded` (`'settings' in [m.name for m in backend.modules.MODULES]`; `allowlist.json` has `completed_step >= 1`); `test_main_names_no_module_router` (the text of `backend/main.py` has no `settings_router`); `test_import_allowlist_is_not_larger_than_after_wave_1` (`count_entries(<TOML text>, 'toml') <= 45`). Frontend, each `[T460]`: `devices, people, settings and teams are modules` (each name is in the names of `MODULES`); `the four pages are served by module routes` (with `vi.mock('../api', ...)`: on the real router `/settings`, `/users`, `/groups`, `/devices` resolve to routes named `settings`, `users`, `groups`, `devices`, and only `/settings` has `meta.adminOnly`); `src/views holds no moved view` (`SettingsView.vue`, `UsersView.vue`, `GroupsView.vue`, `DevicesView.vue` do not exist there); `the frontend allowlist is empty` (`violations` is `[]`, `completed_step >= 1`); `the HQ layer comes from the settings module` (`collectMapLayers(MODULES)` contains the id `settings-hq`; the banner order is pinned by T421's own tests, which move with the legacy list); `no manifest imports OpenLayers` (no file `src/modules/*/index.js` contains `from 'ol`).
 - [ ] **Step 3: Run the full suites and the smoke.** Run: `cd bee-with-me; .venv\Scripts\python -m pytest backend\tests -q`. Expected: PASS. Run: `cd bee-with-me\frontend; npm test; npm run build`. Expected: PASS and a clean build. Then `python tools/smoke.py`: every step PASS, including `g. GET /api/settings = 200`.
 - [ ] **Step 4: Commit** `test(architecture): T460 pin the state after wave 1`. The PR body lists the open questions of section 6 that are still open.
 
