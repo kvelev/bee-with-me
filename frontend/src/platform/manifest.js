@@ -37,10 +37,18 @@ const navProblems = (n) => !isObject(n) ? ['must be an object']
       ...(isText(n.labelKey) ? [] : ['labelKey must be an i18n key']),
     ]
 
+const toggleProblems = (t) => !isObject(t) ? ['toggle must be an object']
+  : [
+      ...(isText(t.labelKey) ? [] : ['toggle.labelKey must be an i18n key']),
+      ...(Number.isFinite(t.order) ? [] : ['toggle.order must be a finite number']),
+    ]
+
 const layerProblems = (l) => !isObject(l) ? ['must be an object']
   : [
       ...(isText(l.id) ? [] : ['id must be a non-empty string']),
       ...(Number.isFinite(l.zIndex) ? [] : ['zIndex must be a finite number']),
+      ...(l.toggle === undefined ? [] : toggleProblems(l.toggle)),
+      ...(l.create === undefined ? [] : ['create: map code belongs in map/index.js, not in the manifest']),
     ]
 
 const panelProblems = (p) => !isObject(p) ? ['must be an object']
@@ -56,11 +64,33 @@ const bannerProblems = (b) => !isObject(b) ? ['must be an object']
       ...(isComponent(b.component) ? [] : ['component must be a component']),
     ]
 
+const popupProblems = (p) => !isObject(p) ? ['must be an object']
+  : [
+      ...(isText(p.id) ? [] : ['id must be a non-empty string']),
+      ...(isComponent(p.component) ? [] : ['component must be a component']),
+      ...(Array.isArray(p.kinds) && p.kinds.length > 0 && p.kinds.every(isText) ? [] : ['kinds must be a non-empty array of strings']),
+    ]
+
+const contextMenuProblems = (c) => !isObject(c) ? ['must be an object']
+  : [
+      ...(isText(c.id) ? [] : ['id must be a non-empty string']),
+      ...(Number.isFinite(c.order) ? [] : ['order must be a finite number']),
+      ...(isText(c.labelKey) ? [] : ['labelKey must be an i18n key']),
+      ...(typeof c.onSelect === 'function' ? [] : ['onSelect must be a function']),
+    ]
+
+// Like listOf, but the field may be absent.
+function optionalListOf(m, field, itemCheck, problems) {
+  if (m[field] === undefined) return
+  listOf(m, field, itemCheck, problems)
+}
+
 const dependsProblems = (d) => (isText(d) && NAME.test(d) ? [] : ['must be a module name'])
 
 /**
  * Check a module manifest. Returns one message per problem; an empty array means the manifest is valid.
- * Fields: name, routes, nav, mapLayers, panels, banners, liveHandlers, i18n ({en, bg}), depends.
+ * Required fields: name, routes, nav, mapLayers, panels, banners, liveHandlers, i18n ({en, bg}), depends.
+ * Optional fields (checked only when present): popups, contextMenu, and `toggle` on a mapLayers item.
  */
 export function validateManifest(m) {
   if (!isObject(m)) return ['manifest: must be an object']
@@ -75,6 +105,9 @@ export function validateManifest(m) {
   listOf(m, 'panels', panelProblems, problems)
   listOf(m, 'banners', bannerProblems, problems)
   listOf(m, 'depends', dependsProblems, problems)
+  optionalListOf(m, 'popups', popupProblems, problems)
+  optionalListOf(m, 'contextMenu', contextMenuProblems, problems)
+  if (m.mapSetup !== undefined) problems.push('mapSetup: map code belongs in map/index.js, not in the manifest')
 
   if (m.liveHandlers === undefined) problems.push('liveHandlers: missing (use {} when the module has no live data)')
   else if (!isObject(m.liveHandlers)) problems.push('liveHandlers: must be an object of message type to handler')
