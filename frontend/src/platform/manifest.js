@@ -41,6 +41,7 @@ const toggleProblems = (t) => !isObject(t) ? ['toggle must be an object']
   : [
       ...(isText(t.labelKey) ? [] : ['toggle.labelKey must be an i18n key']),
       ...(Number.isFinite(t.order) ? [] : ['toggle.order must be a finite number']),
+      ...(t.adminOnly === undefined || typeof t.adminOnly === 'boolean' ? [] : ['toggle.adminOnly must be a boolean']),
     ]
 
 const layerProblems = (l) => !isObject(l) ? ['must be an object']
