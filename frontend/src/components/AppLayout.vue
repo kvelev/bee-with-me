@@ -24,8 +24,7 @@
     </nav>
 
     <main class="main-content">
-      <SOSBanner />
-      <FireAlarmBanner />
+      <BannerStack :banners="banners" />
       <RouterView v-slot="{ Component }">
         <KeepAlive include="MapView">
           <component :is="Component" />
@@ -41,8 +40,10 @@ import { RouterLink, RouterView } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '../stores/auth'
 import { LOCALES, setLocale } from '../i18n'
-import SOSBanner from './SOSBanner.vue'
-import FireAlarmBanner from './FireAlarmBanner.vue'
+import BannerStack from '../platform/map-shell/BannerStack.vue'
+import { collectBanners } from '../platform/map-shell/contributions.js'
+import { LEGACY_BANNERS } from './legacyBanners.js'
+import { MODULES } from '../modules/index.js'
 import { useFireStore } from '../stores/fire'
 import { NAV_ITEMS } from '../nav-config.js'
 import logoUrl from '../assets/asp-logo-1.png'
@@ -50,6 +51,9 @@ import logoUrl from '../assets/asp-logo-1.png'
 const { t, locale } = useI18n()
 const auth   = useAuthStore()
 const fire   = useFireStore()
+
+// Alarm banners come from the modules' contributions plus the legacy list, sorted by priority (SOS first).
+const banners = collectBanners(MODULES, LEGACY_BANNERS)
 
 const currentLocale = computed(() => locale.value)
 // Cosmetic only: the router guard is what keeps non-admins off admin routes.
