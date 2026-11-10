@@ -205,22 +205,27 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    notify_task.cancel()
-    cleanup_task.cancel()
-    fire_task.cancel()
-    alarm_task.cancel()
-    if serial_task:
-        serial_task.cancel()
-    if hid_task:
-        hid_task.cancel()
-    if settings.enable_test_endpoints:
-        from .simulation import simulation
-        await simulation.stop()
-    # The alarm task may hold a pooled connection mid-tick: let its cancellation finish before the pool closes.
-    with suppress(asyncio.CancelledError):
-        await alarm_task
-    await stop_module_tasks(module_tasks)
-    await close_pool()
+    try:
+        notify_task.cancel()
+        cleanup_task.cancel()
+        fire_task.cancel()
+        alarm_task.cancel()
+        if serial_task:
+            serial_task.cancel()
+        if hid_task:
+            hid_task.cancel()
+        if settings.enable_test_endpoints:
+            from .simulation import simulation
+            await simulation.stop()
+        # The alarm task may hold a pooled connection mid-tick: let its cancellation finish before the pool closes.
+        with suppress(asyncio.CancelledError):
+            await alarm_task
+    finally:
+        # B93: whatever the alarm task raised on its way out, the module tasks are still stopped and the pool closed.
+        try:
+            await stop_module_tasks(module_tasks)
+        finally:
+            await close_pool()
 
 
 app = FastAPI(title='Bee With Me API', version=APP_VERSION, lifespan=lifespan)
