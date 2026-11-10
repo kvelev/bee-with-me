@@ -79,12 +79,12 @@
       </span>
       <span v-if="repeaterError" class="bm-hq-error" role="alert">{{ t('map.repeaterSaveFailed') }}</span>
       <button
-        v-for="name in fireLayerButtons" :key="name"
+        v-for="{ toggle, name } in layerButtons" :key="toggle.id"
         :class="['bm-btn', { active: fireStore.layers[name] }]"
         :aria-pressed="fireStore.layers[name]"
         :data-layer="name"
         @click="toggleFire(name)"
-      >{{ t(`fire.layers.${name}`) }}</button>
+      >{{ t(toggle.labelKey) }}</button>
       <span v-if="isAdmin && fireStore.layers.zones && fireStore.zonesFailed" class="bm-hq-note" role="status">
         {{ t('fire.zone.loadFailed') }}
         <button class="bm-btn" @click="retryZones">{{ t('fire.zone.retry') }}</button>
@@ -333,7 +333,8 @@ import SOSToast from '../components/SOSToast.vue'
 import FirePopup from '../components/FirePopup.vue'
 import MapPopupHost from '../platform/map-shell/MapPopupHost.vue'
 import MapContextMenu from '../platform/map-shell/MapContextMenu.vue'
-import { collectContextMenu, collectPopups } from '../platform/map-shell/contributions.js'
+import { collectContextMenu, collectLayerToggles, collectPopups } from '../platform/map-shell/contributions.js'
+import { FIRE_MAP_LAYERS } from '../composables/map/fireLayerList'
 import { MODULES } from '../modules'
 import FieldReportForm from '../components/FieldReportForm.vue'
 import SuppressionZoneForm from '../components/SuppressionZoneForm.vue'
@@ -487,9 +488,13 @@ const { map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpo
 const { connect } = useWebSocket()
 
 // ── Fire layers ──────────────────────────────────────────────────────────────
-const FIRE_LAYER_BUTTONS = ['burnt', 'hotspots', 'zones']
+const LEGACY_LAYER_NAMES = { 'fire-burnt': 'burnt', 'fire-hotspots': 'hotspots', 'fire-zones': 'zones' } // until step 2
 // Suppression zones are an admin tool: the button, the circles and the zone fetch are admin-only.
-const fireLayerButtons = computed(() => FIRE_LAYER_BUTTONS.filter(n => n !== 'zones' || isAdmin.value))
+const layerToggles = computed(() => collectLayerToggles(MODULES, FIRE_MAP_LAYERS).filter(t => !t.adminOnly || isAdmin.value))
+// A toggle without a legacy store name is not rendered in this wave.
+const layerButtons = computed(() => layerToggles.value
+  .filter(toggle => LEGACY_LAYER_NAMES[toggle.id])
+  .map(toggle => ({ toggle, name: LEGACY_LAYER_NAMES[toggle.id] })))
 // The freshness pill and the licence line describe EFFIS data; zones are our own and need neither.
 const fireDataLayerOn = computed(() => fireStore.layers.burnt || fireStore.layers.hotspots)
 const focusRingEl = ref(null)
@@ -696,7 +701,7 @@ onMounted(() => {
   })
   setFireLabels({ fieldReport: t('fire.source.field_report') })
   // Layers remembered from the last session show again after a reload.
-  for (const name of FIRE_LAYER_BUTTONS) setFireLayerVisible(name, fireStore.layers[name] && (name !== 'zones' || isAdmin.value))
+  for (const name of Object.values(LEGACY_LAYER_NAMES)) setFireLayerVisible(name, fireStore.layers[name] && (name !== 'zones' || isAdmin.value))
   fireStore.refreshVisible().catch(() => { /* fetchFailed drives the pill */ })
   if (isAdmin.value && fireStore.layers.zones) retryZones()
 })
