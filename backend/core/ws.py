@@ -13,7 +13,7 @@ import logging
 import asyncpg
 from fastapi import WebSocket
 
-from .config import settings
+from .database import connect_kwargs, redact
 
 logger = logging.getLogger(__name__)
 
@@ -66,15 +66,10 @@ class WSManager:
         Postgres paused by a system sleep) instead of dying silently and requiring a
         manual backend restart to bring live updates back.
         """
-        dsn = (
-            f'postgresql://{settings.postgres_user}:{settings.postgres_password}'
-            f'@{settings.postgres_host}:{settings.postgres_port}/{settings.postgres_db}'
-        )
-
         while True:
             conn = None
             try:
-                conn = await asyncpg.connect(dsn)
+                conn = await asyncpg.connect(**connect_kwargs())
                 for channel in FORWARDED_CHANNELS:
                     await conn.add_listener(channel, self._forward)
                 logger.info('Listening for pg_notify on %s', ', '.join(FORWARDED_CHANNELS))
@@ -87,7 +82,7 @@ class WSManager:
                 break
 
             except Exception as exc:
-                logger.warning('pg_notify listener error (%s) — reconnecting in %ds', exc, RECONNECT_DELAY)
+                logger.warning('pg_notify listener error (%s) — reconnecting in %ds', redact(str(exc)), RECONNECT_DELAY)
                 await asyncio.sleep(RECONNECT_DELAY)
 
             finally:
