@@ -19,7 +19,10 @@ const CONFIG = path.join(FRONTEND, '.dependency-cruiser.cjs')
 const SLOW = 120_000
 
 // Static `import ... from 'x'`, `export ... from 'x'` and `import 'x'`; a lazy `import('x')` is not matched.
-const STATIC_IMPORT = /(?:^|\n)[ \t]*(?:import|export)\s+(?:[^'"]*?\bfrom\s*)?['"]([^'"]+)['"]/g
+// A statement may follow another on the same line (`;` or `}` before it); comments are cut first, so a quote
+// inside a comment between the braces cannot end the statement early (B92).
+const STATIC_IMPORT = /(?:^|[\s;}])(?:import|export)\s*(?:[^'"();]*?\bfrom\s*)?['"]([^'"]+)['"]/g
+const withoutComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|\s)\/\/.*$/gm, '$1')
 const isOpenLayers = (spec) => spec === 'ol' || spec.startsWith('ol/')
 
 function resolveRelative(from, spec) {
@@ -33,7 +36,7 @@ function staticOlChain(entry) {
   const queue = [entry]
   while (queue.length) {
     const file = queue.shift()
-    const text = fs.readFileSync(file, 'utf8')
+    const text = withoutComments(fs.readFileSync(file, 'utf8'))
     for (const [, spec] of text.matchAll(STATIC_IMPORT)) {
       if (isOpenLayers(spec)) {
         const chain = [spec]
@@ -181,6 +184,29 @@ describe('frontend modules', () => {
       expect(staticOlChain(path.join(root, 'q/index.js'))).toEqual(['index.js', 'ol/layer'])
       expect(staticOlChain(path.join(root, 'r/index.js'))).toEqual(['index.js', 'ol/source'])
       expect(staticOlChain(path.join(root, 's/index.js'))).toBeNull()
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('staticOlChain sees two imports on one line and ignores a quote in a comment inside the braces [B92]', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'modules-ol-b92-'))
+    try {
+      const write = (rel, body) => {
+        const file = path.join(root, rel)
+        fs.mkdirSync(path.dirname(file), { recursive: true })
+        fs.writeFileSync(file, body)
+      }
+      write('a/index.js', "import './side.js'; import V from 'ol/layer/Vector'\nexport default V\n")
+      write('a/side.js', 'export const x = 1\n')
+      write('b/index.js', "import {\n  one, // it's the first\n  two\n} from 'ol/layer'\nexport default one\n")
+      write('c/index.js', "import {\n  one, /* don't */\n  two\n} from './x.js'\nexport default one\n")
+      write('c/x.js', 'export const one = 1\nexport const two = 2\n')
+      write('d/index.js', "// import V from 'ol'\nexport default () => import('ol')\n")
+      expect(staticOlChain(path.join(root, 'a/index.js'))).toEqual(['index.js', 'ol/layer/Vector'])
+      expect(staticOlChain(path.join(root, 'b/index.js'))).toEqual(['index.js', 'ol/layer'])
+      expect(staticOlChain(path.join(root, 'c/index.js'))).toBeNull()
+      expect(staticOlChain(path.join(root, 'd/index.js'))).toBeNull()
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }
