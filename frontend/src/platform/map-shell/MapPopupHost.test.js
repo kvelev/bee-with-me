@@ -61,6 +61,30 @@ describe('MapPopupHost', () => {
     expect(map.removeOverlay).toHaveBeenCalledTimes(1)
   })
 
+  it('a map that changes from A to B moves the overlay: removed from A, added to B [T425]', async () => {
+    const a = fakeMap()
+    const b = fakeMap()
+    const w = mountHost({ map: a })
+    expect(a.addOverlay).toHaveBeenCalledTimes(1)
+    const first = created[0]
+    await w.setProps({ map: b })
+    expect(a.removeOverlay).toHaveBeenCalledTimes(1)
+    expect(a.removeOverlay).toHaveBeenCalledWith(first)
+    expect(b.addOverlay).toHaveBeenCalledTimes(1)
+    w.unmount()
+    expect(b.removeOverlay).toHaveBeenCalledTimes(1)
+    expect(a.removeOverlay).toHaveBeenCalledTimes(1)
+  })
+
+  it('a map that goes from A to null removes the overlay once and unmount does not remove it again [T425]', async () => {
+    const a = fakeMap()
+    const w = mountHost({ map: a })
+    await w.setProps({ map: null })
+    expect(a.removeOverlay).toHaveBeenCalledTimes(1)
+    w.unmount()
+    expect(a.removeOverlay).toHaveBeenCalledTimes(1)
+  })
+
   it('renders the slot with the popup that claims the selection kind [T424]', async () => {
     const w = mountHost({ selection: { kind: 'burnt_area', coordinate: [1, 2] } })
     await nextTick()

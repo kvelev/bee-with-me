@@ -133,11 +133,7 @@
     </MapPopupHost>
 
     <!-- Right-click / long-press on the map: the only item is "Report fire here". -->
-    <div v-if="ctxMenu" ref="ctxMenuEl" class="map-context" role="menu" :style="{ left: ctxMenu.x + 'px', top: ctxMenu.y + 'px' }">
-      <button type="button" role="menuitem" class="mc-item" data-testid="report-fire-here" @click="reportFromMenu">
-        {{ t('fire.report.here') }}
-      </button>
-    </div>
+    <MapContextMenu ref="ctxMenu" :items="menuItems" />
 
     <FieldReportForm
       v-if="dialog?.kind === 'report'"
@@ -336,7 +332,8 @@ import { unByKey } from 'ol/Observable'
 import SOSToast from '../components/SOSToast.vue'
 import FirePopup from '../components/FirePopup.vue'
 import MapPopupHost from '../platform/map-shell/MapPopupHost.vue'
-import { collectPopups } from '../platform/map-shell/contributions.js'
+import MapContextMenu from '../platform/map-shell/MapContextMenu.vue'
+import { collectContextMenu, collectPopups } from '../platform/map-shell/contributions.js'
 import { MODULES } from '../modules'
 import FieldReportForm from '../components/FieldReportForm.vue'
 import SuppressionZoneForm from '../components/SuppressionZoneForm.vue'
@@ -571,7 +568,7 @@ const dialogError = ref('')
 let   dialogSeq   = 0
 
 function openDialog(next) {
-  closeContextMenu()
+  ctxMenu.value?.close()
   dialogSeq++
   dialogBusy.value = false
   dialogError.value = ''
@@ -660,39 +657,18 @@ watch(displayList, (list) => {
 })
 
 // ── Right-click / long-press: "Report fire here" ─────────────────────────────────────────────
-const ctxMenu   = ref(null)   // { x, y, coordinate } | null
-const ctxMenuEl = ref(null)
+// The menu items come from contributions; "Report fire here" is a legacy entry until step 2.
+const ctxMenu = ref(null)   // the MapContextMenu instance
+const menuItems = collectContextMenu(MODULES, [{
+  id: 'fire-report-here', order: 10, labelKey: 'fire.report.here', testId: 'report-fire-here',
+  onSelect: ({ lonLat }) => openDialog({ kind: 'report', target: { latitude: lonLat[1], longitude: lonLat[0] } }),
+}]) // until step 2
 
-function closeContextMenu() {
-  if (!ctxMenu.value) return
-  ctxMenu.value = null
-  document.removeEventListener('pointerdown', onOutsidePointer, true)
-  document.removeEventListener('keydown', onMenuKey, true)
-}
-function onOutsidePointer(e) { if (!ctxMenuEl.value?.contains(e.target)) closeContextMenu() }
-function onMenuKey(e) { if (e.key === 'Escape') closeContextMenu() }
-
-async function openContextMenu({ coordinate, pixel }) {
-  const width = mapEl.value?.clientWidth ?? 0
-  const height = mapEl.value?.clientHeight ?? 0
-  // Keep the menu inside the map (about 190 x 44 px).
-  const x = Math.max(4, Math.min(pixel[0], width ? width - 196 : pixel[0]))
-  const y = Math.max(4, Math.min(pixel[1], height ? height - 52 : pixel[1]))
-  const first = !ctxMenu.value
-  ctxMenu.value = { x, y, coordinate }
-  if (first) {
-    document.addEventListener('pointerdown', onOutsidePointer, true)
-    document.addEventListener('keydown', onMenuKey, true)
-  }
-  await nextTick()
-  ctxMenuEl.value?.querySelector('button')?.focus()
-}
-
-function reportFromMenu() {
-  const c = ctxMenu.value?.coordinate
-  if (!c) return
-  const [lon, lat] = toLonLat(c)
-  openDialog({ kind: 'report', target: { latitude: lat, longitude: lon } })
+function openContextMenu(e) {
+  ctxMenu.value?.open({
+    ...e,
+    bounds: { width: mapEl.value?.clientWidth ?? 0, height: mapEl.value?.clientHeight ?? 0 },
+  })
 }
 
 // What the pill says; the priority rules live in lib/fireStyle.js (firePillState).
@@ -847,7 +823,7 @@ onUnmounted(() => {
   onTrackerClick(null)
   onMapContextMenu(null)
   onRepeaterPlaced(null)
-  closeContextMenu()
+  ctxMenu.value?.close()
   hostMap.value = null
   if (focusOverlay) focusMap?.removeOverlay(focusOverlay)
   clearTimeout(focusRingTimer)
@@ -1366,18 +1342,6 @@ function batClass(v) {
 }
 .tracker-report:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (hover: hover) and (pointer: fine) { .tracker-report:hover { background: var(--accent); color: #fff; opacity: 1; } }
-
-.map-context {
-  position: absolute; z-index: 65; min-width: 180px; padding: 4px;
-  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, .55);
-}
-.mc-item {
-  display: block; width: 100%; text-align: left; padding: 9px 12px; min-height: 36px;
-  background: transparent; color: var(--text); font-size: 13px; font-weight: 600; border-radius: 6px;
-}
-.mc-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--bg-card); }
-@media (hover: hover) and (pointer: fine) { .mc-item:hover { background: var(--bg-card); opacity: 1; } }
 
 .tracker-meta { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .tracker-age {
