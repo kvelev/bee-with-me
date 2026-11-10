@@ -8,9 +8,12 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from importlinter import cli
 
 from backend.tests.architecture import module_map
+from backend.tests.architecture.tooling import require_import_linter
+
+# Dev tool: skip with the install command outside CI, fail loudly in CI (tooling.py)
+cli = require_import_linter('importlinter.cli')
 
 REPO = Path(__file__).resolve().parents[3]
 TOML = Path(__file__).with_name('importlinter.toml')

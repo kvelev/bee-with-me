@@ -186,6 +186,9 @@ def test_growth_compares_with_the_merge_base_not_the_tip(repo, monkeypatch):
 @pytest.mark.Trait('Task', 'T304')
 def test_remove_stale_deletes_only_stale_lines_and_adds_none(tmp_path):
     from backend.tests.architecture import regen
+    from backend.tests.architecture.tooling import require_import_linter
+
+    require_import_linter()   # regen runs import-linter
 
     text = TOML.read_text(encoding='utf-8')
     anchor = text.index('ignore_imports = [', text.index('id = "shims"')) + len('ignore_imports = [\n')
