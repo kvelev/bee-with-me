@@ -6,11 +6,13 @@ edges, cycles, completeness) live in `backend/tests/architecture/rules.py` and r
 """
 from __future__ import annotations
 
+import asyncio
+import functools
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 
-from fastapi import APIRouter
+from fastapi import APIRouter, FastAPI
 
 NAME_PATTERN = re.compile(r'^[a-z][a-z_]*$')
 
@@ -53,3 +55,52 @@ def validate_manifest(m: ModuleManifest) -> list[str]:
         if len(sub) != 2 or not isinstance(sub[0], str) or not sub[0] or not callable(sub[1]):
             problems.append(f'{label}: a subscription is (event name, callable), got {sub!r}')
     return problems
+
+
+def check_modules(modules: Iterable[ModuleManifest]) -> list[str]:
+    """Problems of a whole module list: each manifest's own problems plus duplicated names; empty means valid."""
+    modules = list(modules)
+    problems: list[str] = []
+    for m in modules:
+        problems.extend(validate_manifest(m))
+    names = [m.name for m in modules]
+    for name in sorted({n for n in names if names.count(n) > 1}, key=str):
+        problems.append(f'module {name} is listed twice')
+    return problems
+
+
+def include_module_routers(app: FastAPI, modules: Iterable[ModuleManifest]) -> None:
+    """Mount the router of every manifest in list order. An invalid list mounts nothing and raises."""
+    modules = list(modules)
+    problems = check_modules(modules)
+    if problems:
+        raise ValueError('invalid module list: ' + '; '.join(problems))
+    for m in modules:
+        if m.router is not None:
+            app.include_router(m.router)
+
+
+def start_module_tasks(modules: Iterable[ModuleManifest],
+                       on_done: Callable[[asyncio.Task, str], None]) -> list[asyncio.Task]:
+    """Start every background coroutine the manifests list; `on_done(task, name)` runs when one finishes."""
+    tasks: list[asyncio.Task] = []
+    for m in modules:
+        for fn in m.tasks:
+            name = f'{m.name}.{fn.__name__}'
+            task = asyncio.create_task(fn(), name=name)
+            # functools.partial, not a lambda: a lambda in the loop would see the last name for every task
+            task.add_done_callback(functools.partial(_report_done, on_done, name))
+            tasks.append(task)
+    return tasks
+
+
+def _report_done(on_done: Callable[[asyncio.Task, str], None], name: str, task: asyncio.Task) -> None:
+    on_done(task, name)
+
+
+async def stop_module_tasks(tasks: Iterable[asyncio.Task]) -> None:
+    """Cancel all module tasks and wait until they are finished (before the pool closes)."""
+    tasks = list(tasks)
+    for t in tasks:
+        t.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
