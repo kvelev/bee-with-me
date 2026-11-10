@@ -215,15 +215,35 @@ function onMemberSearchBlur() {
 onMounted(load)
 
 async function load() {
-  groups.value   = (await getGroups()).items
-  allUsers.value = (await getUsers({ limit: 500 })).items
+  try {
+    groups.value   = (await getGroups()).items
+    allUsers.value = (await getUsers({ limit: 500 })).items
+    pageError.value = ''
+  } catch (e) {
+    pageError.value = errorText(e, t('groups.loadError'))
+  }
 }
 
 async function selectGroup(g) {
-  selected.value = await getGroup(g.id)
+  pageError.value = ''
+  try {
+    selected.value = await getGroup(g.id)
+  } catch (e) {
+    pageError.value = errorText(e)
+  }
 }
 
 async function openForm(g) {
+  pageError.value = ''
+  let detail = null
+  if (g) {
+    try {
+      detail = await getGroup(g.id)
+    } catch (e) {
+      pageError.value = errorText(e)
+      return
+    }
+  }
   editingGroup.value   = g
   formError.value      = ''
   memberToAdd.value    = { user_id: '', is_leader: false }
@@ -233,7 +253,6 @@ async function openForm(g) {
     : { color: '#3388ff' }
 
   if (g) {
-    const detail = await getGroup(g.id)
     pendingMembers.value = detail.members.map(m => ({
       user_id: m.id, full_name: m.full_name, rank: m.rank, is_leader: m.is_leader,
     }))

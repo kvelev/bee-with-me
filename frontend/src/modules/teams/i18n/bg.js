@@ -5,6 +5,7 @@ export default {
   },
   groups: {
     title:       'Екипи',
+    loadError:   'Неуспешно зареждане на екипите',
     add:         '+ Добави Екип',
     name:        'Iме',
     color:       'Цвят',
