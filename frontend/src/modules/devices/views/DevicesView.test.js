@@ -2,17 +2,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 
-vi.mock('../api', () => ({
+vi.mock('../../../api', () => ({
   getDevices: vi.fn(), createDevice: vi.fn(), updateDevice: vi.fn(), deleteDevice: vi.fn(),
   reactivateDevice: vi.fn(), permanentDeleteDevice: vi.fn(), getUsers: vi.fn(),
 }))
 
-import { getDevices, getUsers, createDevice, deleteDevice, reactivateDevice, permanentDeleteDevice } from '../api'
-import { ApiError } from '../api/client'
+import { getDevices, getUsers, createDevice, deleteDevice, reactivateDevice, permanentDeleteDevice } from '../../../api'
+import { ApiError } from '../../../api/client'
 import DevicesView from './DevicesView.vue'
-import { useLocationsStore } from '../stores/locations'
-import { i18n } from '../i18n/index.js'
-import en from '../i18n/en.js'
+import { useLocationsStore } from '../../../stores/locations'
+import { i18n } from '../../../i18n/index.js'
+import en from '../../../i18n/en.js'
 
 const D1 = { id: 'd1', dev_sn: 1001, name: 'Bee One', device_type: 'bee', is_active: true, user_name: 'Ivan Petrov', user_rank: 'Sgt' }
 const D2 = { id: 'd2', dev_sn: 1002, name: null, device_type: 'repeater', is_active: false, user_name: null }

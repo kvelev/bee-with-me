@@ -4,9 +4,8 @@ import en from './i18n/en.js'
 
 export default {
   name: 'devices',
-  // The page still lives in src/views/ until its own move task; the path changes then.
   routes: [
-    { path: '/devices', name: 'devices', component: () => import('../../views/DevicesView.vue') },
+    { path: '/devices', name: 'devices', component: () => import('./views/DevicesView.vue') },
   ],
   nav: [{ to: '/devices', labelKey: 'nav.devices', icon: '📡', order: 40 }],
   mapLayers: [],

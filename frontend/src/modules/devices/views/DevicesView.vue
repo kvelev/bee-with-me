@@ -69,9 +69,9 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { getDevices, createDevice, updateDevice, deleteDevice, reactivateDevice, permanentDeleteDevice, getUsers } from '../api'
-import { errorText } from '../api/client'
-import { useLocationsStore } from '../stores/locations'
+import { getDevices, createDevice, updateDevice, deleteDevice, reactivateDevice, permanentDeleteDevice, getUsers } from '../../../api'
+import { errorText } from '../../../api/client'
+import { useLocationsStore } from '../../../stores/locations'
 
 const { t } = useI18n()
 const locationsStore = useLocationsStore()
