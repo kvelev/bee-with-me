@@ -96,7 +96,7 @@ def test_real_module_list_is_complete():
     from backend.modules import MODULES
     toml_text = TOML.read_text(encoding='utf-8')
     assert rules.check_module_list(BACKEND, MODULES, toml_text) == []
-    assert rules.check_manifests(list(MODULES), BACKEND) == []   # vacuous today: MODULES is empty
+    assert rules.check_manifests(list(MODULES), BACKEND) == []
     assert rules.check_boundary_contracts(toml_text, [m.name for m in MODULES], BACKEND) == []
     assert rules.check_manifest_wiring(list(MODULES), BACKEND) == []
 
@@ -234,3 +234,16 @@ def test_shims_and_fire_private_contracts_cover_modules():
     contracts = {c['id']: c for c in tomllib.loads(TOML.read_text(encoding='utf-8'))['tool']['importlinter']['contracts']}
     for cid in ('shims', 'fire-private'):
         assert 'backend.modules' in contracts[cid]['source_modules'], cid
+
+
+@pytest.mark.Trait("Task", "T402")
+def test_manifest_wiring_accepts_the_real_settings_module():
+    import dataclasses
+
+    from fastapi import APIRouter
+
+    from backend.modules.settings.module import manifest
+    assert rules.check_manifest_wiring([manifest], BACKEND) == []
+    # and it fails on the comparison itself (not on an import error) when the router is another one
+    probs = rules.check_manifest_wiring([dataclasses.replace(manifest, router=APIRouter())], BACKEND)
+    assert len(probs) == 1 and 'is not the `router` of backend.modules.settings.http' in probs[0]

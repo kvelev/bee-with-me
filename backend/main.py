@@ -11,13 +11,12 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .auth import hash_password
+from .auth import get_current_user, hash_password
 from .config import settings
 from .version import APP_VERSION
 from .database import close_pool, get_pool, init_pool
 from .db.migrate import BackupRequiredError, MigrationError, UpdateRequiredError, has_user_tables, migrate, status
 from .routers import auth, devices, export, fire, groups, locations, users, ws, test, hardware_reader, tiles, weather
-from .routers import settings as settings_router
 from .ws import manager
 from .core.modules import include_module_routers, start_module_tasks, stop_module_tasks
 from .modules import MODULES
@@ -180,7 +179,6 @@ async def lifespan(app: FastAPI):
     fire_task.add_done_callback(lambda t: _log_task_failure(t, 'Fire poller'))
     # Hooks only signal re-evaluation; the single alarm actor does the work and never raises into a router/poller.
     fire_poller.after_refresh = fire_alarm.request_evaluation
-    settings_router.after_change = fire_alarm.request_evaluation
     alarm_task = asyncio.create_task(fire_alarm.run())
     alarm_task.add_done_callback(lambda t: _log_task_failure(t, 'Fire alarm'))
     module_tasks = start_module_tasks(MODULES, _log_task_failure)
@@ -266,8 +264,7 @@ app.include_router(devices.router)
 app.include_router(locations.router)
 app.include_router(export.router)
 app.include_router(fire.router)
-app.include_router(settings_router.router)
-include_module_routers(app, MODULES)
+include_module_routers(app, MODULES, auth=get_current_user)
 app.include_router(ws.router)
 if settings.enable_test_endpoints:
     app.include_router(test.router)

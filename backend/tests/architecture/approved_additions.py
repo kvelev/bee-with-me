@@ -11,6 +11,21 @@ Keys are repo-relative allowlist files; each inner key is an entry exactly as `t
 from __future__ import annotations
 
 APPROVED: dict[str, dict[str, str]] = {
-    'backend/tests/architecture/importlinter.toml': {},
+    'backend/tests/architecture/importlinter.toml': {
+        # Step 1 (T402): debt that already existed and became visible when settings moved into a module.
+        # Net change of the allowlist in step 1: 3 lines deleted, 4 added.
+        'fire internals are private: backend.modules.settings.http -> backend.fire.repository':
+            'clearing HQ ends its open alerts in the same transaction as the UPDATE: settings calls '
+            'fire.repository.resolve_hq_alerts until the HQCleared event of step 4',
+        'fire internals are private: backend.modules.settings.http -> backend.fire.service':
+            'after the commit settings tells the browsers which alerts ended (notify_alerts_updated) '
+            'until the HQCleared event of step 4',
+        'fire internals are private: backend.modules.settings.infrastructure.publisher -> backend.fire.service':
+            'settings asks the alarm service to re-evaluate after a save; before step 1 main.py wired it by '
+            'assignment, so no import existed; replaced by the outbox of step 4',
+        'module boundary: settings: backend.routers.settings -> backend.modules.settings.http':
+            'the old import path backend.routers.settings is an alias of the module http, kept so '
+            'the existing patches and imports work until step 5',
+    },
     'backend/tests/architecture/allowlist.json': {},
 }

@@ -181,7 +181,7 @@ def test_put_settings_is_strict_about_types(client, mock_conn, patch):
 @B37
 def test_audit_log_has_no_coordinates(client, mock_conn, admin_user, caplog):
     mock_conn.fetchrow = AsyncMock(return_value={**ROW, 'hq_latitude': 42.123456, 'hq_longitude': 24.654321})
-    with caplog.at_level(logging.INFO, logger='backend.routers.settings'):
+    with caplog.at_level(logging.INFO, logger='backend.modules.settings.http'):
         client.put('/api/settings', json={**BODY, 'hq_latitude': 42.123456, 'hq_longitude': 24.654321})
         client.put('/api/settings/hq', json={'hq_latitude': 42.123456, 'hq_longitude': 24.654321})
     text = ' | '.join(r.getMessage() for r in caplog.records)

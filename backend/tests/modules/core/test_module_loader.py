@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, HTTPException
 
 from backend.core.modules import (
     ModuleManifest,
@@ -28,6 +28,11 @@ def _router(path: str) -> APIRouter:
     return r
 
 
+async def _deny():
+    """Stands for get_current_user in the loader tests."""
+    raise HTTPException(status_code=401)
+
+
 def _paths(app: FastAPI) -> list[str]:
     # newer FastAPI keeps an included router as one lazy route object without a path: read the schema instead
     return list(app.openapi()['paths'])
@@ -37,7 +42,7 @@ def _paths(app: FastAPI) -> list[str]:
 def test_include_module_routers_mounts_in_list_order():
     app = FastAPI()
     include_module_routers(app, [ModuleManifest(name='alpha', router=_router('/a')),
-                                 ModuleManifest(name='beta', router=_router('/b'))])
+                                 ModuleManifest(name='beta', router=_router('/b'))], auth=_deny)
     assert _paths(app)[-2:] == ['/a', '/b']
 
 
@@ -45,7 +50,7 @@ def test_include_module_routers_mounts_in_list_order():
 def test_a_manifest_without_router_is_skipped():
     app = FastAPI()
     before = list(app.routes)
-    include_module_routers(app, [ModuleManifest(name='gamma')])
+    include_module_routers(app, [ModuleManifest(name='gamma')], auth=_deny)
     assert list(app.routes) == before
 
 
@@ -58,7 +63,7 @@ def test_include_module_routers_refuses_an_invalid_list(modules):
     app = FastAPI()
     before = list(app.routes)
     with pytest.raises(ValueError, match='invalid module list'):
-        include_module_routers(app, modules)
+        include_module_routers(app, modules, auth=_deny)
     assert list(app.routes) == before
     assert check_modules(modules)
 
@@ -103,6 +108,7 @@ def test_main_uses_the_loader():
 
     top = [n.value for n in tree.body if isinstance(n, ast.Expr) and isinstance(n.value, ast.Call)]
     assert any(call_name(c) == 'include_module_routers' and [getattr(a, 'id', None) for a in c.args] == ['app', 'MODULES']
+               and {k.arg: getattr(k.value, 'id', None) for k in c.keywords} == {'auth': 'get_current_user'}
                for c in top)
     lifespan = next(n for n in ast.walk(tree) if isinstance(n, ast.AsyncFunctionDef) and n.name == 'lifespan')
     calls = {}
@@ -126,3 +132,69 @@ def test_every_module_router_is_mounted_in_the_real_app():
         for r in m.router.routes:
             if getattr(r, 'include_in_schema', True):
                 assert {x.lower() for x in r.methods} <= set(paths[r.path])
+
+
+# ── auth by default (decision of Kiril): every module route is behind the auth dependency unless declared public ──
+
+def _two_routes() -> APIRouter:
+    r = APIRouter()
+
+    @r.get('/pub')
+    async def _pub():
+        return {'ok': True}
+
+    @r.get('/priv')
+    async def _priv():
+        return {'ok': True}
+
+    return r
+
+
+@pytest.mark.Trait("Task", "T402")
+def test_the_loader_puts_the_auth_dependency_on_every_module_route():
+    from fastapi.testclient import TestClient
+    app = FastAPI()
+    include_module_routers(app, [ModuleManifest(name='alpha', router=_two_routes())], auth=_deny)
+    client = TestClient(app)
+    assert client.get('/pub').status_code == 401
+    assert client.get('/priv').status_code == 401
+
+
+@pytest.mark.Trait("Task", "T402")
+def test_a_declared_public_route_stays_anonymous_and_the_rest_is_guarded():
+    from fastapi.testclient import TestClient
+    app = FastAPI()
+    include_module_routers(
+        app, [ModuleManifest(name='alpha', router=_two_routes(), public_routes=(('GET', '/pub'),))], auth=_deny)
+    client = TestClient(app)
+    assert client.get('/pub').status_code == 200
+    assert client.get('/priv').status_code == 401
+
+
+@pytest.mark.Trait("Task", "T402")
+@pytest.mark.parametrize('public', [
+    (('GET', '/nope'),),            # not a route of this module: a typo must not pass quietly
+    (('POST', '/pub'),),            # right path, wrong method
+], ids=['unknown-path', 'wrong-method'])
+def test_a_public_declaration_that_matches_no_route_refuses_the_list(public):
+    app = FastAPI()
+    before = list(app.routes)
+    with pytest.raises(ValueError, match='invalid module list'):
+        include_module_routers(
+            app, [ModuleManifest(name='alpha', router=_two_routes(), public_routes=public)], auth=_deny)
+    assert list(app.routes) == before
+
+
+@pytest.mark.Trait("Task", "T402")
+@pytest.mark.parametrize('public', [
+    (('get', '/pub'),), (('GET', 'pub'),), (('GET',),), ('GET /pub',), (('GET', '/pub'), ('GET', '/pub')),
+], ids=['lowercase-method', 'path-without-slash', 'one-item', 'a-string', 'twice'])
+def test_validate_manifest_refuses_a_malformed_public_route(public):
+    from backend.core.modules import validate_manifest
+    assert validate_manifest(ModuleManifest(name='alpha', public_routes=public))
+
+
+@pytest.mark.Trait("Task", "T402")
+def test_a_module_route_needs_the_auth_argument():
+    with pytest.raises(TypeError):
+        include_module_routers(FastAPI(), [ModuleManifest(name='alpha', router=_two_routes())])   # type: ignore[call-arg]

@@ -1,5 +1,5 @@
 {
-  "completed_step": 0,
+  "completed_step": 1,
   "sql_writes": [
     {
       "file": "hardware_reader/reader.py",

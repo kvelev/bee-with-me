@@ -4,7 +4,8 @@ from __future__ import annotations
 import importlib
 import inspect
 import tomllib
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 from pathlib import Path
 
 from backend.core.modules import ModuleManifest, validate_manifest
@@ -242,3 +243,71 @@ def end_state_problems(allowlist: dict, toml_text: str, backend: Path) -> list[s
             problems.append(f'backend/{shim}.py must be gone at step 5')
     return problems
 
+
+
+# ── auth by default ───────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class EffectiveRoute:
+    """One served route: its full path, its methods (`WEBSOCKET` for a socket) and every dependency it reaches."""
+    path: str
+    methods: frozenset[str]
+    calls: frozenset[Callable]
+
+
+def _dependant_calls(dependant) -> set[Callable]:
+    if dependant is None:
+        return set()
+    found = {dependant.call} if dependant.call is not None else set()
+    for sub in dependant.dependencies:
+        found |= _dependant_calls(sub)
+    return found
+
+
+def effective_routes(routes: Iterable) -> list[EffectiveRoute]:
+    """Flatten a route table the way a request meets it, in order, including `include_in_schema=False` routes.
+
+    FastAPI 0.142 keeps an included router as one lazy `_IncludedRouter` that knows its prefix and dependencies only
+    through `effective_candidates()`; earlier versions copy the routes into the app. Both shapes are read here by
+    duck typing, so this is the one place that depends on the layout (not `app.openapi()`, which hides routes).
+    """
+    from starlette.routing import WebSocketRoute
+
+    found: list[EffectiveRoute] = []
+    for route in routes:
+        if hasattr(route, 'effective_candidates'):                      # a lazy included router: look inside
+            found += effective_routes(route.effective_candidates())
+            continue
+        target = getattr(route, 'starlette_route', None) or route         # an effective context wraps the real route
+        if hasattr(target, 'routes') and not hasattr(target, 'methods'):    # a Mount or sub-application
+            found += effective_routes(target.routes)
+            continue
+        path = getattr(target, 'path', None)
+        if path is None:
+            continue
+        methods = frozenset(m.upper() for m in (getattr(target, 'methods', None) or ()))
+        if not methods and isinstance(target, WebSocketRoute):
+            methods = frozenset({'WEBSOCKET'})
+        calls = _dependant_calls(getattr(target, 'dependant', None))
+        calls |= {d.dependency for d in (getattr(target, 'dependencies', None) or ())}
+        found.append(EffectiveRoute(path=path, methods=methods, calls=frozenset(calls)))
+    return found
+
+
+def check_module_route_auth(app_routes: Iterable, manifests: Iterable[ModuleManifest], auth: Callable) -> list[str]:
+    """Every route a module serves reaches `auth` (directly or through `require_role`) or its manifest declares it public."""
+    served = effective_routes(app_routes)
+    problems: list[str] = []
+    for m in manifests:
+        if m.router is None:
+            continue
+        public = set(m.public_routes)
+        for own in effective_routes(m.router.routes):
+            label = f'{"/".join(sorted(own.methods))} {own.path}'
+            mounted = [r for r in served if r.path == own.path and r.methods == own.methods]
+            if not mounted:
+                problems.append(f'{m.name}: {label} is not mounted in the app')
+            for r in mounted:
+                if auth not in r.calls and not {(meth, own.path) for meth in own.methods} <= public:
+                    problems.append(f'{m.name}: {label} has no auth dependency and is not declared in public_routes')
+    return problems

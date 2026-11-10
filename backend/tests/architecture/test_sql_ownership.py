@@ -40,8 +40,8 @@ def test_every_scanned_table_has_an_owner():
 def test_schema_migrations_and_own_settings_writes_are_not_violations():
     writes = sql_scan.scan_writes(BACKEND)
     assert any(f == 'db/migrate.py' and t == 'schema_migrations' for f, t, _ in writes)
-    assert any(f == 'routers/settings.py' and t == 'settings' for f, t, _ in writes)
-    assert not [v for v in rules.sql_violations(writes) if v[0] in ('db/migrate.py', 'routers/settings.py')]
+    assert any(f == 'modules/settings/infrastructure/repository.py' and t == 'settings' for f, t, _ in writes)
+    assert not [v for v in rules.sql_violations(writes) if v[0] in ('db/migrate.py', 'modules/settings/infrastructure/repository.py')]
 
 
 @pytest.mark.Trait('Task', 'T305')
