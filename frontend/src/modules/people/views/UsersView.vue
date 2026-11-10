@@ -236,6 +236,7 @@ async function load() {
       getUsers({ limit: limit.value, offset: offset.value }),
       getDevices(),
     ])
+    pageError.value = ''
     users.value = res.items.map(u => ({
       ...u,
       groups: typeof u.groups === 'string' ? JSON.parse(u.groups) : (u.groups ?? []),
