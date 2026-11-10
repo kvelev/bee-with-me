@@ -74,7 +74,10 @@ def postgres_port():
 
 @pytest.fixture()
 def project(tmp_path, _venv, postgres_port):
-    proj = tmp_path / 'proj'
+    return _make_project(tmp_path / 'proj', _venv, postgres_port)
+
+
+def _make_project(proj, _venv, postgres_port):
     for rel in ('start.ps1', 'start.sh'):
         _copy_text(ROOT / rel, proj / rel, lf=rel.endswith('.sh'))
     for src in (STUBS / 'project').rglob('*'):
@@ -728,19 +731,39 @@ def _pgdata_with_files(project):
     return pgdata
 
 
-@pytest.mark.Trait("Bug", "B59")
-def test_engine_guard_names_the_rename_and_the_restore_step(project, tmp_path):
-    kind = _machine_override_kind()
+def _unwrapped(text):
+    """Console output with PowerShell's hard line breaks removed. PowerShell wraps its error text at the console
+    width, and the break can fall inside a word (B59: 'pgdata.docker-2026111' + '0-124843'). Without it the
+    assertions depend on the length of the temp path."""
+    return re.sub(r'\r?\n', '', text).replace('\\', '/')
+
+
+def _assert_guard_names_rename_and_restore(kind, project, tmp_path):
     pgdata = _pgdata_with_files(project)
     res = _run(kind, project, tmp_path, engine='podman', migrate='0')
     assert res.returncode != 0, res.out
     assert not any('up -d' in c for c in res.calls), res.calls
-    out = res.out.replace('\\', '/')
+    out = _unwrapped(res.out)
     assert re.search(r'data/pgdata\.docker-\d{8}', out), res.out          # the exact new folder name
-    assert ('Rename-Item' if kind == 'ps' else 'mv ') in res.out, res.out    # ... and the command that does it
-    assert 'restore.' + ('ps1' if kind == 'ps' else 'sh') in res.out, res.out
-    assert 'never delete' not in res.out, res.out    # the old advice that led nowhere
-    assert (pgdata / 'PG_VERSION').is_file()          # the guard itself still changes nothing
+    assert ('Rename-Item' if kind == 'ps' else 'mv ') in out, res.out     # ... and the command that does it
+    assert 'restore.' + ('ps1' if kind == 'ps' else 'sh') in out, res.out
+    assert 'never delete' not in out, res.out    # the old advice that led nowhere
+    assert (pgdata / 'PG_VERSION').is_file()     # the guard itself still changes nothing
+
+
+@pytest.mark.Trait("Bug", "B59")
+def test_engine_guard_names_the_rename_and_the_restore_step(project, tmp_path):
+    _assert_guard_names_rename_and_restore(_machine_override_kind(), project, tmp_path)
+
+
+@pytest.mark.Trait("Bug", "B91")
+@pytest.mark.parametrize('pad', [10, 40, 70])
+def test_engine_guard_message_survives_a_long_temp_path(pad, tmp_path, _venv, postgres_port):
+    # Same assertions in a project under a longer path: where PowerShell's line break falls depends on the
+    # exact length (70 breaks inside 'pgdata.docker-<date>'). Kept short of the 260-character Windows path limit.
+    kind = _machine_override_kind()
+    proj = _make_project(tmp_path / ('long-' + 'x' * pad) / 'proj', _venv, postgres_port)
+    _assert_guard_names_rename_and_restore(kind, proj, tmp_path)
 
 
 @pytest.mark.Trait("Bug", "B59")
