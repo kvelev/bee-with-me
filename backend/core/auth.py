@@ -34,7 +34,8 @@ def decode_refresh_token(token: str) -> dict:
         detail='Invalid or expired refresh token',
     )
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+        # python-jose skips the expiry check when `exp` is absent: require it (B85)
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM], options={'require_exp': True})
         if payload.get('typ') != 'refresh' or payload.get('sub') is None:
             raise credentials_error
         return payload
