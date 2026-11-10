@@ -1,4 +1,6 @@
-export default {
+import { mergeMessages } from '../platform/registry.js'
+
+const core = {
   app: { name: 'Bee With Me' },
   nav: {
     map:     'Live Map',
@@ -498,3 +500,8 @@ export default {
     delete: 'Delete',
   },
 }
+
+export { core }
+
+// Texts that belong to a module live in src/modules/<name>/i18n/en.js and are merged here.
+export default mergeMessages(core, Object.values(import.meta.glob('../modules/*/i18n/en.js', { eager: true, import: 'default' })))
