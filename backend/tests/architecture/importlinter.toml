@@ -37,6 +37,7 @@ source_modules = [
     "backend.main",
     "backend.db",
     "backend.auth",
+    "backend.modules",
 ]
 forbidden_modules = [
     "backend.database",
@@ -87,6 +88,7 @@ source_modules = [
     "backend.main",
     "backend.simulation",
     "backend.hardware_reader",
+    "backend.modules",
 ]
 forbidden_modules = ["backend.fire"]
 allow_indirect_imports = true
