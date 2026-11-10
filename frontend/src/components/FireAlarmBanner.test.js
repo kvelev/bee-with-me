@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
@@ -28,6 +28,11 @@ const alert = (id, extra = {}) => ({
   triggered_at: new Date().toISOString(), acknowledged_at: null, resolved_at: null, resolve_reason: null, ...extra,
 })
 
+// Mounted wrappers are attached to the document: jsdom 31 does not apply styles to detached
+// elements, so isVisible() on a v-show element would otherwise always report true.
+const mounted = []
+afterEach(() => { while (mounted.length) { try { mounted.pop().unmount() } catch { /* already unmounted */ } } })
+
 async function mountBanner() {
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -37,7 +42,8 @@ async function mountBanner() {
     routes: [{ path: '/map', component: page }, { path: '/', component: page }],
   })
   router.push('/'); await router.isReady()
-  const w = mount(FireAlarmBanner, { global: { plugins: [pinia, i18n, router] } })
+  const w = mount(FireAlarmBanner, { attachTo: document.body, global: { plugins: [pinia, i18n, router] } })
+  mounted.push(w)
   return { w, fire: useFireStore(), router }
 }
 
