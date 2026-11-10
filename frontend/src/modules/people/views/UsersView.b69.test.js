@@ -2,18 +2,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 
-vi.mock('../api', () => ({
+vi.mock('../../../api', () => ({
   getUsers: vi.fn(), createUser: vi.fn(), updateUser: vi.fn(), deleteUser: vi.fn(), deactivateUser: vi.fn(),
   reactivateUser: vi.fn(), setGroupLeader: vi.fn(), removeMember: vi.fn(), getDevices: vi.fn(),
   assignDevice: vi.fn(), importUsers: vi.fn(),
 }))
 
-import { getUsers, getDevices } from '../api'
-import { ApiError } from '../api/client'
+import { getUsers, getDevices } from '../../../api'
+import { ApiError } from '../../../api/client'
 import UsersView from './UsersView.vue'
-import { i18n } from '../i18n/index.js'
-import en from '../i18n/en.js'
-import bg from '../i18n/bg.js'
+import { i18n } from '../../../i18n/index.js'
+import en from '../../../i18n/en.js'
+import bg from '../../../i18n/bg.js'
 
 function mountView() {
   const pinia = createPinia()

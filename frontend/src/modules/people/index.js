@@ -4,9 +4,8 @@ import en from './i18n/en.js'
 
 export default {
   name: 'people',
-  // The page still lives in src/views/ until its own move task; the path changes then.
   routes: [
-    { path: '/users', name: 'users', component: () => import('../../views/UsersView.vue') },
+    { path: '/users', name: 'users', component: () => import('./views/UsersView.vue') },
   ],
   nav: [{ to: '/users', labelKey: 'nav.users', icon: '👤', order: 20 }],
   mapLayers: [],
