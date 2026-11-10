@@ -124,6 +124,36 @@ describe('module route rules', () => {
     expect(problems(route({ path: '/' }), ['/'])).toContain('core route')
   })
 
+  it.each([
+    ['alias', { alias: '/map' }],
+    ['beforeEnter', { beforeEnter: () => true }],
+    ['sensitive', { sensitive: true }],
+    ['strict', { strict: true }],
+    ['redirect', { redirect: '/map' }],
+    ['children', { children: [] }],
+    ['props', { props: true }],
+    ['components', { components: {} }],
+  ])('a module route may only use path, name, component and meta: %s is refused [B97]', (key, extra) => {
+    expect(problems(route(extra))).toContain(`${key} is not allowed`)
+  })
+
+  it('a module route with only the allowed keys passes, and meta may carry other flags [B97]', () => {
+    expect(problems(route({ meta: { adminOnly: true, title: 'x' } }))).toBe('')
+  })
+
+  it('meta must be a plain object [B97]', () => {
+    expect(problems(route({ meta: 'public' }))).toContain('meta must be an object')
+    expect(problems(route({ meta: [] }))).toContain('meta must be an object')
+  })
+
+  it('two modules cannot share a path that differs only in case or a trailing slash [B97]', () => {
+    const list = [
+      mod('a', { routes: [{ path: '/Same', name: 'a', component: comp }] }),
+      mod('b', { routes: [{ path: '/same/', name: 'b', component: comp }] }),
+    ]
+    expect(checkModules(list, []).join('\n')).toContain('duplicate route path')
+  })
+
   it('corePathsOf lists the absolute paths of the top routes and their children [T404]', () => {
     const routes = [
       { path: '/login' },

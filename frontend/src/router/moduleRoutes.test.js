@@ -42,7 +42,12 @@ describe('the router checks the module list when it is created', () => {
   })
 
   it('refuses a module route that takes a core path [T404]', async () => {
-    await expect(load(bad(route({ path: '/users' })))).rejects.toThrow(/core route/)
+    await expect(load(bad(route({ path: '/export' })))).rejects.toThrow(/core route/)
+  })
+
+  it('refuses a module route with an alias or a beforeEnter [B97]', async () => {
+    await expect(load(bad(route({ alias: '/export' })))).rejects.toThrow(/alias is not allowed/)
+    await expect(load(bad(route({ beforeEnter: () => true })))).rejects.toThrow(/beforeEnter is not allowed/)
   })
 
   it('starts with a valid module [T404]', async () => {

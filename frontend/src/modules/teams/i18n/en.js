@@ -1,0 +1,38 @@
+// Texts of the teams module (moved verbatim from src/i18n/en.js).
+export default {
+  nav: {
+    groups: 'Teams',
+  },
+  groups: {
+    title:       'Teams',
+    add:         '+ Add Team',
+    name:        'Name',
+    color:       'Color',
+    members:     'Members',
+    description:  'Description',
+    organization: 'Organization',
+    edit:        'Edit',
+    deactivate:  'Deactivate',
+    reactivate:  'Reactivate',
+    delete:      'Delete',
+    addMember:   '+ Add Member',
+    leader:      'Leader',
+    remove:      'Remove',
+    mapColor:    'Map color',
+    confirmDelete: 'Delete group "{name}"?',
+    form: {
+      title_add:  'New Team',
+      title_edit: 'Edit Team',
+      name:       'Name',
+      desc:         'Description',
+      organization: 'Organization',
+      color:      'Map color',
+      person:     'Person',
+      isLeader:   'Team leader',
+      save:       'Save',
+      cancel:     'Cancel',
+      addMember:   'Add Member to {name}',
+      noAvailable: 'All volunteers are already in this team',
+    },
+  },
+}

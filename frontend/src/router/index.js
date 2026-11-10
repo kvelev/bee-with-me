@@ -11,9 +11,6 @@ const coreRoutes = [
     children: [
       { path: '',        redirect: '/map' },
       { path: 'map',     component: () => import('../views/MapView.vue') },
-      { path: 'users',   component: () => import('../views/UsersView.vue') },
-      { path: 'groups',  component: () => import('../views/GroupsView.vue') },
-      { path: 'devices', component: () => import('../views/DevicesView.vue') },
       { path: 'export',  component: () => import('../views/ExportView.vue') },
       { path: 'selectofflinemap', component: () => import('../views/SelectOfflineMap.vue') },
       { path: 'about',   component: () => import('../views/AboutView.vue') },

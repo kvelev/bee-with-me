@@ -1,0 +1,38 @@
+// Texts of the teams module (moved verbatim from src/i18n/bg.js).
+export default {
+  nav: {
+    groups: 'Екипи',
+  },
+  groups: {
+    title:       'Екипи',
+    add:         '+ Добави Екип',
+    name:        'Iме',
+    color:       'Цвят',
+    members:     'Членове',
+    description:  'Описание',
+    organization: 'Организация',
+    edit:        'Редактирай',
+    deactivate:  'Деактивирай',
+    reactivate:  'Активирай',
+    delete:      'Изтрий',
+    addMember:   '+ Добави Член',
+    leader:      'Лидер',
+    remove:      'Премахни',
+    mapColor:    'Цвят на картата',
+    confirmDelete: 'Да се изтрие ли екипът "{name}"?',
+    form: {
+      title_add:  'Нов Екип',
+      title_edit: 'Редактирай Екип',
+      name:       'Iме',
+      desc:         'Описание',
+      organization: 'Организация',
+      color:      'Цвят на картата',
+      person:     'Лице',
+      isLeader:   'Лидер на екип',
+      save:       'Запази',
+      cancel:     'Отказ',
+      addMember:   'Добави Член към {name}',
+      noAvailable: 'Всички доброволци вече са в този екип',
+    },
+  },
+}
