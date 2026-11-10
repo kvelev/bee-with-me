@@ -35,6 +35,7 @@ feature/<name> ──PR──▶ develop ──(auto-deploy)──▶ develop en
    ```
    Before opening the PR, run the full suites (CI runs them anyway and must pass to merge):
    ```bash
+   pip install -r backend/requirements-dev.txt      # runtime packages plus test tools (import-linter); once, and when it changes
    python -m pytest backend/tests/ --require-db     # needs the docker compose database running
    cd frontend && npm test && npm run build
    ```

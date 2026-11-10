@@ -1,5 +1,6 @@
 """Ratchet on the import allowlist: it may shrink, never grow, and every line says when it must go."""
 import json
+import os
 import re
 import subprocess
 import tomllib
@@ -26,19 +27,47 @@ def count_entries(text: str, kind: str) -> int:
     raise ValueError(kind)
 
 
+def entries(text: str, kind: str) -> set[str]:
+    """The allowlist as a set of `<list owner>: <entry>` strings (contract name for toml, key for json).
+
+    The ratchet compares sets, not counts: fixing one violation and adding another keeps the count equal.
+    """
+    if kind == 'toml':
+        data = tomllib.loads(text)
+        contracts = data.get('tool', {}).get('importlinter', {}).get('contracts', [])
+        return {f"{c.get('name', '?')}: {e}" for c in contracts for e in c.get('ignore_imports', [])}
+    if kind == 'json':
+        data = json.loads(text)
+        return {f'{k}: {json.dumps(e, sort_keys=True)}' for k, v in data.items() if isinstance(v, list) for e in v}
+    raise ValueError(kind)
+
+
+def _in_ci() -> bool:
+    return bool(os.environ.get('CI') or os.environ.get('GITHUB_ACTIONS'))
+
+
 def growth_verdict(rel: str, kind: str, cwd: Path) -> tuple[str, str]:
-    """('ok'|'skip'|'fail', message) comparing the file in `cwd` with its merge-base version."""
+    """('ok'|'skip'|'fail', message): entries in `cwd` that the merge-base version does not have make it fail.
+
+    No resolvable base is a visible skip locally and a failure in CI (a shallow checkout would otherwise turn the
+    ratchet off without anyone noticing).
+    """
     base = base_ref.resolve_base(cwd)
     if base is None:
+        if _in_ci():
+            return 'fail', ('no merge-base with ARCH_BASE_REF / upstream/develop / origin/develop in CI: '
+                            'the checkout is shallow or the base branch is missing (use fetch-depth: 0)')
         return 'skip', 'no resolvable base ref (shallow clone or no upstream/origin develop): nothing to compare'
     old = base_ref.file_at_base(rel, cwd)
     if old is None:
         return 'skip', f'{rel} does not exist at the merge-base: this is its introduction'
-    now = count_entries((cwd / rel).read_text(encoding='utf-8'), kind)
-    before = count_entries(old, kind)
-    if now > before:
-        return 'fail', f'{rel} grew from {before} to {now} entries; the allowlist may only shrink'
-    return 'ok', f'{rel}: {before} -> {now} entries'
+    now = entries((cwd / rel).read_text(encoding='utf-8'), kind)
+    before = entries(old, kind)
+    added = sorted(now - before)
+    if added:
+        return 'fail', (f'{rel} has {len(added)} entr{"y" if len(added) == 1 else "ies"} the merge-base does not; '
+                        f'the allowlist may only shrink. new: {added}')
+    return 'ok', f'{rel}: {len(before)} -> {len(now)} entries'
 
 
 def _ignore_lines() -> list[str]:
@@ -100,6 +129,8 @@ def _toml(n: int) -> str:
 @pytest.fixture()
 def repo(tmp_path, monkeypatch):
     monkeypatch.delenv('ARCH_BASE_REF', raising=False)
+    monkeypatch.delenv('CI', raising=False)
+    monkeypatch.delenv('GITHUB_ACTIONS', raising=False)
     _git(tmp_path, 'init', '-b', 'main')
     return tmp_path
 
@@ -128,7 +159,7 @@ def test_base_ref_logic_on_a_temp_git_repo(repo, monkeypatch):
     assert growth_verdict(rel, 'toml', repo)[0] == 'ok'
     (repo / rel).write_text(_toml(4))
     status, msg = growth_verdict(rel, 'toml', repo)
-    assert status == 'fail' and 'grew from 3 to 4' in msg
+    assert status == 'fail' and 'a3 -> b3' in msg
     (repo / rel).write_text(_toml(2))
     assert growth_verdict(rel, 'toml', repo)[0] == 'ok'
 
@@ -169,3 +200,83 @@ def test_remove_stale_deletes_only_stale_lines_and_adds_none(tmp_path):
     # nothing in the CLI can add a line: the only modes are the read-only print and the deleting cleanup
     with pytest.raises(SystemExit):
         regen.main(['--add'])
+
+
+def _toml_named(names: list[str]) -> str:
+    items = ', '.join(f'"{n}"' for n in names)
+    return f'[[tool.importlinter.contracts]]\nname = "c"\nignore_imports = [{items}]\n'
+
+
+@pytest.fixture()
+def ci_off(monkeypatch):
+    monkeypatch.delenv('CI', raising=False)
+    monkeypatch.delenv('GITHUB_ACTIONS', raising=False)
+
+
+@pytest.mark.Trait('Task', 'T304')
+def test_swapping_one_line_for_another_fails(repo, monkeypatch, ci_off):
+    rel = 'allow.toml'
+    (repo / rel).write_text(_toml_named(['a -> b', 'c -> d', 'e -> f']))
+    _git(repo, 'add', '.')
+    _git(repo, 'commit', '-m', 'base')
+    _git(repo, 'branch', 'base')
+    monkeypatch.setenv('ARCH_BASE_REF', 'base')
+    # same count, one edge fixed and a different one added: unreviewed new debt
+    (repo / rel).write_text(_toml_named(['a -> b', 'c -> d', 'x -> y']))
+    status, msg = growth_verdict(rel, 'toml', repo)
+    assert status == 'fail'
+    assert 'x -> y' in msg and 'e -> f' not in msg.split('new:')[-1]
+
+
+@pytest.mark.Trait('Task', 'T304')
+def test_the_same_edge_under_another_contract_counts_as_new(repo, monkeypatch, ci_off):
+    rel = 'allow.toml'
+    two = ('[[tool.importlinter.contracts]]\nname = "one"\nignore_imports = ["a -> b"]\n'
+           '[[tool.importlinter.contracts]]\nname = "two"\nignore_imports = []\n')
+    moved = two.replace('["a -> b"]', '[]', 1).replace('name = "two"\nignore_imports = []', 'name = "two"\nignore_imports = ["a -> b"]')
+    (repo / rel).write_text(two)
+    _git(repo, 'add', '.')
+    _git(repo, 'commit', '-m', 'base')
+    _git(repo, 'branch', 'base')
+    monkeypatch.setenv('ARCH_BASE_REF', 'base')
+    (repo / rel).write_text(moved)
+    assert growth_verdict(rel, 'toml', repo)[0] == 'fail'
+
+
+@pytest.mark.Trait('Task', 'T304')
+def test_shrinking_and_equal_sets_still_pass(repo, monkeypatch, ci_off):
+    rel = 'allow.toml'
+    (repo / rel).write_text(_toml_named(['a -> b', 'c -> d']))
+    _git(repo, 'add', '.')
+    _git(repo, 'commit', '-m', 'base')
+    _git(repo, 'branch', 'base')
+    monkeypatch.setenv('ARCH_BASE_REF', 'base')
+    assert growth_verdict(rel, 'toml', repo)[0] == 'ok'
+    (repo / rel).write_text(_toml_named(['c -> d']))
+    assert growth_verdict(rel, 'toml', repo)[0] == 'ok'
+
+
+@pytest.mark.Trait('Task', 'T304')
+@pytest.mark.parametrize('var', ['CI', 'GITHUB_ACTIONS'])
+def test_missing_base_ref_fails_loudly_in_ci(repo, monkeypatch, ci_off, var):
+    (repo / 'README').write_text('x')
+    _git(repo, 'add', '.')
+    _git(repo, 'commit', '-m', 'init')
+    assert growth_verdict('allow.toml', 'toml', repo)[0] == 'skip'   # locally: a visible skip
+    monkeypatch.setenv(var, 'true')
+    status, msg = growth_verdict('allow.toml', 'toml', repo)
+    assert status == 'fail'
+    assert 'fetch-depth: 0' in msg
+
+
+@pytest.mark.Trait('Task', 'T304')
+def test_a_new_file_at_a_resolvable_base_still_skips_in_ci(repo, monkeypatch, ci_off):
+    (repo / 'README').write_text('x')
+    _git(repo, 'add', '.')
+    _git(repo, 'commit', '-m', 'init')
+    _git(repo, 'branch', 'base')
+    monkeypatch.setenv('ARCH_BASE_REF', 'base')
+    monkeypatch.setenv('CI', 'true')
+    (repo / 'allow.toml').write_text(_toml_named(['a -> b']))
+    status, msg = growth_verdict('allow.toml', 'toml', repo)
+    assert status == 'skip' and 'introduction' in msg
