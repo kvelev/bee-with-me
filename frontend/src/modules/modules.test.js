@@ -19,7 +19,7 @@ const CONFIG = path.join(FRONTEND, '.dependency-cruiser.cjs')
 const SLOW = 120_000
 
 // Static `import ... from 'x'`, `export ... from 'x'` and `import 'x'`; a lazy `import('x')` is not matched.
-const STATIC_IMPORT = /(?:^|\n)[ \t]*(?:import|export)\s+(?:[^'"\n;]*?\s+from\s+)?['"]([^'"]+)['"]/g
+const STATIC_IMPORT = /(?:^|\n)[ \t]*(?:import|export)\s+(?:[^'"]*?\bfrom\s*)?['"]([^'"]+)['"]/g
 const isOpenLayers = (spec) => spec === 'ol' || spec.startsWith('ol/')
 
 function resolveRelative(from, spec) {
@@ -174,6 +174,13 @@ describe('frontend modules', () => {
       expect(staticOlChain(path.join(root, 'm/index.js'))).toEqual(['index.js', 'layers.js', 'ol/layer/Vector'])
       expect(staticOlChain(path.join(root, 'n/index.js'))).toBeNull()
       expect(staticOlChain(path.join(root, 'p/index.js'))).not.toBeNull()
+      write('q/index.js', "import {\n  Vector,\n  Tile\n} from 'ol/layer'\nexport default Vector\n")
+      write('r/index.js', "export {\n  a\n} from 'ol/source'\n")
+      write('s/index.js', "import './side.js'\nexport default 1\n")
+      write('s/side.js', 'export const x = 1\n')
+      expect(staticOlChain(path.join(root, 'q/index.js'))).toEqual(['index.js', 'ol/layer'])
+      expect(staticOlChain(path.join(root, 'r/index.js'))).toEqual(['index.js', 'ol/source'])
+      expect(staticOlChain(path.join(root, 's/index.js'))).toBeNull()
     } finally {
       fs.rmSync(root, { recursive: true, force: true })
     }

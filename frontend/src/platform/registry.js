@@ -51,6 +51,7 @@ export function collectNav(staticItems, modules) {
 
 function mergeInto(target, source) {
   for (const [key, value] of Object.entries(source)) {
+    if (key === '__proto__') continue // a parsed dictionary must never change a prototype
     if (isPlainObject(value)) {
       if (!Object.hasOwn(target, key)) target[key] = {}
       if (isPlainObject(target[key])) mergeInto(target[key], value)
