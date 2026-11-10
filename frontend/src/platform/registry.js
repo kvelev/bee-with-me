@@ -17,13 +17,20 @@ export function corePathsOf(routes) {
   return [...new Set(paths)]
 }
 
-// What a module route may not do: it is mounted under the layout (the guard decides by `meta`), so it cannot
-// open the route to anonymous users, redirect, nest routes or take the place of a core route.
+// A module route is mounted under the layout and judged by the guard through `meta`. It may use only these keys, so
+// nothing vue-router resolves on its own (alias, redirect, children, beforeEnter, ...) can reach a page around the
+// guard or the core-path check. `meta` may carry flags such as adminOnly, but never `public`.
+const ALLOWED_ROUTE_KEYS = new Set(['path', 'name', 'component', 'meta'])
+
 function routeRuleProblems(r, corePaths) {
   const problems = []
-  if (r.meta?.public) problems.push(`route ${r.name}: meta.public is not allowed in a module route`)
-  if (r.redirect !== undefined) problems.push(`route ${r.name}: redirect is not allowed in a module route`)
-  if (r.children !== undefined) problems.push(`route ${r.name}: children are not allowed in a module route`)
+  for (const key of Object.keys(r)) {
+    if (!ALLOWED_ROUTE_KEYS.has(key)) problems.push(`route ${r.name}: ${key} is not allowed in a module route`)
+  }
+  if (r.meta !== undefined) {
+    if (!isPlainObject(r.meta)) problems.push(`route ${r.name}: meta must be an object`)
+    else if (Object.hasOwn(r.meta, 'public')) problems.push(`route ${r.name}: meta.public is not allowed in a module route`)
+  }
   if (corePaths.map(normPath).includes(normPath(r.path))) {
     problems.push(`route ${r.name}: path ${r.path} belongs to a core route`)
   }
@@ -55,8 +62,8 @@ export function checkModules(modules, corePaths = []) {
       for (const p of routeRuleProblems(r, corePaths)) problems.push(`${label}: ${p}`)
       if (routeNames.has(r.name)) problems.push(`${label}: duplicate route name: ${r.name}`)
       routeNames.add(r.name)
-      if (routePaths.has(r.path)) problems.push(`${label}: duplicate route path: ${r.path}`)
-      routePaths.add(r.path)
+      if (routePaths.has(normPath(r.path))) problems.push(`${label}: duplicate route path: ${r.path}`)
+      routePaths.add(normPath(r.path))
     }
     for (const n of Array.isArray(m.nav) ? m.nav : []) {
       if (!isPlainObject(n)) continue

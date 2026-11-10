@@ -6,9 +6,6 @@ import { collectNav } from './platform/registry.js'
 
 const STATIC_NAV = [
   { to: '/map',     labelKey: 'nav.map',     icon: '🗺', order: 10 },
-  { to: '/users',   labelKey: 'nav.users',   icon: '👤', order: 20 },
-  { to: '/groups',  labelKey: 'nav.groups',  icon: '👥', order: 30 },
-  { to: '/devices', labelKey: 'nav.devices', icon: '📡', order: 40 },
   { to: '/export',  labelKey: 'nav.export',  icon: '📤', order: 50 },
   { to: '/selectofflinemap', labelKey: 'nav.selectofflinemap', icon: '📦', order: 60 },
   { to: '/about',   labelKey: 'nav.about',   icon: 'ℹ️', order: 80 },

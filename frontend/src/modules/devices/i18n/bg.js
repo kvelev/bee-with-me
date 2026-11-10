@@ -1,0 +1,34 @@
+// Texts of the devices module (moved verbatim from src/i18n/bg.js).
+export default {
+  nav: {
+    devices: 'Устройства',
+  },
+  devices: {
+    title:      'Устройства',
+    add:        '+ Регистрирай Устройство',
+    devSn:      'Сер. Номер',
+    name:       'Iме',
+    type:       'Тип',
+    assignedTo: 'Назначено на',
+    status:     'Статус',
+    active:     'Активно',
+    inactive:   'Неактивно',
+    edit:       'Редактирай',
+    deactivate: 'Деактивирай',
+    reactivate: 'Активирай',
+    delete:     'Изтрий',
+    confirmDeactivate: 'Да се деактивира ли устройство SN:{sn}?',
+    confirmDelete:     'Да се изтрие ли окончателно устройство SN:{sn}? Ще бъде изтрита и цялата му история на местоположенията, а действието е необратимо.',
+    form: {
+      title_add:  'Регистрирай Устройство',
+      title_edit: 'Редактирай Устройство',
+      devSn:      'Сер. Номер',
+      nameLabel:  'Iме / Etикет',
+      type:       'Тип',
+      assignTo:   'Назначи на лице',
+      unassigned: '— Неназначено —',
+      save:       'Запази',
+      cancel:     'Отказ',
+    },
+  },
+}
