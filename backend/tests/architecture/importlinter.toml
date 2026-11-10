@@ -1,0 +1,131 @@
+# Import contracts of the modular monolith (plan 2026-11-07-vs-step0-kernel-and-guards.md, sections 1 and 4).
+# ignore_imports is the ratchet allowlist: it may only shrink (test_allowlist_never_grows), a stale line fails
+# the run (unmatched_ignore_imports_alerting), and every line says when it must be gone ("# until step N").
+# Shrink it with: python backend/tests/architecture/regen.py --remove-stale. Nothing adds lines for you.
+
+[tool.importlinter]
+root_package = "backend"
+include_external_packages = true
+unmatched_ignore_imports_alerting = "error"
+
+[[tool.importlinter.contracts]]
+id = "kernel"
+name = "kernel imports no module"
+type = "forbidden"
+source_modules = ["backend.core"]
+forbidden_modules = [
+    "backend.routers",
+    "backend.fire",
+    "backend.hardware_reader",
+    "backend.simulation",
+    "backend.main",
+    "backend.modules",
+]
+allow_indirect_imports = true
+ignore_imports = [
+]
+
+[[tool.importlinter.contracts]]
+id = "shims"
+name = "legacy shims are not imported by production code"
+type = "forbidden"
+source_modules = [
+    "backend.routers",
+    "backend.fire",
+    "backend.hardware_reader",
+    "backend.simulation",
+    "backend.main",
+    "backend.db",
+    "backend.auth",
+]
+forbidden_modules = [
+    "backend.database",
+    "backend.config",
+    "backend.json_columns",
+    "backend.ws",
+]
+allow_indirect_imports = true
+ignore_imports = [
+    "backend.auth -> backend.config",  # until step 5
+    "backend.auth -> backend.database",  # until step 5
+    "backend.db.migrate -> backend.config",  # until step 5
+    "backend.fire.poller -> backend.database",  # until step 2
+    "backend.fire.service -> backend.database",  # until step 2
+    "backend.hardware_reader.hid_reader -> backend.config",  # until step 3
+    "backend.hardware_reader.hid_reader -> backend.ws",  # until step 3
+    "backend.hardware_reader.reader -> backend.config",  # until step 3
+    "backend.hardware_reader.reader -> backend.ws",  # until step 3
+    "backend.main -> backend.config",  # until step 5
+    "backend.main -> backend.database",  # until step 5
+    "backend.main -> backend.ws",  # until step 5
+    "backend.routers.auth -> backend.config",  # until step 5
+    "backend.routers.auth -> backend.database",  # until step 5
+    "backend.routers.devices -> backend.database",  # until step 4
+    "backend.routers.export -> backend.database",  # until step 5
+    "backend.routers.fire -> backend.database",  # until step 2
+    "backend.routers.groups -> backend.database",  # until step 4
+    "backend.routers.groups -> backend.json_columns",  # until step 4
+    "backend.routers.locations -> backend.config",  # until step 3
+    "backend.routers.locations -> backend.database",  # until step 3
+    "backend.routers.locations -> backend.json_columns",  # until step 3
+    "backend.routers.settings -> backend.database",  # until step 1
+    "backend.routers.test -> backend.database",  # until step 5
+    "backend.routers.tiles -> backend.config",  # until step 5
+    "backend.routers.users -> backend.database",  # until step 4
+    "backend.routers.users -> backend.json_columns",  # until step 4
+    "backend.routers.weather -> backend.config",  # until step 5
+    "backend.routers.ws -> backend.ws",  # until step 5
+    "backend.simulation -> backend.database",  # until step 5
+]
+
+[[tool.importlinter.contracts]]
+id = "fire-private"
+name = "fire internals are private"
+type = "forbidden"
+source_modules = [
+    "backend.routers",
+    "backend.main",
+    "backend.simulation",
+    "backend.hardware_reader",
+]
+forbidden_modules = ["backend.fire"]
+allow_indirect_imports = true
+ignore_imports = [
+    "backend.main -> backend.fire.poller",  # until step 2
+    "backend.main -> backend.fire.repository",  # until step 2
+    "backend.main -> backend.fire.service",  # until step 2
+    "backend.routers.devices -> backend.fire.repository",  # until step 4
+    "backend.routers.devices -> backend.fire.service",  # until step 4
+    "backend.routers.fire -> backend.fire.models",  # until step 2
+    "backend.routers.fire -> backend.fire.parse",  # until step 2
+    "backend.routers.fire -> backend.fire.poller",  # until step 2
+    "backend.routers.fire -> backend.fire.repository",  # until step 2
+    "backend.routers.fire -> backend.fire.service",  # until step 2
+    "backend.routers.settings -> backend.fire.repository",  # until step 1
+    "backend.routers.settings -> backend.fire.service",  # until step 1
+    "backend.routers.users -> backend.fire.repository",  # until step 4
+    "backend.routers.users -> backend.fire.service",  # until step 4
+]
+
+[[tool.importlinter.contracts]]
+id = "routers-independent"
+name = "routers are independent"
+type = "independence"
+modules = ["backend.routers.*"]
+ignore_imports = [
+]
+
+[[tool.importlinter.contracts]]
+id = "domain-pure"
+name = "domain is pure"
+type = "forbidden"
+source_modules = ["backend.modules.*.domain"]
+forbidden_modules = [
+    "asyncpg",
+    "httpx",
+    "fastapi",
+    "backend.modules.*.infrastructure",
+]
+allow_indirect_imports = true
+ignore_imports = [
+]
