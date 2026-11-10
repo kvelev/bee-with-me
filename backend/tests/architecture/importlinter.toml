@@ -69,7 +69,6 @@ ignore_imports = [
     "backend.routers.locations -> backend.config",  # until step 3
     "backend.routers.locations -> backend.database",  # until step 3
     "backend.routers.locations -> backend.json_columns",  # until step 3
-    "backend.routers.settings -> backend.database",  # until step 1
     "backend.routers.test -> backend.database",  # until step 5
     "backend.routers.tiles -> backend.config",  # until step 5
     "backend.routers.users -> backend.database",  # until step 4
@@ -103,8 +102,9 @@ ignore_imports = [
     "backend.routers.fire -> backend.fire.poller",  # until step 2
     "backend.routers.fire -> backend.fire.repository",  # until step 2
     "backend.routers.fire -> backend.fire.service",  # until step 2
-    "backend.routers.settings -> backend.fire.repository",  # until step 1
-    "backend.routers.settings -> backend.fire.service",  # until step 1
+    "backend.modules.settings.http -> backend.fire.repository",  # until step 4
+    "backend.modules.settings.http -> backend.fire.service",  # until step 4
+    "backend.modules.settings.infrastructure.publisher -> backend.fire.service",  # until step 4
     "backend.routers.users -> backend.fire.repository",  # until step 4
     "backend.routers.users -> backend.fire.service",  # until step 4
 ]
@@ -131,3 +131,28 @@ forbidden_modules = [
 allow_indirect_imports = true
 ignore_imports = [
 ]
+
+[[tool.importlinter.contracts]]
+id = "boundary-settings"
+name = "module boundary: settings"
+type = "forbidden"
+source_modules = [
+    "backend.routers",
+    "backend.fire",
+    "backend.hardware_reader",
+    "backend.simulation",
+    "backend.main",
+    "backend.auth",
+    "backend.db",
+]
+forbidden_modules = [
+    "backend.modules.settings.domain",
+    "backend.modules.settings.http",
+    "backend.modules.settings.infrastructure",
+    "backend.modules.settings.module",
+]
+allow_indirect_imports = true
+ignore_imports = [
+    "backend.routers.settings -> backend.modules.settings.http",  # until step 5
+]
+

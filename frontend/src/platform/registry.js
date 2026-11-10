@@ -5,8 +5,36 @@ import { validateManifest } from './manifest.js'
 
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 
-/** Problems of the whole list. Empty array means the list is valid. */
-export function checkModules(modules) {
+// Same spelling vue-router matches by default: case-insensitive, trailing slash ignored.
+const normPath = (p) => (typeof p === 'string' ? (p.toLowerCase().replace(/\/+$/, '') || '/') : p)
+
+/** Absolute paths of the core routes: the top routes and the children of the layout route. */
+export function corePathsOf(routes) {
+  const paths = routes.flatMap((r) => [
+    r.path,
+    ...(r.children ?? []).map((c) => `${r.path.replace(/\/+$/, '')}/${c.path}`.replace(/\/$/, '') || '/'),
+  ])
+  return [...new Set(paths)]
+}
+
+// What a module route may not do: it is mounted under the layout (the guard decides by `meta`), so it cannot
+// open the route to anonymous users, redirect, nest routes or take the place of a core route.
+function routeRuleProblems(r, corePaths) {
+  const problems = []
+  if (r.meta?.public) problems.push(`route ${r.name}: meta.public is not allowed in a module route`)
+  if (r.redirect !== undefined) problems.push(`route ${r.name}: redirect is not allowed in a module route`)
+  if (r.children !== undefined) problems.push(`route ${r.name}: children are not allowed in a module route`)
+  if (corePaths.map(normPath).includes(normPath(r.path))) {
+    problems.push(`route ${r.name}: path ${r.path} belongs to a core route`)
+  }
+  return problems
+}
+
+/**
+ * Problems of the whole list. Empty array means the list is valid.
+ * `corePaths`: absolute paths of the routes the app owns itself (see `corePathsOf`); a module route may not take one.
+ */
+export function checkModules(modules, corePaths = []) {
   const problems = []
   const names = new Set()
   const routeNames = new Set()
@@ -24,6 +52,7 @@ export function checkModules(modules) {
     }
     for (const r of Array.isArray(m.routes) ? m.routes : []) {
       if (!isPlainObject(r)) continue
+      for (const p of routeRuleProblems(r, corePaths)) problems.push(`${label}: ${p}`)
       if (routeNames.has(r.name)) problems.push(`${label}: duplicate route name: ${r.name}`)
       routeNames.add(r.name)
       if (routePaths.has(r.path)) problems.push(`${label}: duplicate route path: ${r.path}`)

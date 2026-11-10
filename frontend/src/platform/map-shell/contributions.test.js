@@ -224,3 +224,40 @@ describe('map-shell contributions', () => {
     expect(Object.isFrozen(BANNER_PRIORITY)).toBe(true)
   })
 })
+
+describe('map-shell contributions, legacy popups and context menu', () => {
+  const P = (id, kinds) => ({ id, component: C, kinds })
+  it('collectPopups and popupFor see legacy popups [T421]', () => {
+    const m = mod('m', { popups: [P('mp', ['zone'])] })
+    const legacy = [P('lp', ['hotspot'])]
+    expect(ids(collectPopups([m], legacy))).toEqual(['mp', 'lp'])
+    expect(popupFor(collectPopups([m], legacy), 'hotspot').id).toBe('lp')
+    expect(popupFor(collectPopups([m], legacy), 'zone').id).toBe('mp')
+    expect(popupFor(collectPopups([m], legacy), 'none')).toBeNull()
+  })
+
+  it('collectContextMenu merges legacy items and sorts by order [T421]', () => {
+    const m = mod('m', { contextMenu: [{ id: 'b', order: 20, labelKey: 'k', onSelect() {} }] })
+    const legacy = [{ id: 'a', order: 10, labelKey: 'k', onSelect() {} }]
+    expect(ids(collectContextMenu([m], legacy))).toEqual(['a', 'b'])
+  })
+
+  it('contributionProblems flags a duplicate id across module and legacy popups and context menu [T421]', () => {
+    const m = mod('m', {
+      popups: [P('p', ['zone'])],
+      contextMenu: [{ id: 'c', order: 1, labelKey: 'k', onSelect() {} }],
+    })
+    const text = contributionProblems([m], {
+      popups: [P('p', ['other'])],
+      contextMenu: [{ id: 'c', order: 2, labelKey: 'k', onSelect() {} }],
+    }).join('\n')
+    expect(text).toContain('popups: id "p"')
+    expect(text).toContain('contextMenu: id "c"')
+  })
+
+  it('contributionProblems flags a kind claimed by a module popup and a legacy popup [T421]', () => {
+    const m = mod('m', { popups: [P('mp', ['zone'])] })
+    const text = contributionProblems([m], { popups: [P('lp', ['zone'])] }).join('\n')
+    expect(text).toContain('kind "zone" is claimed by "mp" and "lp"')
+  })
+})

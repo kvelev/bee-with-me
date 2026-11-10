@@ -96,7 +96,7 @@ def test_real_module_list_is_complete():
     from backend.modules import MODULES
     toml_text = TOML.read_text(encoding='utf-8')
     assert rules.check_module_list(BACKEND, MODULES, toml_text) == []
-    assert rules.check_manifests(list(MODULES), BACKEND) == []   # vacuous today: MODULES is empty
+    assert rules.check_manifests(list(MODULES), BACKEND) == []
     assert rules.check_boundary_contracts(toml_text, [m.name for m in MODULES], BACKEND) == []
     assert rules.check_manifest_wiring(list(MODULES), BACKEND) == []
 
@@ -139,11 +139,17 @@ def test_end_state_rules_bite_at_step_5(tmp_path):
     assert all(any(f'{s}.py' in p for p in probs) for s in ('config', 'database', 'json_columns', 'ws'))
 
 
-def _boundary_toml(name: str, forbidden: list[str], sources: list[str], kind: str = 'forbidden') -> str:
+def _boundary_toml(name: str, forbidden: list[str], sources: list[str], kind: str = 'forbidden',
+                   indirect: bool | None = True, ignore: list[str] | None = None) -> str:
     def lst(items):
         return '[' + ', '.join(f'"{i}"' for i in items) + ']'
-    return (f'[[tool.importlinter.contracts]]\nname = "module boundary: {name}"\ntype = "{kind}"\n'
+    text = (f'[[tool.importlinter.contracts]]\nname = "module boundary: {name}"\ntype = "{kind}"\n'
             f'source_modules = {lst(sources)}\nforbidden_modules = {lst(forbidden)}\n')
+    if indirect is not None:
+        text += f'allow_indirect_imports = {str(indirect).lower()}\n'
+    if ignore is not None:
+        text += f'ignore_imports = {lst(ignore)}\n'
+    return text
 
 
 def _two_modules(tmp_path) -> Path:
@@ -234,3 +240,82 @@ def test_shims_and_fire_private_contracts_cover_modules():
     contracts = {c['id']: c for c in tomllib.loads(TOML.read_text(encoding='utf-8'))['tool']['importlinter']['contracts']}
     for cid in ('shims', 'fire-private'):
         assert 'backend.modules' in contracts[cid]['source_modules'], cid
+
+
+@pytest.mark.Trait("Task", "T402")
+def test_manifest_wiring_accepts_the_real_settings_module():
+    import dataclasses
+
+    from fastapi import APIRouter
+
+    from backend.modules.settings.module import manifest
+    assert rules.check_manifest_wiring([manifest], BACKEND) == []
+    # and it fails on the comparison itself (not on an import error) when the router is another one
+    probs = rules.check_manifest_wiring([dataclasses.replace(manifest, router=APIRouter())], BACKEND)
+    assert len(probs) == 1 and 'is not the `router` of backend.modules.settings.http' in probs[0]
+
+
+@pytest.mark.Trait("Bug", "B95")
+def test_boundary_contract_needs_indirect_imports_allowed(tmp_path):
+    backend = _two_modules(tmp_path)
+    legacy = list(rules.LEGACY_SOURCES)
+    private = ['backend.modules.a.http', 'backend.modules.a.domain']
+    for indirect in (False, None):   # explicit false, and the key missing (import-linter's default is false)
+        toml = _boundary_toml('a', private, legacy + ['backend.modules.b'], indirect=indirect)
+        probs = rules.check_boundary_contracts(toml, ['a'], backend)
+        assert len(probs) == 1 and 'allow_indirect_imports' in probs[0] and 'module boundary: a' in probs[0]
+
+
+@pytest.mark.Trait("Bug", "B95")
+def test_boundary_contract_ignore_imports_may_only_open_the_modules_own_private_children(tmp_path):
+    backend = _two_modules(tmp_path)
+    legacy = list(rules.LEGACY_SOURCES)
+    private = ['backend.modules.a.http', 'backend.modules.a.domain']
+
+    def problems_for(ignore):
+        toml = _boundary_toml('a', private, legacy + ['backend.modules.b'], ignore=ignore)
+        return rules.check_boundary_contracts(toml, ['a'], backend)
+
+    assert problems_for([]) == []
+    assert problems_for(['backend.routers.a -> backend.modules.a.http']) == []      # the alias edge of step 1
+    for bad in ('backend.routers.a -> backend.modules.a.api',                       # api is open anyway
+                'backend.routers.a -> backend.modules.b.http',                      # another module's child
+                'backend.routers.* -> backend.modules.a.http',                      # wildcard source
+                'backend.routers.a -> backend.modules.a.*',                         # wildcard target
+                'backend.modules.a.http -> backend.modules.a.domain',               # not from a source
+                'backend.routers.a -> backend.fire.repository'):
+        probs = problems_for([bad])
+        assert len(probs) == 1 and 'ignore_imports' in probs[0], bad
+
+
+@pytest.mark.Trait("Bug", "B95")
+def test_a_task_may_live_in_a_tasks_package_or_be_wrapped(tmp_path):
+    import functools
+    backend = _two_modules(tmp_path)
+    (backend / 'modules' / 'b' / 'http.py').unlink()
+
+    async def in_package():
+        return None
+
+    in_package.__module__ = 'backend.modules.b.tasks.sweep'
+
+    async def in_file():
+        return None
+
+    in_file.__module__ = 'backend.modules.b.tasks'
+    ok = (in_package, in_file, functools.partial(in_file), functools.partial(functools.partial(in_package)))
+    assert rules.check_manifest_wiring([ModuleManifest(name='b', tasks=ok)], backend) == []
+
+    # still refused: a look-alike module name, another module's tasks, a wrapped task from elsewhere
+    async def lookalike():
+        return None
+
+    lookalike.__module__ = 'backend.modules.b.tasksextra'
+
+    async def foreign():
+        return None
+
+    foreign.__module__ = 'backend.modules.a.tasks'
+    for bad in (lookalike, foreign, functools.partial(foreign), functools.partial(_task_outside_the_tasks_module)):
+        probs = rules.check_manifest_wiring([ModuleManifest(name='b', tasks=(bad,))], backend)
+        assert len(probs) == 1 and 'must live in backend.modules.b.tasks' in probs[0]

@@ -34,6 +34,7 @@ MODULE_OF_FILE: dict[str, tuple[str, ...]] = {
     '__init__.py': ('core',),
     'routers/__init__.py': ('core',),
     'modules/__init__.py': ('core',),
+    'modules/registry.py': ('core',),
 }
 
 STEP_OF_MODULE: dict[str, int] = {

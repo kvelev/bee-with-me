@@ -11,7 +11,6 @@ const STATIC_NAV = [
   { to: '/devices', labelKey: 'nav.devices', icon: '📡', order: 40 },
   { to: '/export',  labelKey: 'nav.export',  icon: '📤', order: 50 },
   { to: '/selectofflinemap', labelKey: 'nav.selectofflinemap', icon: '📦', order: 60 },
-  { to: '/settings', labelKey: 'nav.settings', icon: '⚙', adminOnly: true, order: 70 },
   { to: '/about',   labelKey: 'nav.about',   icon: 'ℹ️', order: 80 },
 ]
 
