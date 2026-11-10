@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
-import { h } from 'vue'
+import { h, ref, nextTick } from 'vue'
 
 vi.mock('../../api', () => ({ getMe: vi.fn(), login: vi.fn(), getFireAlerts: vi.fn().mockResolvedValue([]) }))
 
@@ -63,6 +63,109 @@ describe('BannerStack', () => {
     await w.vm.$nextTick()
     expect(err.mock.calls.filter((c) => String(c[0]).includes('x')).length).toBe(1)
     expect(w.html()).toContain('class="sos"')
+  })
+
+  describe('error recovery [T421]', () => {
+    // A banner whose render fails while `n` is below `okAt`, so changing its own reactive data heals it.
+    const flaky = (n, okAt, msg = 'boom') => ({
+      render() {
+        if (n.value < okAt) throw new Error(msg)
+        return h('div', { class: 'ok' })
+      },
+    })
+
+    it('a non-SOS banner that fails on first render recovers when its reactive data changes [T421]', async () => {
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const n = ref(0)
+      const banners = [{ id: 'sos', priority: 10, component: stub('sos') }, { id: 'x', priority: 15, component: flaky(n, 1) }]
+      const w = mount(BannerStack, { props: { banners } })
+      await nextTick()
+      expect(w.html()).not.toContain('class="ok"')
+      expect(w.html()).toContain('class="sos"')
+      n.value = 1
+      await nextTick()
+      expect(w.html()).toContain('class="ok"')
+      expect(err.mock.calls.filter((c) => String(c[0]) === 'banner x failed').length).toBe(1)
+    })
+
+    it('an error raised during an update (not first render) is caught and later healed [T421]', async () => {
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const n = ref(1)
+      const comp = { render() { if (n.value === 2) throw new Error('late'); return h('div', { class: 'ok' }) } }
+      const w = mount(BannerStack, { props: { banners: [{ id: 'x', priority: 1, component: comp }, { id: 'y', priority: 2, component: stub('y') }] } })
+      expect(w.html()).toContain('class="ok"')
+      n.value = 2
+      await nextTick()
+      expect(w.html()).not.toContain('class="ok"')
+      expect(w.html()).toContain('class="y"')
+      expect(err.mock.calls.length).toBe(1)
+      n.value = 3
+      await nextTick()
+      expect(w.html()).toContain('class="ok"')
+    })
+
+    it('SOS is never latched: a single failure is followed by a normal render on the next update [T421]', async () => {
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const n = ref(0)
+      const w = mount(BannerStack, { props: { banners: [{ id: 'sos', priority: 10, component: flaky(n, 1, 'bad alert') }] } })
+      await nextTick()
+      expect(w.html()).not.toContain('class="ok"')
+      n.value = 1
+      await nextTick()
+      expect(w.html()).toContain('class="ok"')
+      expect(err.mock.calls.filter((c) => String(c[0]) === 'banner sos failed').length).toBe(1)
+    })
+
+    it('the same error is logged once per window, a different error is logged at once [T421]', async () => {
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const n = ref(0)
+      const msg = ref('same')
+      const comp = { render() { n.value; throw new Error(msg.value) } }
+      mount(BannerStack, { props: { banners: [{ id: 'x', priority: 1, component: comp }, { id: 'y', priority: 2, component: stub('y') }] } })
+      await nextTick()
+      for (let i = 1; i <= 3; i++) { n.value = i; await nextTick() }
+      expect(err.mock.calls.length).toBe(1)
+      msg.value = 'other'
+      n.value = 10
+      await nextTick()
+      expect(err.mock.calls.length).toBe(2)
+    })
+
+    it('a banner that always throws is retried every 5 s, logged once per retry, and never takes the page down [T421]', async () => {
+      vi.useFakeTimers()
+      try {
+        const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+        const comp = { render() { throw new Error('always') } }
+        const w = mount(BannerStack, { props: { banners: [{ id: 'x', priority: 1, component: comp }, { id: 'y', priority: 2, component: stub('y') }] } })
+        await nextTick()
+        expect(err.mock.calls.length).toBe(1)
+        await vi.advanceTimersByTimeAsync(4900)
+        expect(err.mock.calls.length).toBe(1)
+        await vi.advanceTimersByTimeAsync(200)
+        expect(err.mock.calls.length).toBe(2)
+        await vi.advanceTimersByTimeAsync(5100)
+        expect(err.mock.calls.length).toBe(3)
+        expect(w.html()).toContain('class="y"')
+        w.unmount()
+        await vi.advanceTimersByTimeAsync(20000)
+        expect(err.mock.calls.length).toBe(3)
+      } finally { vi.useRealTimers() }
+    })
+
+    it('a banner that failed once is remounted by the retry timer even without reactive data [T421]', async () => {
+      vi.useFakeTimers()
+      try {
+        vi.spyOn(console, 'error').mockImplementation(() => {})
+        let fail = true
+        const comp = { render() { if (fail) throw new Error('once'); return h('div', { class: 'ok' }) } }
+        const w = mount(BannerStack, { props: { banners: [{ id: 'x', priority: 1, component: comp }] } })
+        await nextTick()
+        expect(w.html()).not.toContain('class="ok"')
+        fail = false
+        await vi.advanceTimersByTimeAsync(5100)
+        expect(w.html()).toContain('class="ok"')
+      } finally { vi.useRealTimers() }
+    })
   })
 
   it('the layout shows SOS above the fire alarm [T421]', async () => {
