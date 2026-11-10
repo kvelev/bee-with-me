@@ -1,0 +1,131 @@
+{
+  "completed_step": 0,
+  "sql_writes": [
+    {
+      "file": "hardware_reader/reader.py",
+      "table": "location_events",
+      "verb": "INSERT",
+      "until": 3
+    },
+    {
+      "file": "hardware_reader/reader.py",
+      "table": "repeater_events",
+      "verb": "INSERT",
+      "until": 3
+    },
+    {
+      "file": "hardware_reader/reader.py",
+      "table": "sos_alerts",
+      "verb": "INSERT",
+      "until": 3
+    },
+    {
+      "file": "main.py",
+      "table": "location_events",
+      "verb": "DELETE",
+      "until": 5
+    },
+    {
+      "file": "main.py",
+      "table": "users",
+      "verb": "INSERT",
+      "until": 5
+    },
+    {
+      "file": "routers/devices.py",
+      "table": "fire_alerts",
+      "verb": "UPDATE",
+      "until": 2
+    },
+    {
+      "file": "routers/devices.py",
+      "table": "location_events",
+      "verb": "DELETE",
+      "until": 3
+    },
+    {
+      "file": "routers/devices.py",
+      "table": "repeater_events",
+      "verb": "DELETE",
+      "until": 3
+    },
+    {
+      "file": "routers/devices.py",
+      "table": "sos_alerts",
+      "verb": "DELETE",
+      "until": 3
+    },
+    {
+      "file": "routers/test.py",
+      "table": "location_events",
+      "verb": "INSERT",
+      "until": 3
+    },
+    {
+      "file": "routers/test.py",
+      "table": "sos_alerts",
+      "verb": "INSERT",
+      "until": 3
+    },
+    {
+      "file": "routers/users.py",
+      "table": "location_events",
+      "verb": "UPDATE",
+      "until": 3
+    },
+    {
+      "file": "routers/users.py",
+      "table": "sos_alerts",
+      "verb": "UPDATE",
+      "until": 3
+    },
+    {
+      "file": "simulation.py",
+      "table": "devices",
+      "verb": "INSERT",
+      "until": 4
+    },
+    {
+      "file": "simulation.py",
+      "table": "devices",
+      "verb": "UPDATE",
+      "until": 4
+    },
+    {
+      "file": "simulation.py",
+      "table": "groups",
+      "verb": "INSERT",
+      "until": 4
+    },
+    {
+      "file": "simulation.py",
+      "table": "location_events",
+      "verb": "DELETE",
+      "until": 3
+    },
+    {
+      "file": "simulation.py",
+      "table": "sos_alerts",
+      "verb": "DELETE",
+      "until": 3
+    },
+    {
+      "file": "simulation.py",
+      "table": "user_groups",
+      "verb": "INSERT",
+      "until": 4
+    },
+    {
+      "file": "simulation.py",
+      "table": "users",
+      "verb": "INSERT",
+      "until": 4
+    },
+    {
+      "file": "simulation.py",
+      "table": "users",
+      "verb": "UPDATE",
+      "until": 4
+    }
+  ]
+}
