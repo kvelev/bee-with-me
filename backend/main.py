@@ -19,11 +19,14 @@ from .db.migrate import BackupRequiredError, MigrationError, UpdateRequiredError
 from .routers import auth, devices, export, fire, groups, locations, users, ws, test, hardware_reader, tiles, weather
 from .routers import settings as settings_router
 from .ws import manager
+from .core.request_id import LOG_FORMAT, RequestIdLogFilter, RequestIdMiddleware
 from .fire import poller as fire_poller
 from .fire.repository import anonymise_alerts, anonymise_hotspots, prune_fire_data
 from .fire.service import service as fire_alarm
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, defaults={'request_id': '-'})
+for _handler in logging.getLogger().handlers:
+    _handler.addFilter(RequestIdLogFilter())
 logger = logging.getLogger(__name__)
 
 UPLOADS_DIR = Path(__file__).resolve().parent / 'uploads'
@@ -249,6 +252,7 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
+app.add_middleware(RequestIdMiddleware)
 
 app.include_router(auth.router)
 app.include_router(users.router)
