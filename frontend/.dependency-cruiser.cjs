@@ -6,10 +6,16 @@ module.exports = {
   forbidden: [
     {
       name: 'lib-is-pure',
-      comment: 'src/lib holds pure helpers: no api, store, composable, component, view, router, vue or pinia.',
+      comment: 'src/lib and src/modules/*/lib hold pure helpers: no api, store, composable, component, view, router, vue or pinia.',
       severity: 'error',
-      from: { path: '^src/lib/' },
-      to: { path: ['^src/(api|stores|composables|components|views|router)/', '(^|/)node_modules/(vue|pinia)/'] },
+      from: { path: '^src/(lib|modules/[^/]+/lib)/' },
+      to: {
+        path: [
+          '^src/(api|stores|composables|components|views|router)/',
+          '^src/modules/[^/]+/(store\\.js$|views/|components/)',
+          '(^|/)node_modules/(vue|pinia)/',
+        ],
+      },
     },
     {
       name: 'no-upward-layers',

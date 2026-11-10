@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { MODULES } from '../modules/index.js'
+import { collectRoutes } from '../platform/registry.js'
 
 const routes = [
   { path: '/login', component: () => import('../views/LoginView.vue'), meta: { public: true } },
@@ -16,6 +18,7 @@ const routes = [
       { path: 'selectofflinemap', component: () => import('../views/SelectOfflineMap.vue') },
       { path: 'settings', component: () => import('../views/SettingsView.vue'), meta: { adminOnly: true } },
       { path: 'about',   component: () => import('../views/AboutView.vue') },
+      ...collectRoutes(MODULES),
     ],
   },
 ]
