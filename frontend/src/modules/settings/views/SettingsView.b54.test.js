@@ -2,17 +2,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 
-vi.mock('../api', () => ({
+vi.mock('../../../api', () => ({
   getSettings: vi.fn(), putSettings: vi.fn(), putHQ: vi.fn(), putHQInitial: vi.fn(), getMe: vi.fn(),
   getFireStatus: vi.fn(), getSuppressionZones: vi.fn(), updateSuppressionZone: vi.fn(), disableSuppressionZone: vi.fn(),
   enableSuppressionZone: vi.fn(),
 }))
 
-import { getSettings, getFireStatus, getSuppressionZones, updateSuppressionZone } from '../api'
+import { getSettings, getFireStatus, getSuppressionZones, updateSuppressionZone } from '../../../api'
 import SettingsView from './SettingsView.vue'
-import { useAuthStore } from '../stores/auth'
-import { useFireStore } from '../stores/fire'
-import { i18n } from '../i18n/index.js'
+import { useAuthStore } from '../../../stores/auth'
+import { useFireStore } from '../../../stores/fire'
+import { i18n } from '../../../i18n/index.js'
 
 const SETTINGS = { hq_latitude: 42.5, hq_longitude: 24.5, is_hq_alarm_enabled: true, is_rescuer_alarm_enabled: true,
   hq_radius_m: 10000, rescuer_radius_m: 3000, alarm_max_age_hours: 24, repeat_minutes: 5, is_rescuer_photo_on_map_enabled: true, updated_at: 't0' }
