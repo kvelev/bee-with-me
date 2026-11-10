@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 import asyncpg
 
 from .parser import BeeFrame, RepeaterFrame, parse_frame, make_confirm
-from .reader import _handle_bee, _handle_repeater, _dsn
+from .reader import _handle_bee, _handle_repeater, _connect_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -138,7 +138,7 @@ async def run() -> None:
         try:
             import hid  # deferred: surfaces missing/broken hidapi install as a retried status error instead of an unhandled task exception
 
-            conn = await asyncpg.connect(_dsn())
+            conn = await asyncpg.connect(**_connect_kwargs())
             dev = hid.device()
             try:
                 dev.open(vid, pid)
@@ -185,7 +185,8 @@ async def run() -> None:
             break
 
         except Exception as exc:
-            msg = str(exc)
+            from ..database import redact
+            msg = redact(str(exc))
             logger.warning('HID reader error (%s) — retrying in %ds', msg, RECONNECT_DELAY)
             status['connected'] = False
             status['error']     = msg

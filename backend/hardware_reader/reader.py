@@ -42,15 +42,9 @@ async def _broadcast_status() -> None:
         pass
 
 
-def _dsn() -> str:
-    from ..config import settings
-    return (
-        f"postgresql://{settings.postgres_user}"
-        f":{settings.postgres_password}"
-        f"@{settings.postgres_host}"
-        f":{settings.postgres_port}"
-        f"/{settings.postgres_db}"
-    )
+def _connect_kwargs() -> dict:
+    from ..database import connect_kwargs
+    return connect_kwargs()
 
 
 def _port_and_baud() -> tuple[str, int]:
@@ -285,7 +279,7 @@ async def _read_loop(reader: asyncio.StreamReader, conn: asyncpg.Connection) -> 
         conn = None
         try:
             import serial_asyncio
-            conn = await asyncpg.connect(_dsn())
+            conn = await asyncpg.connect(**_connect_kwargs())
             reader, _ = await serial_asyncio.open_serial_connection(
                 url=port, baudrate=baud,
             )
@@ -301,7 +295,8 @@ async def _read_loop(reader: asyncio.StreamReader, conn: asyncpg.Connection) -> 
             break
 
         except Exception as exc:
-            msg = str(exc)
+            from ..database import redact
+            msg = redact(str(exc))
             logger.warning('Serial reader error (%s) — retrying in %ds', msg, RECONNECT_DELAY)
             status['connected'] = False
             status['error']     = msg
