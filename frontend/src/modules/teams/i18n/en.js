@@ -5,6 +5,7 @@ export default {
   },
   groups: {
     title:       'Teams',
+    loadError:   'Could not load teams',
     add:         '+ Add Team',
     name:        'Name',
     color:       'Color',

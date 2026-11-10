@@ -87,9 +87,14 @@ const pageError = ref('')
 onMounted(load)
 
 async function load() {
-  const [devs, ur] = await Promise.all([getDevices(), getUsers({ limit: 500 })])
-  devices.value = devs
-  users.value   = ur.items
+  try {
+    const [devs, ur] = await Promise.all([getDevices(), getUsers({ limit: 500 })])
+    devices.value = devs
+    users.value   = ur.items
+    pageError.value = ''
+  } catch (e) {
+    pageError.value = errorText(e, t('devices.loadError'))
+  }
 }
 
 function openForm(d) {

@@ -5,6 +5,7 @@ export default {
   },
   devices: {
     title:      'Devices',
+    loadError:  'Could not load devices',
     add:        '+ Register Device',
     devSn:      'Dev SN',
     name:       'Name',
