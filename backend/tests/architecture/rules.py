@@ -1,11 +1,14 @@
 """Rules of the module architecture that are data: table owners, allowed module edges and the checks over them."""
 from __future__ import annotations
 
+import importlib
+import inspect
 import tomllib
 from collections.abc import Iterable
 from pathlib import Path
 
 from backend.core.modules import ModuleManifest, validate_manifest
+from backend.core.ws import FORWARDED_CHANNELS
 from backend.tests.architecture import module_map
 
 TABLE_OWNER: dict[str, str] = {
@@ -34,6 +37,10 @@ ALLOWED_EDGES: frozenset[tuple[str, str]] = frozenset({
 })
 
 SHIM_FILES = ('config', 'database', 'json_columns', 'ws')
+
+# Production code outside the modules that must not reach into a module's private children (`module boundary: <x>`).
+LEGACY_SOURCES = ('backend.routers', 'backend.fire', 'backend.hardware_reader', 'backend.simulation',
+                  'backend.main', 'backend.auth', 'backend.db')
 
 
 # ── SQL ownership ─────────────────────────────────────────────────────────────
@@ -140,6 +147,82 @@ def check_module_list(backend: Path, modules: Iterable[ModuleManifest], toml_tex
     for name in sorted(on_disk | listed):
         if f'module boundary: {name}' not in contracts:
             problems.append(f'no contract named "module boundary: {name}" in importlinter.toml')
+    return problems
+
+
+def _contracts_by_name(toml_text: str) -> dict[str, dict]:
+    contracts = tomllib.loads(toml_text).get('tool', {}).get('importlinter', {}).get('contracts', [])
+    return {c.get('name'): c for c in contracts}
+
+
+def _private_children(module_dir: Path) -> set[str]:
+    """Names of the importable children of a module other than `api` and `__init__` (no `__pycache__`)."""
+    names = set()
+    for p in module_dir.iterdir():
+        if p.is_file() and p.suffix == '.py':
+            names.add(p.stem)
+        elif p.is_dir() and (p / '__init__.py').is_file():
+            names.add(p.name)
+    return names - {'api', '__init__'}
+
+
+def check_boundary_contracts(toml_text: str, module_names: Iterable[str], backend: Path) -> list[str]:
+    """Each module has a `module boundary: <name>` contract that matches what is on disk.
+
+    It must forbid every private child of the module (not `api`), and its sources must be every legacy package and
+    every other module, so a new file or a new module cannot slip past the contract.
+    """
+    names = list(module_names)
+    contracts = _contracts_by_name(toml_text)
+    problems: list[str] = []
+    for name in names:
+        label = f'module boundary: {name}'
+        contract = contracts.get(label)
+        if contract is None:
+            problems.append(f'no contract named "{label}" in importlinter.toml')
+            continue
+        if contract.get('type') != 'forbidden':
+            problems.append(f'"{label}" must be of type forbidden, is {contract.get("type")!r}')
+            continue
+        module_dir = backend / 'modules' / name
+        want_forbidden = {f'backend.modules.{name}.{c}' for c in _private_children(module_dir)} if module_dir.is_dir() else set()
+        got_forbidden = set(contract.get('forbidden_modules', []))
+        if got_forbidden != want_forbidden:
+            problems.append(f'"{label}": forbidden_modules differ from the private children on disk; '
+                            f'missing {sorted(want_forbidden - got_forbidden)}, extra {sorted(got_forbidden - want_forbidden)}')
+        want_sources = set(LEGACY_SOURCES) | {f'backend.modules.{o}' for o in names if o != name}
+        missing = sorted(want_sources - set(contract.get('source_modules', [])))
+        if missing:
+            problems.append(f'"{label}": source_modules lack {missing}')
+    return problems
+
+
+def check_manifest_wiring(manifests: Iterable[ModuleManifest], backend: Path) -> list[str]:
+    """What a manifest points at is what the folder holds: its http router, known live messages, its own tasks."""
+    problems: list[str] = []
+    for m in manifests:
+        has_http = (backend / 'modules' / m.name / 'http.py').is_file()
+        if has_http:
+            dotted = f'backend.modules.{m.name}.http'
+            try:
+                expected = importlib.import_module(dotted).router
+            except Exception as exc:   # noqa: BLE001 - any import failure is the finding
+                problems.append(f'{m.name}: cannot read the router of {dotted}: {exc!r}')
+            else:
+                if m.router is not expected:
+                    problems.append(f'{m.name}: manifest.router is not the `router` of {dotted}')
+        elif m.router is not None:
+            problems.append(f'{m.name}: manifest.router is set but backend/modules/{m.name}/http.py does not exist')
+        for msg in m.live_messages:
+            if msg not in FORWARDED_CHANNELS:
+                problems.append(f'{m.name}: live message {msg!r} is not in backend.core.ws.FORWARDED_CHANNELS')
+        for task in m.tasks:
+            name = getattr(task, '__name__', repr(task))
+            if not inspect.iscoroutinefunction(task):
+                problems.append(f'{m.name}: task {name} is not a coroutine function')
+            elif getattr(task, '__module__', None) != f'backend.modules.{m.name}.tasks':
+                problems.append(f'{m.name}: task {name} must live in backend.modules.{m.name}.tasks, '
+                                f'is in {getattr(task, "__module__", None)}')
     return problems
 
 

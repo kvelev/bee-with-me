@@ -97,6 +97,8 @@ def test_real_module_list_is_complete():
     toml_text = TOML.read_text(encoding='utf-8')
     assert rules.check_module_list(BACKEND, MODULES, toml_text) == []
     assert rules.check_manifests(list(MODULES), BACKEND) == []   # vacuous today: MODULES is empty
+    assert rules.check_boundary_contracts(toml_text, [m.name for m in MODULES], BACKEND) == []
+    assert rules.check_manifest_wiring(list(MODULES), BACKEND) == []
 
 
 @pytest.mark.Trait('Task', 'T305')
@@ -135,3 +137,100 @@ def test_end_state_rules_bite_at_step_5(tmp_path):
         (tmp_path / f'{shim}.py').write_text('', encoding='utf-8')
     probs = rules.end_state_problems(done, clean_toml, tmp_path)
     assert all(any(f'{s}.py' in p for p in probs) for s in ('config', 'database', 'json_columns', 'ws'))
+
+
+def _boundary_toml(name: str, forbidden: list[str], sources: list[str], kind: str = 'forbidden') -> str:
+    def lst(items):
+        return '[' + ', '.join(f'"{i}"' for i in items) + ']'
+    return (f'[[tool.importlinter.contracts]]\nname = "module boundary: {name}"\ntype = "{kind}"\n'
+            f'source_modules = {lst(sources)}\nforbidden_modules = {lst(forbidden)}\n')
+
+
+def _two_modules(tmp_path) -> Path:
+    for name in ('a', 'b'):
+        mod = tmp_path / 'modules' / name
+        (mod / 'domain').mkdir(parents=True)
+        (mod / 'domain' / '__init__.py').write_text('', encoding='utf-8')
+        (mod / '__pycache__').mkdir()
+        for f in ('api.py', 'http.py', '__init__.py'):
+            (mod / f).write_text('', encoding='utf-8')
+    return tmp_path
+
+
+def _complete_toml(forbidden_of_a=None, sources_of_a=None) -> str:
+    private = ['backend.modules.{n}.http', 'backend.modules.{n}.domain']
+    legacy = list(rules.LEGACY_SOURCES)
+    a_forbidden = forbidden_of_a if forbidden_of_a is not None else [f.format(n='a') for f in private]
+    a_sources = sources_of_a if sources_of_a is not None else legacy + ['backend.modules.b']
+    return (_boundary_toml('a', a_forbidden, a_sources)
+            + _boundary_toml('b', [f.format(n='b') for f in private], legacy + ['backend.modules.a']))
+
+
+@pytest.mark.Trait('Task', 'T401')
+def test_boundary_contract_rules_bite_on_a_tmp_tree(tmp_path):
+    backend = _two_modules(tmp_path)
+    legacy = list(rules.LEGACY_SOURCES)
+    assert rules.check_boundary_contracts(_complete_toml(), ['a', 'b'], backend) == []
+    # the other module missing from the sources
+    probs = rules.check_boundary_contracts(_complete_toml(sources_of_a=legacy), ['a', 'b'], backend)
+    assert len(probs) == 1 and 'module boundary: a' in probs[0]
+    # a legacy source missing
+    probs = rules.check_boundary_contracts(
+        _complete_toml(sources_of_a=legacy[1:] + ['backend.modules.b']), ['a', 'b'], backend)
+    assert len(probs) == 1 and 'module boundary: a' in probs[0]
+    # a private child missing from the forbidden list
+    probs = rules.check_boundary_contracts(
+        _complete_toml(forbidden_of_a=['backend.modules.a.domain']), ['a', 'b'], backend)
+    assert len(probs) == 1 and 'module boundary: a' in probs[0]
+    # the public api forbidden
+    probs = rules.check_boundary_contracts(
+        _complete_toml(forbidden_of_a=['backend.modules.a.http', 'backend.modules.a.domain', 'backend.modules.a.api']),
+        ['a', 'b'], backend)
+    assert len(probs) == 1 and 'module boundary: a' in probs[0]
+    # no contract at all for b
+    only_a = _boundary_toml('a', ['backend.modules.a.http', 'backend.modules.a.domain'], legacy + ['backend.modules.b'])
+    probs = rules.check_boundary_contracts(only_a, ['a', 'b'], backend)
+    assert len(probs) == 1 and 'module boundary: b' in probs[0]
+    # a contract of the wrong type
+    wrong = _boundary_toml('a', ['backend.modules.a.http', 'backend.modules.a.domain'],
+                           legacy + ['backend.modules.b'], kind='layers')
+    probs = rules.check_boundary_contracts(wrong, ['a'], backend)
+    assert len(probs) == 1 and 'module boundary: a' in probs[0]
+
+
+async def _task_outside_the_tasks_module():
+    return None
+
+
+def _sync_task():
+    return None
+
+
+@pytest.mark.Trait('Task', 'T401')
+def test_manifest_wiring_rules_bite(tmp_path):
+    from fastapi import APIRouter
+    backend = _two_modules(tmp_path)   # a has an http.py on disk; b has one too, but neither is importable
+    (backend / 'modules' / 'b' / 'http.py').unlink()
+    assert rules.check_manifest_wiring([ModuleManifest(name='b')], backend) == []
+    # router declared although there is no http.py
+    probs = rules.check_manifest_wiring([ModuleManifest(name='b', router=APIRouter())], backend)
+    assert len(probs) == 1 and 'b' in probs[0]
+    # http.py exists but the router is not the router of backend.modules.a.http
+    probs = rules.check_manifest_wiring([ModuleManifest(name='a', router=APIRouter())], backend)
+    assert len(probs) == 1 and 'a' in probs[0]
+    # unknown live message
+    probs = rules.check_manifest_wiring([ModuleManifest(name='b', live_messages=('nope',))], backend)
+    assert len(probs) == 1 and 'nope' in probs[0]
+    # a task that is not a coroutine function, and one that lives outside backend.modules.b.tasks
+    probs = rules.check_manifest_wiring([ModuleManifest(name='b', tasks=(_sync_task,))], backend)
+    assert len(probs) == 1 and '_sync_task' in probs[0]
+    probs = rules.check_manifest_wiring([ModuleManifest(name='b', tasks=(_task_outside_the_tasks_module,))], backend)
+    assert len(probs) == 1 and '_task_outside_the_tasks_module' in probs[0]
+
+
+@pytest.mark.Trait('Task', 'T401')
+def test_shims_and_fire_private_contracts_cover_modules():
+    import tomllib
+    contracts = {c['id']: c for c in tomllib.loads(TOML.read_text(encoding='utf-8'))['tool']['importlinter']['contracts']}
+    for cid in ('shims', 'fire-private'):
+        assert 'backend.modules' in contracts[cid]['source_modules'], cid

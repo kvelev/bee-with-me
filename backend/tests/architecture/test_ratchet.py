@@ -4,11 +4,13 @@ import os
 import re
 import subprocess
 import tomllib
+from collections.abc import Collection
 from pathlib import Path
 
 import pytest
 
 from backend.tests.architecture import base_ref
+from backend.tests.architecture.approved_additions import APPROVED
 
 REPO = Path(__file__).resolve().parents[3]
 TOML = Path(__file__).with_name('importlinter.toml')
@@ -46,8 +48,10 @@ def _in_ci() -> bool:
     return bool(os.environ.get('CI') or os.environ.get('GITHUB_ACTIONS'))
 
 
-def growth_verdict(rel: str, kind: str, cwd: Path) -> tuple[str, str]:
+def growth_verdict(rel: str, kind: str, cwd: Path, approved: Collection[str] = ()) -> tuple[str, str]:
     """('ok'|'skip'|'fail', message): entries in `cwd` that the merge-base version does not have make it fail.
+
+    Entries listed in `approved` (see approved_additions.py) are not counted as growth.
 
     No resolvable base is a visible skip locally and a failure in CI (a shallow checkout would otherwise turn the
     ratchet off without anyone noticing).
@@ -63,7 +67,7 @@ def growth_verdict(rel: str, kind: str, cwd: Path) -> tuple[str, str]:
         return 'skip', f'{rel} does not exist at the merge-base: this is its introduction'
     now = entries((cwd / rel).read_text(encoding='utf-8'), kind)
     before = entries(old, kind)
-    added = sorted(now - before)
+    added = sorted(now - before - set(approved))
     if added:
         return 'fail', (f'{rel} has {len(added)} entr{"y" if len(added) == 1 else "ies"} the merge-base does not; '
                         f'the allowlist may only shrink. new: {added}')
@@ -108,7 +112,7 @@ def test_count_entries_counts_every_list():
 
 @pytest.mark.Trait('Task', 'T304')
 def test_allowlist_never_grows():
-    status, msg = growth_verdict(TOML_REL, 'toml', REPO)
+    status, msg = growth_verdict(TOML_REL, 'toml', REPO, approved=APPROVED.get(TOML_REL, {}))
     if status == 'skip':
         pytest.skip(msg)
     assert status == 'ok', msg
@@ -283,3 +287,37 @@ def test_a_new_file_at_a_resolvable_base_still_skips_in_ci(repo, monkeypatch, ci
     (repo / 'allow.toml').write_text(_toml_named(['a -> b']))
     status, msg = growth_verdict('allow.toml', 'toml', repo)
     assert status == 'skip' and 'introduction' in msg
+
+
+@pytest.mark.Trait('Task', 'T401')
+def test_an_approved_addition_passes_and_an_unapproved_one_fails(repo, monkeypatch, ci_off):
+    rel = 'allow.toml'
+    base = '[[tool.importlinter.contracts]]\nname = "x"\nignore_imports = ["a -> b"]\n'
+    head = '[[tool.importlinter.contracts]]\nname = "x"\nignore_imports = ["a -> b", "c -> d"]\n'
+    (repo / rel).write_text(base)
+    _git(repo, 'add', '.')
+    _git(repo, 'commit', '-m', 'base')
+    _git(repo, 'branch', 'base')
+    monkeypatch.setenv('ARCH_BASE_REF', 'base')
+    (repo / rel).write_text(head)
+    status, msg = growth_verdict(rel, 'toml', repo)
+    assert status == 'fail' and 'c -> d' in msg
+    assert growth_verdict(rel, 'toml', repo, approved={'x: c -> d'})[0] == 'ok'
+    # an approval for another entry does not cover this one
+    assert growth_verdict(rel, 'toml', repo, approved={'x: e -> f'})[0] == 'fail'
+
+
+@pytest.mark.Trait('Task', 'T401')
+@pytest.mark.parametrize('rel,kind', [(TOML_REL, 'toml'), ('backend/tests/architecture/allowlist.json', 'json')])
+def test_every_approval_is_still_in_its_file(rel, kind):
+    from backend.tests.architecture.approved_additions import APPROVED
+    current = entries((REPO / rel).read_text(encoding='utf-8'), kind)
+    gone = sorted(set(APPROVED.get(rel, {})) - current)
+    assert not gone, f'{rel}: approved entries no longer in the file, delete this approval: {gone}'
+
+
+@pytest.mark.Trait('Task', 'T401')
+def test_approvals_have_a_reason():
+    from backend.tests.architecture.approved_additions import APPROVED
+    short = [(rel, k) for rel, d in APPROVED.items() for k, reason in d.items() if len(reason.strip()) < 20]
+    assert not short, f'every approval needs a reason of at least 20 characters: {short}'

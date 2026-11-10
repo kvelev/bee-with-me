@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from backend.tests.architecture import module_map, rules, sql_scan
+from backend.tests.architecture.approved_additions import APPROVED
 from backend.tests.architecture.test_ratchet import entries, growth_verdict
 
 REPO = Path(__file__).resolve().parents[3]
@@ -120,7 +121,7 @@ def test_until_follows_the_table_owner_and_the_override():
 
 @pytest.mark.Trait('Task', 'T305')
 def test_sql_allowlist_never_grows():
-    status, msg = growth_verdict(ALLOWLIST_REL, 'json', REPO)
+    status, msg = growth_verdict(ALLOWLIST_REL, 'json', REPO, approved=APPROVED.get(ALLOWLIST_REL, {}))
     if status == 'skip':
         pytest.skip(msg)
     assert status == 'ok', msg
