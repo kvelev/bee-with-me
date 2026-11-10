@@ -129,12 +129,19 @@ def start_module_tasks(modules: Iterable[ModuleManifest],
     tasks: list[asyncio.Task] = []
     for m in modules:
         for fn in m.tasks:
-            name = f'{m.name}.{fn.__name__}'
+            name = f'{m.name}.{_callable_name(fn)}'
             task = asyncio.create_task(fn(), name=name)
             # functools.partial, not a lambda: a lambda in the loop would see the last name for every task
             task.add_done_callback(functools.partial(_report_done, on_done, name))
             tasks.append(task)
     return tasks
+
+
+def _callable_name(fn: Callable) -> str:
+    """Name of a task callable: a `functools.partial` has none of its own, an object with `__call__` has the class's."""
+    while isinstance(fn, functools.partial):
+        fn = fn.func
+    return getattr(fn, '__name__', None) or type(fn).__name__
 
 
 def _report_done(on_done: Callable[[asyncio.Task, str], None], name: str, task: asyncio.Task) -> None:

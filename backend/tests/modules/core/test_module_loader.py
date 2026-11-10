@@ -198,3 +198,24 @@ def test_validate_manifest_refuses_a_malformed_public_route(public):
 def test_a_module_route_needs_the_auth_argument():
     with pytest.raises(TypeError):
         include_module_routers(FastAPI(), [ModuleManifest(name='alpha', router=_two_routes())])   # type: ignore[call-arg]
+
+
+@pytest.mark.Trait("Bug", "B94")
+@pytest.mark.asyncio
+async def test_start_module_tasks_names_a_task_without_a_name_attribute():
+    import functools
+
+    async def work(n):
+        return n
+
+    class Job:
+        async def __call__(self):
+            return None
+
+    on_done = Mock()
+    tasks = start_module_tasks(
+        [ModuleManifest(name='alpha', tasks=(functools.partial(work, 1), Job()))], on_done)   # type: ignore[arg-type]
+    await asyncio.gather(*tasks)
+    await asyncio.sleep(0)
+    assert [t.get_name() for t in tasks] == ['alpha.work', 'alpha.Job']
+    assert [c.args[1] for c in on_done.call_args_list] == ['alpha.work', 'alpha.Job']
