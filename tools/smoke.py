@@ -472,6 +472,14 @@ class Smoke:
             expect_status(status, 200, f'GET {path}')
         return '3 endpoints'
 
+    def s_settings(self):
+        status, body = http_request('GET', f"{self.ctx['api']}/api/settings", token=self.ctx['token'])
+        expect_status(status, 200, 'GET /api/settings')
+        data = json.loads(body)
+        if not isinstance(data, dict) or 'hq_radius_m' not in data:
+            raise StepFail('GET /api/settings: no settings row (key hq_radius_m missing)')
+        return 'settings row readable'
+
     def s_websocket(self):
         api, token, port = self.ctx['api'], self.ctx['token'], self.ctx['api_port']
         sn = 900000 + secrets.randbelow(90000)
@@ -523,6 +531,7 @@ class Smoke:
             self.step('c. admin login + token refresh', self.s_login, needs=('a. migrations + backend start',))
             self.step('d. live / users / devices = 200', self.s_reads, needs=('c. admin login + token refresh',))
             self.step('e. simulated frame reaches /ws', self.s_websocket, needs=('c. admin login + token refresh',))
+            self.step('g. GET /api/settings = 200', self.s_settings, needs=('c. admin login + token refresh',))
             self.step('f. frontend image serves the SPA', self.s_frontend, needs=('build frontend image',))
         finally:
             started = time.monotonic()
