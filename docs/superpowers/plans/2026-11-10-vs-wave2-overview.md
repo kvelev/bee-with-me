@@ -13,7 +13,7 @@
 **Plans:**
 1. [`2026-11-10-vs-step2-fire.md`](2026-11-10-vs-step2-fire.md): the `fire` module on both sides, the route-type guard of the loader (B96), the direction ratchet, the panel contribution point (T500 to T510, 11 tasks).
 2. [`2026-11-10-vs-step2-weather.md`](2026-11-10-vs-step2-weather.md): the `weather` module on both sides; the tile layer stays in the facade (T520 to T522, 3 tasks).
-3. [`2026-11-10-vs-step2-tracking-sos.md`](2026-11-10-vs-step2-tracking-sos.md): `tracking` and `sos` on both sides without the gateway, the live dispatch, the thin payload (T540 to T549, 10 tasks, of which T542, T548 and T549 are detachable).
+3. [`2026-11-10-vs-step2-tracking-sos.md`](2026-11-10-vs-step2-tracking-sos.md): `tracking` and `sos` on both sides without the gateway, the live dispatch, the thin payload (T540 to T549, 10 tasks, of which T542 with T547, and T548 and T549, are detachable).
 
 **Base:** `upstream/develop` at `7f874bc` (PR #125, T460 merged, checked on 2026-11-10 with `git fetch upstream; git log --oneline upstream/develop`).
 
@@ -30,7 +30,7 @@
 1. Two sessions edit `MapView.vue` or `useMap.js` at the same time: a hand merge of a 1400-line file. The map chain of section 2 forbids it; nine tasks of the wave are links of that one chain.
 2. A branch that is green alone and red after another plan's PR is merged (module list, dictionaries, `registry.py`, `importlinter.toml`, `useWebSocket.js`): every later branch merges `upstream/develop` and reruns its DoD before review; T590 checks the sum.
 3. The allowlists move as the plans say and in no other way. After the wave: import allowlist 35 lines (45 before: 22 deleted in T502, T503, T520 and T540; 12 added, all alias or shim edges `until step 5`, all approved); `sql_writes` 8 rows with T542, 11 without it (21 before); `module_edges` 12 rows (new ratchet); frontend allowlist still empty. Any other number is a finding.
-4. The thin payload goes out in two steps and the order matters: the frontend that handles both shapes (T546) is on bee-dev before the backend that sends the thin shape (T547) is merged.
+4. The thin payload goes out in two steps and the order matters: the frontend that handles both shapes (T546) is on bee-dev before the backend that sends the thin shape (T547) is merged, and T547 follows T542: the thin payload counts only when the real gateway path sends it.
 5. bee-dev is shared by human testers and its only data source is the simulation: a red smoke step e (`simulated frame reaches /ws`) or a failed manual map check stops the PR, not only its merge.
 
 ---
@@ -45,8 +45,7 @@ flowchart LR
     T500 --> T540
     T501 --> T540
     T503 --> T541
-    T540 --> T541 --> T542
-    T541 --> T547
+    T540 --> T541 --> T542 --> T547
     T580 --> T504 --> T506 --> T507 --> T508 --> T522 --> T545
     T505 --> T506
     T508 --> T509
@@ -58,10 +57,10 @@ flowchart LR
     T544 --> T546 --> T547
     T545 --> T548 --> T549
     T508 --> T548
-    T503 & T509 & T510 & T520 & T522 & T545 & T547 & T581 & T582 --> T590
+    T503 & T509 & T510 & T520 & T522 & T541 & T545 & T546 & T581 & T582 --> T590
 ```
 
-Starting points with no dependency: T500, T501, T505, T521, T543, T580, T581, T582. Detachable ends: T542 (hardware decision), T548 and T549 (maintainer decision); T590 does not wait for them.
+Starting points with no dependency: T500, T501, T505, T521, T543, T580, T581, T582. Detachable ends: T542 (hardware decision) and T547 behind it (it also waits for the device maker's answer), T548 and T549 (maintainer decision); T590 does not wait for them and reports their state.
 
 ## 2. Chains (one session at a time per chain)
 
@@ -74,23 +73,25 @@ Starting points with no dependency: T500, T501, T505, T521, T543, T580, T581, T5
 | backend assembly | `backend/main.py`, `backend/modules/registry.py`, `backend/tests/architecture/importlinter.toml`, `approved_additions.py`, `allowlist.json` | T502, T503, T520 (any time after T500), T540, T541, T542, T547 |
 | caller block | `backend/routers/devices.py:206-239` | T503, then T541 |
 | smoke | `tools/smoke.py`, `backend/tests/test_smoke_script.py`, `docs/SMOKE.md` | T502 (step h), T520 (step i), T540 (step j): adjacent lines, keep all |
-| manifest contract | `frontend/src/platform/manifest.js`, `platform/map-shell/contributions.js` | T504 (`panels`, `toggle`), T543 (`live`), T548 (`actions`) |
+| manifest contract | `frontend/src/platform/manifest.js`, `platform/map-shell/contributions.js` | T543 (`live`, stage A), T504 (`panels`, `toggle`, stage B), T548 (`actions`): different optional fields, the later branch merges `upstream/develop` |
 
 ## 3. Merge order and parallel sessions
 
 | Stage | Merged in this stage | Sessions at the same time | Why the stage is safe |
 |-------|----------------------|---------------------------|-----------------------|
-| A | T500, T501, T543, T580, T505, T581, T582 | 7 possible, 4 recommended | `core/modules.py`; architecture tests; `useWebSocket.js`; the map chain's first link; fire store, libs and banner; three module views; two state tests: no file in common |
+| A | T500, T501, T543, T580, T505, T581, T582 | 7 possible, 4 recommended | `core/modules.py`; architecture tests; `useWebSocket.js`; the map chain's first link; fire store, libs and banner; three module views; two state tests. One file is shared: T500 and T501 both edit `backend/tests/architecture/rules.py` (different functions; the later branch merges `upstream/develop` and keeps both) |
 | B | T502, T520, T504, T521, T510 | 5 (4 recommended) | T502 and T520 share only the backend assembly files (one line each, keep both); T504 is the map chain; T521 the assembly chain; T510 the live chain |
 | C | T503, T506, T544 | 3 | backend chain; map chain; assembly, live and banner chains (T505, T510, T521 are merged) |
 | D | T540, T507, T546 | 3 | backend chain; map chain; the two new stores |
 | E | T541, T508 | 2 | backend chain (after T503 for `devices.py`); map chain |
-| F | T509, T522, T547, and T542 when it is released | 4 | `SettingsView.vue`; map chain; payload builders (T546 is deployed); `reader.py` alone |
-| G | T545 | 1 | map chain |
+| F | T509, T522, and T542 when it is released | 3 | `SettingsView.vue`; map chain; `reader.py` and the two APIs |
+| G | T545, and T547 when T542 is merged, T546 is on bee-dev and the device maker has answered | 2 | map chain; payload builders and `reader.py` |
 | H | T548, then T549 (only if approved) | 1 | map chain |
 | I | T590 | 1 | closing check on `develop` |
 
 **How many sessions.** Four at the same time is the recommendation: one `frontend-designer` on the map chain (never two), one implementer on the backend chain, one session on the assembly and live chains, and one floating session for the tasks outside every chain (T500, T501, T520, T581, T582, T546, T509). Six is the ceiling the file ownership allows (stage A). The limit is the gates, not the files: every PR needs a smoke run (about 2 minutes, one container engine per machine), a breaker run, for 8 of the 28 tasks a security review, for 12 a manual look at the page, and each merge redeploys bee-dev.
+
+**Rollback of the wave.** There is no schema or data change in any task, so every PR is undone with `git revert -m 1 <merge commit>`, newest first inside a chain; the per-plan order is in section 4 of each plan. The guards (T500, T501, T582) and the leftovers (T580, T581) stay.
 
 **The critical path** is the map chain: seven PRs in sequence (nine with T548 and T549), each waiting for the one before it to be merged. Everything else finishes earlier. If the wave has to be shortened, T522 (weather UI) and T545 (toast) are the links that can wait for a later wave without leaving a legacy entry marked `until step 2` behind.
 
@@ -101,6 +102,8 @@ Starting points with no dependency: T500, T501, T505, T521, T543, T580, T581, T5
 | `backend/modules/registry.py` | T502, T520, T540 | one import and one name each | keep all; tuple order `fire, settings, tracking, sos, weather` (fire stays first: `test_fire_routes_keep_their_place`) |
 | `backend/main.py` | T502, T503, T520, T540 | each deletes one name of the `from .routers import` line and one `include_router` line; T503 also edits `lifespan` | keep every deletion; rerun `test_main_names_no_module_router` |
 | `backend/tests/architecture/importlinter.toml` | T502, T503, T520, T540, T541 | new contracts at the end; every new module is appended to the `source_modules` of the others | take both sides, then `regen.py --remove-stale`; `check_boundary_contracts` names a missing source |
+| `backend/tests/architecture/rules.py` | T500 (`effective_routes`, `check_module_route_auth`), T501 (`module_edge_violations`), T502 (`_ignore_import_problems`) | different functions | keep all |
+| `backend/modules/tracking/api.py`, `backend/modules/sos/api.py`, `backend/hardware_reader/reader.py` | T541, T542, T547 | the same functions | strictly in that order, one at a time |
 | `backend/tests/architecture/allowlist.json`, `approved_additions.py` | T501, T503, T541, T542 | rows of different keys | keep both; the exact-match tests name a stale or missing row |
 | `backend/routers/devices.py`, `users.py` | T503 (fire imports, the lock block), T541 (the three DELETEs, the three UPDATEs) | adjacent lines in `delete_device_permanent` | T541 after T503 |
 | `frontend/src/modules/index.js` | T505, T521, T544 | adjacent lines in the list | keep all, alphabetical: `devices, fire, people, settings, sos, teams, tracking, weather` |
@@ -123,22 +126,22 @@ Starting points with no dependency: T500, T501, T505, T521, T543, T580, T581, T5
 | hardware validation | T542 carries the hardware note; whether it is run on a real gateway before the merge is the owner's and the device maker's decision (plan 3, section 6, item 2) |
 | manual look at the page | T504 to T509, T522, T545, T548, T549, T580, T581 |
 
-The plans themselves were reviewed by `task-reviewer` and `breaker` before hand-over (verdicts in the PR of the plan branch).
+The plans themselves were reviewed by `task-reviewer` and `breaker` before hand-over (verdicts in the PR of the plan branch). Their first round found, among others, that eight alias edges would be refused by the boundary check, that a panel imported by a manifest may not import OpenLayers, and that the thin payload is worth nothing without the reader path; the plans carry the corrections.
 
 ## 6. State after the wave
 
 - Backend: `backend/modules/{fire,settings,sos,tracking,weather}/`; `main.py` mounts no router of these five and starts no fire task; `backend/fire/*`, `backend/routers/{fire,weather}.py` are aliases and `backend/routers/locations.py` is a named shim, all until step 5; every writer of `location_events`, `repeater_events`, `sos_alerts` and `fire_alerts` outside its module goes through that module's `api.py` (the retention DELETE in `main.py` is the one exception, `until: 5`); `allowlist.json` has `completed_step: 2`.
-- Live channel: `location_update` and `sos_alert` carry ids and position data only (R-22); `fire_alert*` is unchanged.
+- Live channel: with T542 and T547 merged, `location_update` and `sos_alert` carry ids and position data only on every path (R-22). Without them the payloads are today's and R-22 is open; the frontend handles both shapes either way (T546). `fire_alert*` is unchanged.
 - Frontend: `src/modules/{devices,fire,people,settings,sos,teams,tracking,weather}/`; no legacy banner, popup, context-menu or map entry is left; live messages are dispatched to manifest handlers; `MapView.vue` holds the shell wiring, the toolbar, HQ and repeater placement, measuring and (unless T548 ran) the tracker panel; `useMap.js` holds the basemaps, the graticule, measuring, the repeater layer, the weather tile layer and (unless T549 ran) the tracker layers; `architecture.allowlist.json` is empty with `completed_step: 2`.
 - Not done on purpose: the `gateway` module, the hardware path fix (R-06) and the rest of step 3; the backends of `people`, `teams`, `devices` and the outbox (step 4); `identity`, `reporting`, `maps`, `simulation`, the weather tile layer and the removal of the re-exports (step 5).
 
 ## 7. Open questions (collected from the three plans)
 
 1. **To the owner and the device maker:** T542 edits `hardware_reader/reader.py` without touching decode, duplicate filter or ACK. Validate on a real gateway before the merge, or let it wait for the gateway step? (plan 3, item 2)
-2. **To the device maker:** does anything outside the browser read names, phones, photo paths or teams from `location_update` or `sos_alert`? T547 waits for the answer. (plan 3, item 3)
+2. **To the device maker:** does anything outside the browser read names, phones, photo paths or teams from `location_update` or `sos_alert`? T547 waits for the answer and for T542. (plan 3, item 3)
 3. **To the maintainer:** the tracker panel (T548) and the tracker layers (T549) in this wave, or with the gateway step? (plan 3, item 1)
 4. **To the maintainer:** a manifest may import its store and its alarm banner statically, so the entry chunk grows; keep that, or add a second entry file per module? (plan 1, item 2)
-5. **To the maintainer:** nine alias files for `backend/fire/*` until step 5, or import-path edits in 25 test files now? (plan 1, item 1)
+5. **To the maintainer:** nine alias files for `backend/fire/*` until step 5, or import-path edits in 24 test files now? (plan 1, item 1)
 6. **To the owner:** the reverse calls into `fire`, `tracking` and `sos` from `settings`, `users`, `devices` (8 rows, `until: 4`) and from the simulation (4 rows, `until: 3`) are named debt in `module_edges`. Accept, or bring the events of step 4 forward? (plans 1 and 3)
 7. **To the architecture owner:** the text proposals listed in each plan (modular-monolith.md 3.1, 3.2, 4.1, 4.2, 5.1, 7, 8; `api-contracts.md`), and the two internet URLs the weather panel uses from the browser (TP-01). (plan 2, item 3)
 8. **To the owner (carried from wave 1):** `fetch-depth: 0` in `ci.yml` so the growth tests run on PRs; `README.md` file tree; the `main` to `develop` reconcile (B62 to B67).
@@ -202,17 +205,17 @@ dod:
 **Files:**
 - Modify: `backend/tests/modules/core/test_wave1_state.py` (`test_main_names_no_module_router`)
 - Modify: `frontend/src/modules/wave1.test.js` (two cases)
-- Create: `frontend/src/modules/olScan.js` (the scanner that `modules.test.js` holds today, moved so both files use it), and `frontend/src/modules/modules.test.js` imports it from there
+- Create: `frontend/src/modules/olScan.helper.js` (the scanner that `modules.test.js` holds today, moved so both test files use it; it reads the disk with `fs` and is imported by tests only: step 3 checks that no dependency-cruiser rule and no case of `architecture.test.js` objects to the file, and that the build does not include it), and `frontend/src/modules/modules.test.js` imports it from there
 
 **The weaknesses** (breaker notes on T460): the backend check matches the literal `settings_router` only, so a module router mounted by hand under another name passes; the frontend OpenLayers check of `wave1.test.js` looks for `from 'ol` in `modules/*/index.js` only and misses a side-effect import and everything a manifest imports; the route check depends on route names and a matched depth of 2.
 
 **Interfaces:**
 - Produces in `test_wave1_state.py`: `test_main_names_no_module_router` parses `backend/main.py` with `ast`, collects every `app.include_router(<name>.router)` call and every name imported by `from .routers import ...`, imports `backend.routers.<name>` for each and fails when the module it gets is a module under `backend.modules` (an alias) or re-exports the `router` of one (the named shim of `locations`): the message names the line. It still passes for the legacy routers.
-- Produces in `olScan.js`: `staticOlChain(file) -> string[] | null` (the chain of static imports from `file` to an `ol` module; side-effect imports count; a dynamic `import()` does not), as `modules.test.js` has it today.
+- Produces in `olScan.helper.js`: `staticOlChain(file) -> string[] | null` (the chain of static imports from `file` to an `ol` module; side-effect imports count; a dynamic `import()` does not), as `modules.test.js` has it today.
 - Produces in `wave1.test.js`: `no manifest imports OpenLayers` uses `staticOlChain` for every manifest; `the four pages are served by module routes` checks, for each path, that the last matched record has the module's route name and that some matched record is the layout route (compared by its `component`), without a fixed depth.
 
-- [ ] **Step 1: Write the failing tests**, tagged `T582`. Backend, in the same file: `test_the_router_check_bites_on_an_alias_and_on_a_shim` (the check, called as a function on a source text `from .routers import settings as s\napp.include_router(s.router)`, returns one problem; on `from .routers import auth\napp.include_router(auth.router)` none). Frontend, in `wave1.test.js`: `the OpenLayers scan sees a side-effect import and an import behind a helper` (two fixture manifests in a temporary folder: `import 'ol/ol.css'` and a manifest that imports a helper that imports `ol/Map`: both give a chain; a manifest with `() => import('ol/Map')` gives `null`).
-- [ ] **Step 2: Run, expect FAIL.** Run: `cd bee-with-me; .venv\Scripts\python -m pytest backend\tests\modules\core\test_wave1_state.py -q` and `cd bee-with-me\frontend; npm test -- src/modules/wave1.test.js`. Expected: FAIL (the function does not exist; `Failed to resolve import "./olScan.js"`).
+- [ ] **Step 1: Write the failing tests**, tagged `T582`. Backend, in the same file: `test_the_router_check_bites_on_an_alias_and_on_a_shim` (the check, called as a function on a source text `from .routers import settings as s\napp.include_router(s.router)`, returns one problem; on `from .routers import auth\napp.include_router(auth.router)` none). Frontend, in `wave1.test.js`: `the OpenLayers scan sees a side-effect import and an import behind a helper` (two fixture manifests in a temporary folder: `import 'ol/ol.css'` and a manifest that imports a helper that imports `ol/Map`: both give a chain; a manifest with `() => import('ol/Map')` gives `null`; a manifest that imports a `.vue` file whose script imports `ol/Overlay` gives a chain, which is the case the panels of wave 2 depend on).
+- [ ] **Step 2: Run, expect FAIL.** Run: `cd bee-with-me; .venv\Scripts\python -m pytest backend\tests\modules\core\test_wave1_state.py -q` and `cd bee-with-me\frontend; npm test -- src/modules/wave1.test.js`. Expected: FAIL (the function does not exist; `Failed to resolve import "./olScan.helper.js"`).
 - [ ] **Step 3: Implement** the three hardenings; `modules.test.js` changes only its import of the scanner.
 - [ ] **Step 4: Run.** Run: `cd bee-with-me; .venv\Scripts\python -m pytest backend\tests\modules\core backend\tests\architecture -q`. Expected: PASS. Run: `cd bee-with-me\frontend; npm test -- src/modules src/architecture.test.js`. Expected: PASS.
 - [ ] **Step 5: Commit** `test(architecture): T582 the wave 1 state checks no longer depend on a literal name, a file pattern or a route depth`.
@@ -231,11 +234,11 @@ dod:
 - Modify: `frontend/src/architecture.allowlist.json` (`completed_step`: 2)
 
 **Interfaces:**
-- Consumes: the merged result of every task of the three plans except the detachable ones (T542, T548, T549), whose state is reported, not asserted.
-- Produces: two test files that pin what wave 2 reached, with lower bounds and membership only, so step 4 adds modules and removes allowlist rows without editing them.
+- Consumes: the merged result of every task of the three plans except the detachable ones (T542, T547, T548, T549), whose state is reported, not asserted.
+- Produces: two test files that pin what wave 2 reached without the detachable tasks (the thin payload is pinned by T547's own tests on both paths, not here), with lower bounds and membership only, so step 4 adds modules and removes allowlist rows without editing them.
 
-- [ ] **Step 1: Merge check.** On a branch off the current `upstream/develop`, confirm with `git log --oneline upstream/develop` that the merge commits of T500 to T510, T520 to T522, T540, T541, T543 to T547 and T580 to T582 are present; a missing one stops this task and is reported. Note in the PR body whether T542, T548 and T549 are merged.
-- [ ] **Step 2: Write the tests.** Backend, tagged `T590`: `test_fire_tracking_sos_and_weather_are_modules` (each name is in `[m.name for m in backend.modules.MODULES]`; `completed_step >= 2`); `test_main_names_none_of_them` (the text of `backend/main.py` has none of `fire_poller`, `fire_alarm`, `fire.router`, `locations.router`, `weather.router`); `test_the_old_fire_paths_are_aliases` (each of the nine old dotted paths imports as a module whose `__name__` starts with `backend.modules.fire`); `test_no_writer_outside_the_owning_module` (`allowlist.json` has no `sql_writes` row for `routers/test.py`, `routers/users.py`, `routers/devices.py`, and none for `simulation.py` on `location_events` or `sos_alerts`); `test_reverse_edges_are_named` (every `module_edges` row has `until` 3 or 4 and an approval); `test_live_messages_of_tracking_and_sos_are_thin` (the payload builders return no key of `tracking.api.PERSONAL_KEYS`); `test_no_module_router_holds_a_mount` (no route of any manifest router is a `Mount`, unless it is in `public_routes`). Frontend, each `[T590]`: `fire, sos, tracking and weather are modules`; `the banners are SOS then the fire alarm and no legacy list exists` (`collectBanners(MODULES).map(b => b.id)` equals `['sos', 'fire-alarm']`; `components/legacyBanners.js` and `composables/legacyLive.js` do not exist); `the fire layers, popup and menu item come from the manifest` (ids `fire-burnt`, `fire-zones`, `fire-hotspots`; `popupFor(collectPopups(MODULES), 'hotspot')` is not null; `collectContextMenu(MODULES)` has `fire-report-here`); `no source file still says until step 2` (no file under `src/` outside tests contains the text); `every live message type has a manifest handler` (the eight types of today are keys of `collectLiveHandlers(MODULES)`); `no manifest reaches OpenLayers` (the scanner of T582); `the frontend step is recorded` (`completed_step >= 2`).
+- [ ] **Step 1: Merge check.** On a branch off the current `upstream/develop`, confirm with `git log --oneline upstream/develop` that the merge commits of T500 to T510, T520 to T522, T540, T541, T543 to T546 and T580 to T582 are present; a missing one stops this task and is reported. Note in the PR body whether T542, T547, T548 and T549 are merged, and with T547 missing write the line "R-22 open: the live channel still carries names".
+- [ ] **Step 2: Write the tests.** Backend, tagged `T590`: `test_fire_tracking_sos_and_weather_are_modules` (each name is in `[m.name for m in backend.modules.MODULES]`; `completed_step >= 2`); `test_main_names_none_of_them` (the text of `backend/main.py` has none of `fire_poller`, `fire_alarm`, `fire.router`, `locations.router`, `weather.router`); `test_the_old_fire_paths_are_aliases` (each of the nine old dotted paths imports as a module whose `__name__` starts with `backend.modules.fire`); `test_no_writer_outside_the_owning_module` (`allowlist.json` has no `sql_writes` row for `routers/test.py`, `routers/users.py`, `routers/devices.py`, and none for `simulation.py` on `location_events` or `sos_alerts`); `test_reverse_edges_are_named` (every `module_edges` row has `until` 3 or 4 and an approval); `test_no_module_router_holds_a_mount` (no route of any manifest router is a `Mount`, unless it is in `public_routes`). Frontend, each `[T590]`: `fire, sos, tracking and weather are modules`; `the banners are SOS then the fire alarm and no legacy list exists` (`collectBanners(MODULES).map(b => b.id)` equals `['sos', 'fire-alarm']`; `components/legacyBanners.js` and `composables/legacyLive.js` do not exist); `the fire layers, popup and menu item come from the manifest` (ids `fire-burnt`, `fire-zones`, `fire-hotspots`; `popupFor(collectPopups(MODULES), 'hotspot')` is not null; `collectContextMenu(MODULES)` has `fire-report-here`); `no source file still says until step 2` (no file under `src/` outside tests contains the text); `every live message type has a manifest handler` (the eight types of today are keys of `collectLiveHandlers(MODULES)`); `no manifest reaches OpenLayers` (the scanner of T582); `the frontend step is recorded` (`completed_step >= 2`).
 - [ ] **Step 3: Run the full suites, the build and the smoke.** Run: `cd bee-with-me; .venv\Scripts\python -m pytest backend\tests -q`. Expected: PASS. Run: `cd bee-with-me\frontend; npm test; npm run build`. Expected: PASS and a clean build. Then `python tools/smoke.py`: every step PASS, including e, g, h, i and j. Write into the PR body: the entry chunk size (base 167,61 kB), the three allowlist counts of Review Focus item 3, and the open questions of section 7 that are still open.
 - [ ] **Step 4: Commit** `test(architecture): T590 pin the state after wave 2`.
 
