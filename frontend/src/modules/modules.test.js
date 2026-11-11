@@ -12,47 +12,12 @@ import snapshot from '../i18n/keys.snapshot.json'
 import { NAV_ITEMS } from '../nav-config.js'
 import { checkModules, leafKeys, messageCollisions } from '../platform/registry.js'
 import { MODULES } from './index.js'
+import { staticOlChain } from './olScan.helper.js'
 
 const SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const FRONTEND = path.resolve(SRC, '..')
 const CONFIG = path.join(FRONTEND, '.dependency-cruiser.cjs')
 const SLOW = 120_000
-
-// Static `import ... from 'x'`, `export ... from 'x'` and `import 'x'`; a lazy `import('x')` is not matched.
-// A statement may follow another on the same line (`;` or `}` before it); comments are cut first, so a quote
-// inside a comment between the braces cannot end the statement early (B92).
-const STATIC_IMPORT = /(?:^|[\s;}])(?:import|export)\s*(?:[^'"();]*?\bfrom\s*)?['"]([^'"]+)['"]/g
-const withoutComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|\s)\/\/.*$/gm, '$1')
-const isOpenLayers = (spec) => spec === 'ol' || spec.startsWith('ol/')
-
-function resolveRelative(from, spec) {
-  const base = path.resolve(path.dirname(from), spec)
-  return [base, `${base}.js`, `${base}.vue`, path.join(base, 'index.js')].find((c) => fs.existsSync(c) && fs.statSync(c).isFile())
-}
-
-// The chain of file names from `entry` to an OpenLayers import through static imports only, or null.
-function staticOlChain(entry) {
-  const parent = new Map([[entry, null]])
-  const queue = [entry]
-  while (queue.length) {
-    const file = queue.shift()
-    const text = withoutComments(fs.readFileSync(file, 'utf8'))
-    for (const [, spec] of text.matchAll(STATIC_IMPORT)) {
-      if (isOpenLayers(spec)) {
-        const chain = [spec]
-        for (let f = file; f !== null; f = parent.get(f)) chain.unshift(path.basename(f))
-        return chain
-      }
-      if (!spec.startsWith('.')) continue
-      const next = resolveRelative(file, spec)
-      if (next && !parent.has(next)) {
-        parent.set(next, file)
-        queue.push(next)
-      }
-    }
-  }
-  return null
-}
 
 // Every module's own dictionary files, by language (same glob the i18n index uses).
 const dictionaries = (lang) => Object.entries(import.meta.glob('./*/i18n/*.js', { eager: true, import: 'default' }))
