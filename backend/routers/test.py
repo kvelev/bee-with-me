@@ -79,17 +79,17 @@ async def record_position(conn: asyncpg.Connection, device, lat: float, lon: flo
     if sos_active:
         await sos_api.open_simulated_alert(conn, device['id'], device['user_id'], now)
 
-    user_row = await tracking_api.person_of(conn, device['user_id'])
-    if user_row and not user_row['is_active']:
+    active, personal = await tracking_api.person_for_live(conn, device['user_id'])
+    if not active:
         raise HTTPException(status_code=400, detail='User is inactive')
 
-    groups = await tracking_api.groups_of(conn, device['user_id'])
-
     payload = tracking_api.location_update_payload(
-        device_id=device['id'], user_id=device['user_id'], roster=user_row, groups=groups, mgrs=mgrs_str,
-        latitude=lat, longitude=lon, altitude_m=alt, speed_knots=speed, course_deg=None, battery_voltage=bat,
-        gnss_satellites=sats, gnss_valid=gnss_valid, sos_active=sos_active, repeater_mode=False,
-        recorded_at=now, received_at=now,
+        tracking_api.PositionFix(
+            device_id=device['id'], user_id=device['user_id'], mgrs=mgrs_str,
+            latitude=lat, longitude=lon, altitude_m=alt, speed_knots=speed, course_deg=None, battery_voltage=bat,
+            gnss_satellites=sats, gnss_valid=gnss_valid, sos_active=sos_active, repeater_mode=False,
+            recorded_at=now, received_at=now),
+        personal,
     )
     # The simulation has never sent course_deg (the reader's message has it): the difference is kept.
     del payload['course_deg']

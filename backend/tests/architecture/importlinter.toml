@@ -247,6 +247,7 @@ source_modules = [
     "backend.modules.tracking",
 ]
 forbidden_modules = [
+    "backend.modules.sos.domain",
     "backend.modules.sos.http",
     "backend.modules.sos.infrastructure",
     "backend.modules.sos.module",

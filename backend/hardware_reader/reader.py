@@ -117,18 +117,18 @@ async def _handle_bee(frame: BeeFrame, conn: asyncpg.Connection) -> None:
     # This matches what GET /api/locations/live computes, so both paths agree.
     sos_open = await sos_api.has_open_alert(conn, device['id'])
 
-    user_row = await tracking_api.person_of(conn, device['user_id'])
-    if user_row and not user_row['is_active']:
+    active, personal = await tracking_api.person_for_live(conn, device['user_id'])
+    if not active:
         return
 
-    groups = await tracking_api.groups_of(conn, device['user_id'])
-
     await tracking_api.publish_position(conn, tracking_api.location_update_payload(
-        device_id=device['id'], user_id=device['user_id'], roster=user_row, groups=groups,
-        mgrs=mgrs, latitude=latitude, longitude=longitude, altitude_m=frame.altitude_m,
-        speed_knots=frame.speed_knots, course_deg=frame.course_deg, battery_voltage=frame.battery_voltage,
-        gnss_satellites=frame.gnss_satellites, gnss_valid=frame.gnss_valid, sos_active=sos_open,
-        repeater_mode=frame.repeater_mode, recorded_at=frame.recorded_at, received_at=received_at,
+        tracking_api.PositionFix(
+            device_id=device['id'], user_id=device['user_id'],
+            mgrs=mgrs, latitude=latitude, longitude=longitude, altitude_m=frame.altitude_m,
+            speed_knots=frame.speed_knots, course_deg=frame.course_deg, battery_voltage=frame.battery_voltage,
+            gnss_satellites=frame.gnss_satellites, gnss_valid=frame.gnss_valid, sos_active=sos_open,
+            repeater_mode=frame.repeater_mode, recorded_at=frame.recorded_at, received_at=received_at),
+        personal,
     ))
 
 

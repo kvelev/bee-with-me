@@ -5,6 +5,8 @@ from uuid import UUID
 
 import asyncpg
 
+from ..domain.payload import PersonalDetails
+
 
 async def fetch_live(conn: asyncpg.Connection, max_age_hours) -> list[asyncpg.Record]:
     return await conn.fetch("""
@@ -95,6 +97,12 @@ async def person_of(conn: asyncpg.Connection, user_id) -> asyncpg.Record | None:
     )
 
 
+async def is_person_active(conn: asyncpg.Connection, user_id) -> bool | None:
+    """The thin mode's only read of `users` on the live path; None when there is no such person."""
+    row = await conn.fetchrow('SELECT is_active FROM users WHERE id = $1', user_id)
+    return None if row is None else row['is_active']
+
+
 async def groups_of(conn: asyncpg.Connection, user_id) -> list[dict]:
     rows = await conn.fetch("""
         SELECT g.id, g.name, g.color, ug.is_leader
@@ -106,6 +114,22 @@ async def groups_of(conn: asyncpg.Connection, user_id) -> list[dict]:
         {'id': str(r['id']), 'name': r['name'], 'color': r['color'], 'is_leader': r['is_leader']}
         for r in rows
     ]
+
+
+async def person_for_live(conn: asyncpg.Connection, user_id, with_details: bool):
+    """(active, PersonalDetails | None) for the live message; `active` is False for an inactive person.
+
+    with_details=True runs today's two reads (`person_of`, then `groups_of` only for an active person); False runs
+    one `is_person_active` and builds no personal part."""
+    if not with_details:
+        return await is_person_active(conn, user_id) is not False, None
+    row = await person_of(conn, user_id)
+    if row and not row['is_active']:
+        return False, None
+    groups = await groups_of(conn, user_id)
+    return True, PersonalDetails(
+        full_name=row['full_name'] if row else None, rank=row['rank'] if row else None,
+        phone=row['phone'] if row else None, photo_url=row['photo_url'] if row else None, groups=groups)
 
 
 async def publish_position(conn: asyncpg.Connection, payload: dict) -> None:
