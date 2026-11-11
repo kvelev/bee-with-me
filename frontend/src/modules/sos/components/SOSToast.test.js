@@ -87,4 +87,61 @@ describe('SOSToast', () => {
     expect(toasts()).toHaveLength(1)
     expect(toasts()[0].querySelector('.sos-toast-name').textContent).toBe('Ivan')
   })
+
+  describe('alarm and auto-dismiss on mount [B107]', () => {
+    let audioCount
+    const stubAudio = () => {
+      audioCount = 0
+      vi.stubGlobal('AudioContext', class {
+        constructor() { audioCount += 1; this.currentTime = 0; this.destination = {} }
+        createGain() { return { connect() {}, gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} } } }
+        createOscillator() { return { connect() {}, frequency: { setValueAtTime() {} }, start() {}, stop() {} } }
+      })
+    }
+    afterEach(() => { vi.unstubAllGlobals() })
+
+    it('a toast mounted after a render retry sounds the alarm and auto-dismisses [B107]', async () => {
+      vi.useFakeTimers()
+      stubAudio()
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+      let thrown = false
+      const Flaky = defineComponent({
+        props: ['context'],
+        render() {
+          if (!thrown) { thrown = true; throw new Error('boom') }
+          return h(SOSToast, { context: this.context })
+        },
+      })
+      const panel = sos.panels.find((p) => p.id === 'sos-toast')
+      const store = useSosStore()
+      wrapper = mount(PanelHost, {
+        props: { panels: [{ ...panel, component: Flaky }], context: {} },
+        global: { plugins: [pinia, i18n] },
+      })
+      await flushPromises()
+
+      notify(store, 1, 'Ivan')
+      await flushPromises()
+      expect(toasts()).toHaveLength(1)
+      expect(audioCount).toBe(1)
+
+      vi.advanceTimersByTime(10000)
+      expect(store.sosNotifications).toHaveLength(0)
+    })
+
+    it('a notification already announced is not announced again after unmount and mount [B107]', async () => {
+      vi.useFakeTimers()
+      stubAudio()
+      const store = useSosStore()
+      notify(store, 1, 'Ivan')
+      const first = mount(SOSToast, { global: { plugins: [pinia, i18n] } })
+      await nextTick()
+      expect(audioCount).toBe(1)
+      first.unmount()
+
+      wrapper = mount(SOSToast, { global: { plugins: [pinia, i18n] } })
+      await nextTick()
+      expect(audioCount).toBe(1)
+    })
+  })
 })
