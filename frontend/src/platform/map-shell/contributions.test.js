@@ -6,6 +6,7 @@ import {
   collectContextMenu,
   collectLayerToggles,
   collectMapLayers,
+  collectPanels,
   collectPopups,
   contributionProblems,
   popupFor,
@@ -259,5 +260,54 @@ describe('map-shell contributions, legacy popups and context menu', () => {
     const m = mod('m', { popups: [P('mp', ['zone'])] })
     const text = contributionProblems([m], { popups: [P('lp', ['zone'])] }).join('\n')
     expect(text).toContain('kind "zone" is claimed by "mp" and "lp"')
+  })
+})
+
+describe('panels', () => {
+  const P = (id, host, order) => ({ id, component: C, ...(host ? { host } : {}), ...(order === undefined ? {} : { order }) })
+
+  it('panels of one host come out by order, then id [T504]', () => {
+    const a = mod('a', { panels: [P('z', 'map', 5), P('s1', 'settings', 1), P('m', 'map', 5)] })
+    const b = mod('b', { panels: [P('first', 'map', 1), P('late', 'map'), P('s0', 'settings', 0)] })
+    expect(ids(collectPanels([a, b], 'map'))).toEqual(['first', 'm', 'z', 'late'])
+    expect(ids(collectPanels([b, a], 'settings'))).toEqual(['s0', 's1'])
+  })
+
+  it('a panel without a host is in no host list [T504]', () => {
+    const m = mod('m', { panels: [P('lost'), P('home', 'map')] })
+    for (const host of ['map-root', 'map', 'map-toolbar', 'settings']) {
+      expect(ids(collectPanels([m], host))).not.toContain('lost')
+    }
+    expect(ids(collectPanels([m], 'map'))).toEqual(['home'])
+  })
+
+  it('legacy panels are merged into their host [T504]', () => {
+    const m = mod('m', { panels: [P('b', 'map', 2)] })
+    expect(ids(collectPanels([m], 'map', [P('a', 'map', 1), P('x', 'settings', 1)]))).toEqual(['a', 'b'])
+  })
+
+  it('contributionProblems names a duplicate panel id [T504]', () => {
+    const a = mod('a', { panels: [P('dup', 'map')] })
+    const b = mod('b', { panels: [P('dup', 'settings')] })
+    expect(contributionProblems([a, b]).join('\n')).toContain('panels: id "dup" is used more than once')
+    expect(contributionProblems([a])).toEqual([])
+  })
+
+  it('contributionProblems names a panel that has no valid host [T504]', () => {
+    const m = mod('m', { panels: [P('lost'), P('odd', 'nowhere'), P('ok', 'map')] })
+    const msg = contributionProblems([m]).join('\n')
+    expect(msg).toContain('panels: "lost" has no valid host')
+    expect(msg).toContain('panels: "odd" has no valid host')
+    expect(msg).not.toContain('"ok"')
+  })
+
+  it('the toggle state hook is passed on by the collector [T504]', () => {
+    const isOn = () => true
+    const set = () => {}
+    const m = mod('m', { mapLayers: [{ id: 'l', zIndex: 1, toggle: { labelKey: 'k', order: 1, key: 'kk', isOn, set } }] })
+    const [t] = collectLayerToggles([m])
+    expect(t.key).toBe('kk')
+    expect(t.isOn).toBe(isOn)
+    expect(t.set).toBe(set)
   })
 })

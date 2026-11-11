@@ -1,4 +1,5 @@
 <template>
+  <PanelHost :panels="rootPanels" :context="mapContext" />
   <SOSToast />
   <div class="map-layout">
     <div ref="mapEl" class="map-container" />
@@ -81,10 +82,10 @@
       <span v-if="repeaterError" class="bm-hq-error" role="alert">{{ t('map.repeaterSaveFailed') }}</span>
       <button
         v-for="{ toggle, name } in layerButtons" :key="toggle.id"
-        :class="['bm-btn', { active: fireStore.layers[name] }]"
-        :aria-pressed="fireStore.layers[name]"
+        :class="['bm-btn', { active: toggleOn(toggle, name) }]"
+        :aria-pressed="toggleOn(toggle, name)"
         :data-layer="name"
-        @click="toggleFire(name)"
+        @click="onToggle(toggle, name)"
       >{{ t(toggle.labelKey) }}</button>
       <span v-if="isAdmin && fireStore.layers.zones && fireStore.zonesFailed" class="bm-hq-note" role="status">
         {{ t('fire.zone.loadFailed') }}
@@ -98,6 +99,7 @@
           @click="toggleWeather(wl.id)"
         >{{ t(`map.weather.${wl.id}`) }}</button>
       </template>
+      <PanelHost :panels="toolbarPanels" :context="mapContext" />
     </div>
 
     <!-- Fire data freshness: always shows its age, and says so when it cannot. -->
@@ -308,6 +310,7 @@
         </div>
       </div>
     </div>
+    <PanelHost :panels="mapPanels" :context="mapContext" />
   </div>
 </template>
 
@@ -334,7 +337,8 @@ import SOSToast from '../components/SOSToast.vue'
 import FirePopup from '../components/FirePopup.vue'
 import MapPopupHost from '../platform/map-shell/MapPopupHost.vue'
 import MapContextMenu from '../platform/map-shell/MapContextMenu.vue'
-import { collectContextMenu, collectLayerToggles, collectPopups } from '../platform/map-shell/contributions.js'
+import PanelHost from '../platform/PanelHost.vue'
+import { collectContextMenu, collectLayerToggles, collectPanels, collectPopups } from '../platform/map-shell/contributions.js'
 import { FIRE_MAP_LAYERS } from '../composables/map/fireLayerList'
 import { MODULES } from '../modules'
 import FieldReportForm from '../components/FieldReportForm.vue'
@@ -473,7 +477,7 @@ async function saveHQ(action) {
   }
 }
 
-const { map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, setWeatherLayer, refreshMarkers, setHQ, setHQPlacementMode, setRepeaters, setRepeaterPlacementMode, onRepeaterPlaced, setBurntAreas, setHotspots, setFireLayerVisible, setFireLabels, onFireFeatureClick, setZones, onTrackerClick, onMapContextMenu } = useMap(
+const facade = useMap(
   mapEl,
   displayList,
   computed(() => store.trails),
@@ -488,6 +492,7 @@ const { map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpo
   },
   computed(() => settingsStore.photosOnMap),
 )
+const { map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, setWeatherLayer, refreshMarkers, setHQ, setHQPlacementMode, setRepeaters, setRepeaterPlacementMode, onRepeaterPlaced, setBurntAreas, setHotspots, setFireLayerVisible, setFireLabels, onFireFeatureClick, setZones, onTrackerClick, onMapContextMenu } = facade
 const { connect } = useWebSocket()
 
 // ── Fire layers ──────────────────────────────────────────────────────────────
@@ -496,8 +501,8 @@ const LEGACY_LAYER_NAMES = { 'fire-burnt': 'burnt', 'fire-hotspots': 'hotspots',
 const layerToggles = computed(() => collectLayerToggles(MODULES, FIRE_MAP_LAYERS).filter(t => !t.adminOnly || isAdmin.value))
 // A toggle without a legacy store name is not rendered in this wave.
 const layerButtons = computed(() => layerToggles.value
-  .filter(toggle => LEGACY_LAYER_NAMES[toggle.id])
-  .map(toggle => ({ toggle, name: LEGACY_LAYER_NAMES[toggle.id] })))
+  .filter(toggle => (toggle.isOn && toggle.set) || LEGACY_LAYER_NAMES[toggle.id])
+  .map(toggle => ({ toggle, name: toggle.isOn && toggle.set ? toggle.key : LEGACY_LAYER_NAMES[toggle.id] })))
 // The freshness pill and the licence line describe EFFIS data; zones are our own and need neither.
 const fireDataLayerOn = computed(() => fireStore.layers.burnt || fireStore.layers.hotspots)
 const focusRingEl = ref(null)
@@ -510,6 +515,10 @@ const firePopup   = ref(null)   // { kind, properties, coordinate } | null
 const popups = collectPopups(MODULES, [{ id: 'fire', component: FirePopup, kinds: ['hotspot', 'burnt_area'] }]) // until step 2
 const hostMap = shallowRef(null)   // set once the map exists; the popup host puts its overlay on it
 let   focusMap = null
+
+// A toggle with the state pair (isOn + set) is driven by its module; the others use the legacy fire store path.
+const toggleOn = (toggle, name) => (toggle.isOn ? !!toggle.isOn() : !!fireStore.layers[name])
+const onToggle = (toggle, name) => (toggle.isOn && toggle.set ? toggle.set(!toggle.isOn()) : toggleFire(name))
 
 function toggleFire(name) {
   const on = !fireStore.layers[name]
@@ -1236,6 +1245,16 @@ function consumeFireFocus() {
 watch(() => fireStore.focusRequest, consumeFireFocus)
 onActivated(() => { mapActive.value = true; nextTick(consumeFireFocus); loadRepeaters() })
 onDeactivated(() => { mapActive.value = false })
+
+// What a module panel may use of the map shell: the refs themselves, not their values.
+const mapKit = { Overlay, fromLonLat, toLonLat, unByKey }
+const mapContext = {
+  hostMap, facade, mapKit, isAdmin, activeBasemap, mapActive, selectedDeviceId,
+  closeContextMenu: () => ctxMenu.value?.close(),
+}
+const rootPanels = collectPanels(MODULES, 'map-root')
+const toolbarPanels = collectPanels(MODULES, 'map-toolbar')
+const mapPanels = collectPanels(MODULES, 'map')
 
 function focusDevice(pos) {
   const m = map()
