@@ -214,22 +214,36 @@ function onMemberSearchBlur() {
 
 onMounted(load)
 
+let loadSeq = 0
+let selectSeq = 0
+
 async function load() {
+  const seq = ++loadSeq
+  const errorAtStart = pageError.value
   try {
-    groups.value   = (await getGroups()).items
-    allUsers.value = (await getUsers({ limit: 500 })).items
-    pageError.value = ''
+    const groupsRes = await getGroups()
+    if (seq !== loadSeq) return
+    groups.value = groupsRes.items
+    const usersRes = await getUsers({ limit: 500 })
+    if (seq !== loadSeq) return
+    allUsers.value = usersRes.items
+    if (pageError.value === errorAtStart) pageError.value = ''
   } catch (e) {
+    if (seq !== loadSeq) return
     pageError.value = errorText(e, t('groups.loadError'))
   }
 }
 
 async function selectGroup(g) {
+  const seq = ++selectSeq
   pageError.value = ''
   try {
-    selected.value = await getGroup(g.id)
+    const detail = await getGroup(g.id)
+    if (seq !== selectSeq) return
+    selected.value = detail
   } catch (e) {
-    pageError.value = errorText(e)
+    if (seq !== selectSeq) return
+    pageError.value = errorText(e, t('groups.loadError'))
   }
 }
 
@@ -240,7 +254,7 @@ async function openForm(g) {
     try {
       detail = await getGroup(g.id)
     } catch (e) {
-      pageError.value = errorText(e)
+      pageError.value = errorText(e, t('groups.loadError'))
       return
     }
   }

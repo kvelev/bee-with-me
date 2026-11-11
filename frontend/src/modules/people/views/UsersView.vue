@@ -230,13 +230,18 @@ const originalDeviceId  = ref(null)
 
 onMounted(load)
 
+let loadSeq = 0
+
 async function load() {
+  const seq = ++loadSeq
+  const errorAtStart = pageError.value
   try {
     const [res, devs] = await Promise.all([
       getUsers({ limit: limit.value, offset: offset.value }),
       getDevices(),
     ])
-    pageError.value = ''
+    if (seq !== loadSeq) return
+    if (pageError.value === errorAtStart) pageError.value = ''
     users.value = res.items.map(u => ({
       ...u,
       groups: typeof u.groups === 'string' ? JSON.parse(u.groups) : (u.groups ?? []),
@@ -244,6 +249,7 @@ async function load() {
     total.value = res.total
     allDevices.value = devs.filter(d => d.is_active)
   } catch (e) {
+    if (seq !== loadSeq) return
     pageError.value = errorText(e, t('users.loadError'))
   }
 }
