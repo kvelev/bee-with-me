@@ -280,6 +280,7 @@ class EffectiveRoute:
     path: str
     methods: frozenset[str]
     calls: frozenset[Callable]
+    kind: str = 'APIRoute'                      # the class name of the route; `Mount`, `Route` and so on cannot carry auth
 
 
 def _dependant_calls(dependant) -> set[Callable]:
@@ -298,7 +299,7 @@ def effective_routes(routes: Iterable) -> list[EffectiveRoute]:
     through `effective_candidates()`; earlier versions copy the routes into the app. Both shapes are read here by
     duck typing, so this is the one place that depends on the layout (not `app.openapi()`, which hides routes).
     """
-    from starlette.routing import WebSocketRoute
+    from starlette.routing import Mount, WebSocketRoute
 
     found: list[EffectiveRoute] = []
     for route in routes:
@@ -306,7 +307,12 @@ def effective_routes(routes: Iterable) -> list[EffectiveRoute]:
             found += effective_routes(route.effective_candidates())
             continue
         target = getattr(route, 'starlette_route', None) or route         # an effective context wraps the real route
-        if hasattr(target, 'routes') and not hasattr(target, 'methods'):    # a Mount or sub-application
+        if isinstance(target, Mount):          # listed itself (a StaticFiles app has no `routes`), then what it holds
+            found.append(EffectiveRoute(path=target.path, methods=frozenset({'MOUNT'}), calls=frozenset(),
+                                        kind=type(target).__name__))
+            found += effective_routes(getattr(target, 'routes', None) or ())
+            continue
+        if hasattr(target, 'routes') and not hasattr(target, 'methods'):    # another sub-application
             found += effective_routes(target.routes)
             continue
         path = getattr(target, 'path', None)
@@ -317,12 +323,15 @@ def effective_routes(routes: Iterable) -> list[EffectiveRoute]:
             methods = frozenset({'WEBSOCKET'})
         calls = _dependant_calls(getattr(target, 'dependant', None))
         calls |= {d.dependency for d in (getattr(target, 'dependencies', None) or ())}
-        found.append(EffectiveRoute(path=path, methods=methods, calls=frozenset(calls)))
+        found.append(EffectiveRoute(path=path, methods=methods, calls=frozenset(calls), kind=type(target).__name__))
     return found
 
 
 def check_module_route_auth(app_routes: Iterable, manifests: Iterable[ModuleManifest], auth: Callable) -> list[str]:
-    """Every route a module serves reaches `auth` (directly or through `require_role`) or its manifest declares it public."""
+    """Every route a module serves reaches `auth` (directly or through `require_role`) or its manifest declares it public.
+
+    A `Mount`, a plain `Route` and a plain `WebSocketRoute` never reach `auth`: they are reported unless declared public.
+    """
     served = effective_routes(app_routes)
     problems: list[str] = []
     for m in manifests:
@@ -331,10 +340,14 @@ def check_module_route_auth(app_routes: Iterable, manifests: Iterable[ModuleMani
         public = set(m.public_routes)
         for own in effective_routes(m.router.routes):
             label = f'{"/".join(sorted(own.methods))} {own.path}'
+            declared = {(meth, own.path) for meth in own.methods} <= public
             mounted = [r for r in served if r.path == own.path and r.methods == own.methods]
             if not mounted:
                 problems.append(f'{m.name}: {label} is not mounted in the app')
             for r in mounted:
-                if auth not in r.calls and not {(meth, own.path) for meth in own.methods} <= public:
+                if own.kind not in ('APIRoute', 'APIWebSocketRoute'):
+                    if not declared:
+                        problems.append(f'{m.name}: {own.path} ({own.kind}) is served without the auth dependency')
+                elif auth not in r.calls and not declared:
                     problems.append(f'{m.name}: {label} has no auth dependency and is not declared in public_routes')
     return problems
