@@ -7,7 +7,7 @@ vi.mock('../../../api', () => ({
   deactivateGroup: vi.fn(), reactivateGroup: vi.fn(), addMember: vi.fn(), removeMember: vi.fn(), getUsers: vi.fn(),
 }))
 
-import { getGroups, getGroup, getUsers, deactivateGroup } from '../../../api'
+import { getGroups, getGroup, getUsers, deactivateGroup, deleteGroup } from '../../../api'
 import GroupsView from './GroupsView.vue'
 import { i18n } from '../../../i18n/index.js'
 import en from '../../../i18n/en.js'
@@ -124,5 +124,22 @@ describe('GroupsView overlapping requests', () => {
     await first
     await flushPromises()
     expect(w.find('.page-error').text()).toBe('Cannot deactivate')
+  })
+
+  it('a late selectGroup answer does not bring back a group that was deleted meanwhile [T581]', async () => {
+    const w = mountView()
+    await flushPromises()
+    const slow = deferred()
+    getGroup.mockReturnValueOnce(slow.promise)
+    vi.stubGlobal('confirm', () => true)
+    deleteGroup.mockResolvedValueOnce({})
+    getGroups.mockResolvedValue({ items: [] })
+    await w.find('tr.clickable').trigger('click')       // selectGroup(G1), pending
+    await w.find('tr.clickable button.danger').trigger('click')
+    await flushPromises()
+    slow.resolve({ ...G1, members: [] })
+    await flushPromises()
+    vi.unstubAllGlobals()
+    expect(w.text()).not.toContain('Alpha — ')
   })
 })
