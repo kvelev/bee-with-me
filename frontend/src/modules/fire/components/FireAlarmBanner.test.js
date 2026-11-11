@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 
-vi.mock('../api', () => ({
+vi.mock('../../../api', () => ({
   getFireHotspots: vi.fn(), getFireBurntAreas: vi.fn(), getFireStatus: vi.fn(),
   getFireAlerts: vi.fn(), acknowledgeFireAlert: vi.fn(), acknowledgeAllFireAlerts: vi.fn(),
 }))
@@ -14,13 +14,13 @@ vi.mock('../lib/fireTone', async (orig) => ({
   unlockFireTone: vi.fn(async () => 'running'),
 }))
 
-import { acknowledgeFireAlert } from '../api'
+import { acknowledgeFireAlert } from '../../../api'
 import { playFireTone, toneState, unlockFireTone } from '../lib/fireTone'
 import FireAlarmBanner from './FireAlarmBanner.vue'
-import { useFireStore } from '../stores/fire'
-import { i18n } from '../i18n/index.js'
-import en from '../i18n/en.js'
-import bg from '../i18n/bg.js'
+import { useFireStore } from '../store.js'
+import { i18n } from '../../../i18n/index.js'
+import en from '../../../i18n/en.js'
+import bg from '../../../i18n/bg.js'
 
 const alert = (id, extra = {}) => ({
   id, target_type: 'device', device_id: 'd1', full_name: 'Ivan Petrov', rank: 'Sergeant', distance_m: 1234,

@@ -15,6 +15,11 @@ import { useAuthStore } from '../../stores/auth'
 import { i18n } from '../../i18n/index.js'
 
 const stub = (cls) => ({ render: () => h('div', { class: cls }) })
+// Two-item fixture: the real list is asserted against the module list in modules/fire/index.test.js [T505].
+const TWO_BANNERS = [
+  { id: 'sos', priority: 10, component: stub('sos') },
+  { id: 'fire-alarm', priority: 20, component: stub('fire') },
+]
 
 afterEach(() => { vi.restoreAllMocks() })
 
@@ -32,13 +37,13 @@ describe('BannerStack', () => {
   })
 
   it('the legacy list puts SOS above fire and has no problem [T421]', () => {
-    expect(collectBanners([], LEGACY_BANNERS).map((b) => b.id)).toEqual(['sos', 'fire-alarm'])
+    expect(collectBanners([], TWO_BANNERS).map((b) => b.id)).toEqual(['sos', 'fire-alarm'])
     expect(contributionProblems(MODULES, { banners: LEGACY_BANNERS })).toEqual([])
   })
 
   it('a module banner with priority 15 lands between them [T421]', () => {
     const m = { name: 'x', banners: [{ id: 'x', priority: 15, component: stub('x') }] }
-    expect(collectBanners([m], LEGACY_BANNERS).map((b) => b.id)).toEqual(['sos', 'x', 'fire-alarm'])
+    expect(collectBanners([m], TWO_BANNERS).map((b) => b.id)).toEqual(['sos', 'x', 'fire-alarm'])
   })
 
   it('a banner that throws while rendering is skipped and logged, and SOS stays [T421]', async () => {

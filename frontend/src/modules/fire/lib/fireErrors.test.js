@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ApiError } from '../api/client'
+import { ApiError } from '../../../api/client'
 import { fireErrorKey } from './fireErrors'
 
 describe('fireErrorKey', () => {

@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
-vi.mock('../api', () => ({
+vi.mock('../../api', () => ({
   getFireHotspots:   vi.fn(),
   getFireBurntAreas: vi.fn(),
   getFireStatus:     vi.fn(),
 }))
 
-import { getFireHotspots, getFireBurntAreas } from '../api'
-import { useFireStore } from './fire'
-import { firePillState } from '../lib/fireStyle'
+import { getFireHotspots, getFireBurntAreas } from '../../api'
+import { useFireStore } from './store.js'
+import { firePillState } from './lib/fireStyle'
 
 const FC = (n, extra = {}) => ({ type: 'FeatureCollection', features: Array.from({ length: n }, (_, i) => ({ id: String(i) })), ...extra })
 
