@@ -58,5 +58,23 @@ APPROVED: dict[str, dict[str, str]] = {
             'deactivating a user ends the open alerts of that user and broadcasts them through fire.api until the events of step 4',
         'module_edges: {"from": "backend.routers.devices", "to": "backend.modules.fire.api", "until": 4}':
             'disabling or deleting a device ends its open alerts, takes the alarm lock and broadcasts through fire.api until the events of step 4',
+        # Step 2 (T541): the writers outside the hardware reader use tracking.api and sos.api.
+        # Net change of the allowlist: 9 sql_writes rows deleted, 8 module_edges rows added.
+        'module_edges: {"from": "backend.routers.users", "to": "backend.modules.tracking.api", "until": 4}':
+            'deleting or deactivating a person or a device clears positions and alerts directly until the PersonDeleted and DeviceDeleted events of step 4',
+        'module_edges: {"from": "backend.routers.users", "to": "backend.modules.sos.api", "until": 4}':
+            'deleting or deactivating a person or a device clears positions and alerts directly until the PersonDeleted and DeviceDeleted events of step 4',
+        'module_edges: {"from": "backend.routers.devices", "to": "backend.modules.tracking.api", "until": 4}':
+            'deleting or deactivating a person or a device clears positions and alerts directly until the PersonDeleted and DeviceDeleted events of step 4',
+        'module_edges: {"from": "backend.routers.devices", "to": "backend.modules.sos.api", "until": 4}':
+            'deleting or deactivating a person or a device clears positions and alerts directly until the PersonDeleted and DeviceDeleted events of step 4',
+        'module_edges: {"from": "backend.routers.test", "to": "backend.modules.tracking.api", "until": 3}':
+            'the simulation writes through the two APIs until it can feed the gateway module',
+        'module_edges: {"from": "backend.routers.test", "to": "backend.modules.sos.api", "until": 3}':
+            'the simulation writes through the two APIs until it can feed the gateway module',
+        'module_edges: {"from": "backend.simulation", "to": "backend.modules.tracking.api", "until": 3}':
+            'the simulation writes through the two APIs until it can feed the gateway module',
+        'module_edges: {"from": "backend.simulation", "to": "backend.modules.sos.api", "until": 3}':
+            'the simulation writes through the two APIs until it can feed the gateway module',
     },
 }

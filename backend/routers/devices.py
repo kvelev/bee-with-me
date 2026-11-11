@@ -10,6 +10,8 @@ from ..auth import get_current_user, require_role
 from ..database import get_conn
 from ..modules.fire import api as fire_repository
 from ..modules.fire.api import notify as fire_notify, notify_alerts_updated
+from ..modules.sos import api as sos_api
+from ..modules.tracking import api as tracking_api
 
 logger = logging.getLogger(__name__)
 
@@ -205,9 +207,9 @@ async def delete_device_permanent(
     try:
         async with conn.transaction():
             # The long deletes run WITHOUT the alarm lock, so alarm ticks are not skipped while they run (BP-02, TP-02).
-            await conn.execute('DELETE FROM sos_alerts       WHERE device_id = $1', device_id)
-            await conn.execute('DELETE FROM location_events  WHERE device_id = $1', device_id)
-            await conn.execute('DELETE FROM repeater_events  WHERE device_id = $1', device_id)
+            await sos_api.delete_device_alerts(conn, device_id)
+            await tracking_api.delete_device_positions(conn, device_id)
+            await tracking_api.delete_device_heartbeats(conn, device_id)
             # Fire part (BP-02): take the alarm lock (blocking but bounded, after 10 s the whole delete rolls back
             # with 503 instead of queueing behind a stuck tick) and end this device's open alerts with a reason.
             # Must run before the delete so none is left open and orphaned.

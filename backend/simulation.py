@@ -35,6 +35,8 @@ import asyncpg
 
 from .auth import hash_password
 from .database import get_pool
+from .modules.sos import api as sos_api
+from .modules.tracking import api as tracking_api
 from .routers.test import record_position
 
 logger = logging.getLogger(__name__)
@@ -173,10 +175,8 @@ async def reset(conn: asyncpg.Connection) -> dict:
     """Delete every position and SOS alert of the demo trackers. Accounts, devices and teams stay."""
     async with conn.transaction():
         ids = [r['id'] for r in await conn.fetch("SELECT id FROM devices WHERE dev_sn = ANY($1::int[]) AND device_type = 'bee'", DEMO_SNS)]
-        positions = await conn.fetchval(
-            'WITH d AS (DELETE FROM location_events WHERE device_id = ANY($1::uuid[]) RETURNING 1) SELECT count(*) FROM d', ids)
-        alerts = await conn.fetchval(
-            'WITH d AS (DELETE FROM sos_alerts WHERE device_id = ANY($1::uuid[]) RETURNING 1) SELECT count(*) FROM d', ids)
+        positions = await tracking_api.delete_positions_of_devices(conn, ids)
+        alerts = await sos_api.delete_alerts_of_devices(conn, ids)
     return {'positions': positions, 'sos_alerts': alerts}
 
 

@@ -18,6 +18,8 @@ from ..database import get_conn
 from ..json_columns import decode_json_columns
 from ..modules.fire import api as fire_repository
 from ..modules.fire.api import notify_alerts_updated
+from ..modules.sos import api as sos_api
+from ..modules.tracking import api as tracking_api
 
 logger = logging.getLogger(__name__)
 
@@ -411,13 +413,8 @@ async def delete_user(
     _: Annotated[asyncpg.Record, Depends(require_role('admin'))],
 ):
     # Null-out FK columns that have no ON DELETE clause
-    await conn.execute('UPDATE location_events SET user_id = NULL WHERE user_id = $1', user_id)
-    await conn.execute(
-        'UPDATE sos_alerts SET user_id = NULL WHERE user_id = $1', user_id
-    )
-    await conn.execute(
-        'UPDATE sos_alerts SET resolved_by = NULL WHERE resolved_by = $1', user_id
-    )
+    await tracking_api.forget_person(conn, user_id)
+    await sos_api.forget_person(conn, user_id)
     # user_groups  → ON DELETE CASCADE (auto)
     # devices.user_id → ON DELETE SET NULL (auto)
     await conn.execute('DELETE FROM users WHERE id = $1', user_id)
