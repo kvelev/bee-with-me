@@ -2,6 +2,8 @@
 // The alarm banner is imported statically on purpose: the alarm must not wait for a chunk.
 import { BANNER_PRIORITY } from '../../platform/map-shell/zorder.js'
 import FireAlarmBanner from './components/FireAlarmBanner.vue'
+import FireMapPanel from './components/FireMapPanel.vue'
+import FireZonesNote from './components/FireZonesNote.vue'
 import bg from './i18n/bg.js'
 import en from './i18n/en.js'
 import { FIRE_MAP_LAYERS } from './map/layers.js'
@@ -9,13 +11,20 @@ import { FIRE_MAP_LAYERS } from './map/layers.js'
 import { useFireStore } from './store.js'
 
 export { useFireStore }
+export { useFireUi } from './ui.js'
 
 export default {
   name: 'fire',
   routes: [],
   nav: [],
   mapLayers: FIRE_MAP_LAYERS,
-  panels: [],
+  // The map panel (pill, attribution, focus ring, layer sync) is imported statically: it imports no ol module,
+  // the focus overlay class comes from context.mapKit.
+  // The zones-failed note sits in the toolbar row next to the layer buttons, so it is a toolbar panel of its own.
+  panels: [
+    { id: 'fire-map', host: 'map', order: 20, component: FireMapPanel },
+    { id: 'fire-zones-note', host: 'map-toolbar', order: 10, component: FireZonesNote },
+  ],
   banners: [{ id: 'fire-alarm', priority: BANNER_PRIORITY.fireAlarm, component: FireAlarmBanner }],
   // Live socket contributions (read by platform/live/dispatch.js). The store is read inside each function so
   // the Pinia that is active at call time is the one used. A rejected promise is logged by dispatchLive.
