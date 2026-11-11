@@ -11,6 +11,7 @@ export default {
     importSkipped: 'пропуснати',
     importError:   'Импортът се провали',
     loadError:     'Неуспешно зареждане на доброволците',
+    actionError:   'Действието не успя. Опитай отново.',
     edit:       'Редактирай',
     deactivate: 'Деактивирай',
     reactivate: 'Активирай',
