@@ -1,10 +1,16 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import View from 'ol/View'
-import { createMapShell } from '../../platform/map-shell/createMapShell'
-import { collectLayerToggles } from '../../platform/map-shell/contributions'
-import { FIRE_MAP_LAYERS } from './fireLayerList'
-import { LEGACY_FIRE_MAP } from './fireLayers'
-import listSource from './fireLayerList.js?raw'
+import { createMapShell } from '../../../platform/map-shell/createMapShell'
+import { collectLayerToggles } from '../../../platform/map-shell/contributions'
+import { MODULES } from '../../index'
+import { MAP_MODULES } from '../../mapEntries'
+import fireManifest from '../index'
+import { FIRE_MAP_LAYERS } from './layers'
+import fireMap from './index'
+import listSource from './layers.js?raw'
+import facadeSource from '../../../composables/useMap.js?raw'
+
+const LEGACY_FIRE_MAP = fireMap
 
 globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} }
 
@@ -224,5 +230,29 @@ describe('fire map install failure', () => {
     const shell = createMapShell({ view: new View({ center: [0, 0], zoom: 3 }), createLongPress: () => ({ down() {}, move() {}, end() {}, shouldSwallowClick: () => false }), modes: [] })
     const api = shell.install({ ...LEGACY_FIRE_MAP, setup: () => { throw new Error('x') } }, FIRE_MAP_LAYERS, {})
     expect(api).toEqual({})
+  })
+})
+
+describe('the fire map entry belongs to the fire module', () => {
+  it('the fire manifest declares the three layers and the entry has a factory for each [T506]', () => {
+    expect(fireManifest.mapLayers.map((l) => l.id)).toEqual(['fire-burnt', 'fire-zones', 'fire-hotspots'])
+    expect(fireManifest.mapLayers).toBe(FIRE_MAP_LAYERS)
+    expect(Object.keys(fireMap.layers)).toEqual(fireManifest.mapLayers.map((l) => l.id))
+    expect(fireMap.name).toBe('fire')
+    expect(typeof fireMap.setup).toBe('function')
+  })
+
+  it('the facade has no fire install of its own [T506]', () => {
+    expect(facadeSource).not.toMatch(/fireLayers/)
+    expect(facadeSource).not.toMatch(/fireLayerList/)
+  })
+
+  it('MAP_MODULES lists fire and settings [T506]', () => {
+    expect(MAP_MODULES.map((e) => e.name)).toEqual(['fire', 'settings'])
+    expect(MAP_MODULES[0]).toBe(fireMap)
+  })
+
+  it('the fire toggles come from the manifest alone [T506]', () => {
+    expect(collectLayerToggles(MODULES).map((t) => t.id)).toEqual(['fire-burnt', 'fire-hotspots', 'fire-zones'])
   })
 })

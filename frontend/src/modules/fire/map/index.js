@@ -3,7 +3,6 @@
 // `install` (layers by declared id, then `setup`); the facade (useMap.js) installs it and delegates its
 // five functions to the returned api. `onFireFeatureClick` and the tracker click stay in the facade:
 // this entry reaches them through `ctx`.
-// until step 2 (moves to src/modules/fire/map/)
 import VectorLayer from 'ol/layer/Vector'
 import VectorSource from 'ol/source/Vector'
 import Feature from 'ol/Feature'
@@ -11,8 +10,8 @@ import GeoJSON from 'ol/format/GeoJSON'
 import { circular as circularPolygon } from 'ol/geom/Polygon'
 import { Circle, Fill, Stroke, Style, Text } from 'ol/style'
 import RegularShape from 'ol/style/RegularShape'
-import { hotspotStyleKey } from '../../lib/fireStyle'
-import { hexToRgba } from '../../lib/color'
+import { hotspotStyleKey } from '../../../lib/fireStyle'
+import { hexToRgba } from '../../../lib/color'
 
 const FIRE_REPAINT_MS = 60_000
 const HOTSPOT_HIT_TOLERANCE_PX = 6
@@ -265,7 +264,7 @@ function setupFireMap(shell, ctx) {
   }
 }
 
-export const LEGACY_FIRE_MAP = {   // until step 2
+export default {
   name: 'fire',
   layers: {
     'fire-burnt': makeBurntLayer,
