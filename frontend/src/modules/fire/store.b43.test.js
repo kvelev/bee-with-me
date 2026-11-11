@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
-vi.mock('../api', () => ({
+vi.mock('../../api', () => ({
   getFireHotspots: vi.fn(), getFireBurntAreas: vi.fn(), getFireStatus: vi.fn(),
   getFireAlerts: vi.fn(), acknowledgeFireAlert: vi.fn(), acknowledgeAllFireAlerts: vi.fn(),
   login: vi.fn(), getMe: vi.fn(),
 }))
 
-import { getFireAlerts, acknowledgeFireAlert, acknowledgeAllFireAlerts } from '../api'
-import { useFireStore } from './fire'
-import { useAuthStore } from './auth'
+import { getFireAlerts, acknowledgeFireAlert, acknowledgeAllFireAlerts } from '../../api'
+import { useFireStore } from './store.js'
+import { useAuthStore } from '../../stores/auth'
 
 const alert = (id, extra = {}) => ({
   id, target_type: 'hq', device_id: null, full_name: null, distance_m: 1200,

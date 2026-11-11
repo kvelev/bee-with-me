@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 
-vi.mock('../api', () => ({
+vi.mock('../../api', () => ({
   getFireHotspots: vi.fn(), getFireBurntAreas: vi.fn(), getFireStatus: vi.fn(),
   getFireAlerts: vi.fn(), acknowledgeFireAlert: vi.fn(), acknowledgeAllFireAlerts: vi.fn(),
   dismissFireHotspot: vi.fn(), createFieldReport: vi.fn(), extinguishFieldReport: vi.fn(),
@@ -9,8 +9,8 @@ vi.mock('../api', () => ({
   disableSuppressionZone: vi.fn(), enableSuppressionZone: vi.fn(),
 }))
 
-import * as api from '../api'
-import { useFireStore } from './fire'
+import * as api from '../../api'
+import { useFireStore } from './store.js'
 
 const feature = (id, props = {}) => ({
   type: 'Feature', id, geometry: { type: 'Point', coordinates: [24.5, 42.5] },

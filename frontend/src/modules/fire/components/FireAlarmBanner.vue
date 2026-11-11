@@ -93,11 +93,11 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { useFireStore } from '../stores/fire'
-import { errorText } from '../api/client'
+import { useFireStore } from '../store.js'
+import { errorText } from '../../../api/client'
 import {
   TONE_BLOCKED, TONE_RUNNING, TONE_UNSUPPORTED, playFireTone, toneState, unlockFireTone,
-} from '../lib/fireTone'
+} from '../lib/fireTone.js'
 
 const { t, locale } = useI18n()
 const fire = useFireStore()
