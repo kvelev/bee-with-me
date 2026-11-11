@@ -1,6 +1,5 @@
 <template>
   <PanelHost :panels="rootPanels" :context="mapContext" />
-  <SOSToast />
   <div class="map-layout">
     <div ref="mapEl" class="map-container" />
 
@@ -239,7 +238,6 @@ import { useMap, BASEMAPS } from '../composables/useMap'
 import { getDevices, getGroupsWithMembers, getSerialStatus, setDeviceLocation } from '../api'
 import { ageMs, contactAt, formatAge, freshnessOf, byUrgency } from '../lib/freshness'
 import { unByKey } from 'ol/Observable'
-import SOSToast from '../components/SOSToast.vue'
 import MapPopupHost from '../platform/map-shell/MapPopupHost.vue'
 import MapContextMenu from '../platform/map-shell/MapContextMenu.vue'
 import PanelHost from '../platform/PanelHost.vue'

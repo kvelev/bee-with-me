@@ -21,10 +21,12 @@
 <script setup>
 import { watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useLocationsStore } from '../stores/locations'
+import { useSosStore } from '../store.js'
+
+defineProps({ context: { type: Object, default: undefined } })
 
 const { t } = useI18n()
-const store = useLocationsStore()
+const store = useSosStore()
 
 function dismiss(id) {
   store.dismissSOSNotification(id)
