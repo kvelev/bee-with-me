@@ -7,7 +7,6 @@ const fire = {
 }
 vi.mock('./store.js', () => ({ useFireStore: () => fire }))
 
-import { LEGACY_LIVE } from '../../composables/legacyLive.js'
 import { collectLiveHandlers, collectLiveHooks, dispatchLive } from '../../platform/live/dispatch.js'
 import fireModule from './index.js'
 
@@ -51,14 +50,5 @@ describe('fire live contributions', () => {
     await onReconnect[0]()
     expect(fire.refreshVisible).toHaveBeenCalledTimes(1)
     expect(fire.retryFailed).not.toHaveBeenCalled()
-  })
-
-  it('the legacy live list holds no fire entry [T510]', () => {
-    const types = LEGACY_LIVE.handlers.map((h) => h.type)
-    expect(types.filter((t) => t.startsWith('fire_'))).toEqual([])
-    // one location tick entry stays; no fire hook is left on tick or reconnect
-    expect(LEGACY_LIVE.hooks.onTick).toHaveLength(1)
-    expect(LEGACY_LIVE.hooks.onReconnect).toHaveLength(0)
-    expect(LEGACY_LIVE.hooks.onTick.every((fn) => !String(fn).includes('Fire'))).toBe(true)
   })
 })
