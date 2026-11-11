@@ -1,12 +1,11 @@
 import { onUnmounted } from 'vue'
-import { useLocationsStore } from '../stores/locations'
 import { MODULES } from '../modules/index.js'
+import { useTrackingStore } from '../modules/tracking/index.js'
 import { collectLiveHandlers, collectLiveHooks, dispatchLive, runHooks } from '../platform/live/dispatch.js'
-import { LEGACY_LIVE } from './legacyLive'
 
-// What a message, a tick and a reconnect do is read from the modules' contributions plus the legacy list.
-const handlers = collectLiveHandlers(MODULES, LEGACY_LIVE.handlers)
-const hooks = collectLiveHooks(MODULES, LEGACY_LIVE.hooks)
+// What a message, a tick and a reconnect do is read from the modules' contributions.
+const handlers = collectLiveHandlers(MODULES)
+const hooks = collectLiveHooks(MODULES)
 
 // Belt-and-braces reconciliation. The WebSocket can look healthy and still be delivering
 // nothing (a half-open socket after a sleep/wake, a dead LISTEN connection on the server),
@@ -28,7 +27,7 @@ let stopped = false
 let setupDone = false
 
 export function useWebSocket() {
-  const store = useLocationsStore()
+  const store = useTrackingStore()
   // Per instance (one per view): set when this view unmounts. A connect() that arrives later (a mount
   // fetch that finished after logout) must neither open a socket nor clear the module-level `stopped`.
   let isUnmounted = false
@@ -67,7 +66,7 @@ export function useWebSocket() {
         // pushes missed during the gap are gone, so pull a fresh snapshot instead of
         // trusting stale/partial state.
         resync()
-        // Hooks that run only on a reconnect (fire layers: see legacyLive.js).
+        // Hooks that run only on a reconnect (a module's `live.onReconnect`, e.g. the fire layers).
         runHooks(hooks.onReconnect)
       }
       hasConnectedBefore = true

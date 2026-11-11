@@ -14,10 +14,10 @@
 <script setup>
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useLocationsStore } from '../stores/locations'
+import { useSosStore } from '../store.js'
 
 const { t } = useI18n()
-const store = useLocationsStore()
+const store = useSosStore()
 const busy  = ref(null)
 const error = ref('')
 

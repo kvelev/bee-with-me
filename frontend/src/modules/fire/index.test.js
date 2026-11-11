@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import enFull from '../../i18n/en.js'
 import bgFull from '../../i18n/bg.js'
-import { LEGACY_BANNERS } from '../../components/legacyBanners.js'
 import { collectBanners, contributionProblems } from '../../platform/map-shell/contributions.js'
 import { checkModules } from '../../platform/registry.js'
 import { useFireStore as legacyUseFireStore } from '../../stores/fire.js'
@@ -16,8 +15,8 @@ describe('fire module manifest', () => {
   })
 
   it('the fire banner is a manifest contribution below SOS [T505]', () => {
-    expect(collectBanners(MODULES, LEGACY_BANNERS).map((b) => b.id)).toEqual(['sos', 'fire-alarm'])
-    expect(contributionProblems(MODULES, { banners: LEGACY_BANNERS })).toEqual([])
+    expect(collectBanners(MODULES).map((b) => b.id)).toEqual(['sos', 'fire-alarm'])
+    expect(contributionProblems(MODULES)).toEqual([])
     const item = fire.banners.find((b) => b.id === 'fire-alarm')
     expect(typeof item.component).not.toBe('function')
     expect(item.component).toBeTruthy()

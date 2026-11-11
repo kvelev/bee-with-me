@@ -82,14 +82,6 @@ const core = {
     generating: 'Генериране…',
     failed:     'Експортът се провали',
   },
-  sos: {
-    active:     '🚨 SOS АКТИВЕН —',
-    resolve:    'Разреши',
-    resolving:     'Отмяна…',
-    resolveFailed: 'Неуспешно отменяне — проверете връзката и опитайте отново',
-    alertTitle: 'SOS Активиран',
-    unknown:    'Неизвестен',
-  },
   about: {
     download: {
       title:       'Изтегляне',
