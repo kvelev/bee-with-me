@@ -86,13 +86,19 @@ const pageError = ref('')
 
 onMounted(load)
 
+let loadSeq = 0
+
 async function load() {
+  const seq = ++loadSeq
+  const errorAtStart = pageError.value
   try {
     const [devs, ur] = await Promise.all([getDevices(), getUsers({ limit: 500 })])
+    if (seq !== loadSeq) return
     devices.value = devs
     users.value   = ur.items
-    pageError.value = ''
+    if (pageError.value === errorAtStart) pageError.value = ''
   } catch (e) {
+    if (seq !== loadSeq) return
     pageError.value = errorText(e, t('devices.loadError'))
   }
 }
