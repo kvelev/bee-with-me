@@ -35,7 +35,7 @@ The question was whether a binary schema format (protobuf) would be better than 
   binary body would first have to be encoded as text (for example base64) on the way through PostgreSQL.
 - **Message size.** `location_update` has 20 keys (`tracking/domain/payload.py`). A sample message with realistic
   values, built by hand and serialised with `json.dumps` (not a benchmark of the running system), is about 650 bytes
-  with the personal fields and about 450 bytes without them (the key set planned by T547 in
+  with the personal fields and about 450 bytes without them (the key set of T547, see
   [the tracking plan](../../docs/superpowers/plans/2026-11-10-vs-step2-tracking-sos.md), section 1.4).
 - **Volume is not known.** [Architecture.md](../Architecture.md) records the RescuerBee frame interval as an open
   assumption until the hardware owner confirms it; this ADR therefore states no messages-per-minute figure. The
@@ -45,9 +45,14 @@ The question was whether a binary schema format (protobuf) would be better than 
 - **Device to gateway is already compact, but it is text.** `docs/PROTOCOL.md` describes ASCII frames
   `##<comma separated fields>@<decimal CRC-16>\r\n` (Cmd=30 has 25 fields), carried in 64-byte HID packets. It is
   agreed with the hardware owner and pinned by `test_parser.py`. It is a boundary of this ADR, not a subject.
-- **The message contract is implicit today.** The live message is a dict built by a function; the exact key set is
-  pinned only indirectly by handler tests. T547 changes that key set (five keys leave `location_update`, two leave
-  `sos_alert`), which makes an explicit contract worth having.
+- **The contract of the live messages is explicit since T547** (commit `c401b14`, PR for branch `feature/vs-2-t547`):
+  `tracking/domain/payload.py` holds the frozen dataclasses `PositionFix` (15 keys) and `PersonalDetails` (5 keys);
+  `sos/domain/payload.py` holds `SosAlert` (5 keys) and `SosPerson` (`full_name`, `rank`). The setting
+  `live_personal_fields` in `core/config.py` (environment variable `LIVE_PERSONAL_FIELDS`, default `true`) decides
+  whether the personal part is added: on gives the 20-key message the browsers always got, off gives the thin one.
+  `test_reader_handlers.py` compares the message keys with fixed sets (`LOCATION_KEYS`, `SOS_KEYS`).
+- **Not everything is under the switch.** The `fire_alert*` messages (`fire/domain/models.py`) still carry
+  `full_name` and `rank`, and the switch does not reach them.
 
 ## Decision
 
@@ -56,10 +61,11 @@ We will **not introduce protobuf now**. Instead:
 1. **Inside the process** modules keep calling each other through `api.py` functions. No wire format exists there
    and none is added.
 2. **To the browser** REST and `/ws` stay JSON.
-3. **The contract of the live messages is held by typed models and tests**: a typed model for each live message in
-   the owning module's `domain/` (pure, no I/O, [ADR 17](0017-vertical-slice-modules.md)), built from
-   T547's key set, and a test that compares the serialised message with the exact list of keys. Adding, removing or
-   renaming a key then fails a test and is visible in review. `docs/PROTOCOL.md` is not touched.
+3. **The contract of the live messages is held by typed models and tests, as T547 built them**: the frozen
+   dataclasses named in Context in each module's `domain/` (pure, no I/O, [ADR 17](0017-vertical-slice-modules.md)),
+   and tests that compare the serialised message with the exact key set. Adding, removing or renaming a key fails a
+   test and is visible in review. This ADR adds nothing to the code; it records that this, not protobuf, is the
+   contract. `docs/PROTOCOL.md` is not touched.
 4. The decision is reviewed when one of the **triggers** below becomes true.
 
 ## Considered options
@@ -76,13 +82,17 @@ We will **not introduce protobuf now**. Instead:
 **Positive:**
 - No new dependency, build step or runtime on the field machine; the update script and CI stay as they are.
 - Messages stay readable in the browser and in `psql` (`LISTEN`), which helps a single operator debug in the field.
-- The contract of the two most important messages (`location_update`, `sos_alert`; BP-01, BP-02) becomes explicit
-  at the moment T547 changes it.
+- The contract of the two most important messages (`location_update`, `sos_alert`; BP-01, BP-02) is explicit in
+  typed models and tests (T547).
 
 **Negative / Trade-offs:**
 - No generated, shared schema between backend and frontend; a mismatch is found by tests and review, not by a compiler.
 - JSON is larger than protobuf; at the size above this does not matter on loopback.
 - The typed models are an extra file per message to keep in step with the code that builds the message.
+- `fire_alert`, `fire_alert_updated` and `fire_alert_repeat` are not covered by `LIVE_PERSONAL_FIELDS`: `fire_alert*` still
+  carry `full_name` and `rank` (`fire/domain/models.py`). Their keys are not yet held by typed models either.
+- The code says `PersonalDetails` and the switch are to be removed together in a T547 follow-up. If that happens, the
+  models for the personal part go with them; `PositionFix` and `SosAlert` stay.
 
 **Reconsider this ADR when any of these becomes true** (each can be checked in the repository):
 1. **The gateway runs as its own process**: `main.py` no longer starts the HID reader as a task, or another process
@@ -98,12 +108,9 @@ We will **not introduce protobuf now**. Instead:
 
 If trigger 1 or 2 fires, option 3 (or a JSON-schema option 4 first) is evaluated in a new ADR that supersedes this one.
 
-## What we do instead
-
-- Typed models for `location_update` and `sos_alert` with T547, in the owning modules' `domain/`.
-- A test per live message that asserts the exact key set (the key list in the tracking plan's section 1.4 is the source).
-- Option 4 (a schema generated from the models) is revisited if a key mismatch between backend and frontend reaches
-  bee-dev even once.
+**What we do instead of protobuf:** keep the T547 models and key tests as the contract; extend the same
+approach to the `fire_alert*` messages when their personal keys are decided (the owner's call, not this ADR's); revisit
+option 4 (a schema generated from the models) if a key mismatch between backend and frontend reaches bee-dev even once.
 
 ## Related
 
