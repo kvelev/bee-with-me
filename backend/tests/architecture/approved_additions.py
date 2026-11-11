@@ -30,6 +30,25 @@ APPROVED: dict[str, dict[str, str]] = {
         'module boundary: weather: backend.routers.weather -> backend.modules.weather.http':
             'the old import path backend.routers.weather is an alias of the module http, kept so '
             'the existing patches and imports work until step 5',
+        # Step 2 (T502): the fire package becomes a module. Net change of the allowlist: 8 lines deleted, 9 added.
+        'module boundary: fire: backend.fire.models -> backend.modules.fire.domain.models':
+            'old import path kept as an alias until step 5; 24 test files import it',
+        'module boundary: fire: backend.fire.parse -> backend.modules.fire.domain.parse':
+            'old import path kept as an alias until step 5; 24 test files import it',
+        'module boundary: fire: backend.fire.proximity -> backend.modules.fire.domain.proximity':
+            'old import path kept as an alias until step 5; 24 test files import it',
+        'module boundary: fire: backend.fire.h3index -> backend.modules.fire.domain.h3index':
+            'old import path kept as an alias until step 5; 24 test files import it',
+        'module boundary: fire: backend.fire.repository -> backend.modules.fire.infrastructure.repository':
+            'old import path kept as an alias until step 5; 24 test files import it',
+        'module boundary: fire: backend.fire.sources -> backend.modules.fire.infrastructure.sources':
+            'old import path kept as an alias until step 5; 24 test files import it',
+        'module boundary: fire: backend.fire.poller -> backend.modules.fire.infrastructure.poller':
+            'old import path kept as an alias until step 5; 24 test files import it',
+        'module boundary: fire: backend.fire.service -> backend.modules.fire.infrastructure.service':
+            'old import path kept as an alias until step 5; 24 test files import it',
+        'module boundary: fire: backend.routers.fire -> backend.modules.fire.http':
+            'old import path kept as an alias until step 5; 24 test files import it',
     },
     'backend/tests/architecture/allowlist.json': {},
 }

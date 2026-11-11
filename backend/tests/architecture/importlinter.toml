@@ -50,8 +50,6 @@ ignore_imports = [
     "backend.auth -> backend.config",  # until step 5
     "backend.auth -> backend.database",  # until step 5
     "backend.db.migrate -> backend.config",  # until step 5
-    "backend.fire.poller -> backend.database",  # until step 2
-    "backend.fire.service -> backend.database",  # until step 2
     "backend.hardware_reader.hid_reader -> backend.config",  # until step 3
     "backend.hardware_reader.hid_reader -> backend.ws",  # until step 3
     "backend.hardware_reader.reader -> backend.config",  # until step 3
@@ -63,7 +61,6 @@ ignore_imports = [
     "backend.routers.auth -> backend.database",  # until step 5
     "backend.routers.devices -> backend.database",  # until step 4
     "backend.routers.export -> backend.database",  # until step 5
-    "backend.routers.fire -> backend.database",  # until step 2
     "backend.routers.groups -> backend.database",  # until step 4
     "backend.routers.groups -> backend.json_columns",  # until step 4
     "backend.routers.locations -> backend.config",  # until step 3
@@ -96,11 +93,6 @@ ignore_imports = [
     "backend.main -> backend.fire.service",  # until step 2
     "backend.routers.devices -> backend.fire.repository",  # until step 4
     "backend.routers.devices -> backend.fire.service",  # until step 4
-    "backend.routers.fire -> backend.fire.models",  # until step 2
-    "backend.routers.fire -> backend.fire.parse",  # until step 2
-    "backend.routers.fire -> backend.fire.poller",  # until step 2
-    "backend.routers.fire -> backend.fire.repository",  # until step 2
-    "backend.routers.fire -> backend.fire.service",  # until step 2
     "backend.modules.settings.http -> backend.fire.repository",  # until step 4
     "backend.modules.settings.http -> backend.fire.service",  # until step 4
     "backend.modules.settings.infrastructure.publisher -> backend.fire.service",  # until step 4
@@ -143,6 +135,7 @@ source_modules = [
     "backend.main",
     "backend.auth",
     "backend.db",
+    "backend.modules.fire",
     "backend.modules.weather",
 ]
 forbidden_modules = [
@@ -168,6 +161,7 @@ source_modules = [
     "backend.main",
     "backend.auth",
     "backend.db",
+    "backend.modules.fire",
     "backend.modules.settings",
 ]
 forbidden_modules = [
@@ -177,4 +171,38 @@ forbidden_modules = [
 allow_indirect_imports = true
 ignore_imports = [
     "backend.routers.weather -> backend.modules.weather.http",  # until step 5
+]
+
+[[tool.importlinter.contracts]]
+id = "boundary-fire"
+name = "module boundary: fire"
+type = "forbidden"
+source_modules = [
+    "backend.routers",
+    "backend.fire",
+    "backend.hardware_reader",
+    "backend.simulation",
+    "backend.main",
+    "backend.auth",
+    "backend.db",
+    "backend.modules.settings",
+    "backend.modules.weather",
+]
+forbidden_modules = [
+    "backend.modules.fire.domain",
+    "backend.modules.fire.http",
+    "backend.modules.fire.infrastructure",
+    "backend.modules.fire.module",
+]
+allow_indirect_imports = true
+ignore_imports = [
+    "backend.fire.models -> backend.modules.fire.domain.models",  # until step 5
+    "backend.fire.parse -> backend.modules.fire.domain.parse",  # until step 5
+    "backend.fire.proximity -> backend.modules.fire.domain.proximity",  # until step 5
+    "backend.fire.h3index -> backend.modules.fire.domain.h3index",  # until step 5
+    "backend.fire.repository -> backend.modules.fire.infrastructure.repository",  # until step 5
+    "backend.fire.sources -> backend.modules.fire.infrastructure.sources",  # until step 5
+    "backend.fire.poller -> backend.modules.fire.infrastructure.poller",  # until step 5
+    "backend.fire.service -> backend.modules.fire.infrastructure.service",  # until step 5
+    "backend.routers.fire -> backend.modules.fire.http",  # until step 5
 ]

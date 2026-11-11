@@ -319,3 +319,29 @@ def test_a_task_may_live_in_a_tasks_package_or_be_wrapped(tmp_path):
     for bad in (lookalike, foreign, functools.partial(foreign), functools.partial(_task_outside_the_tasks_module)):
         probs = rules.check_manifest_wiring([ModuleManifest(name='b', tasks=(bad,))], backend)
         assert len(probs) == 1 and 'must live in backend.modules.b.tasks' in probs[0]
+
+
+@pytest.mark.Trait("Task", "T502")
+def test_an_ignore_entry_may_open_a_file_below_a_private_child(tmp_path):
+    backend = _two_modules(tmp_path)
+    (backend / 'modules' / 'a' / 'infrastructure').mkdir()
+    (backend / 'modules' / 'a' / 'infrastructure' / '__init__.py').write_text('', encoding='utf-8')
+    legacy = list(rules.LEGACY_SOURCES)
+    private = ['backend.modules.a.http', 'backend.modules.a.domain', 'backend.modules.a.infrastructure']
+    toml = _boundary_toml('a', private, legacy + ['backend.modules.b'],
+                          ignore=['backend.routers.x -> backend.modules.a.infrastructure.repo'])
+    assert rules.check_boundary_contracts(toml, ['a'], backend) == []
+
+
+@pytest.mark.Trait("Task", "T502")
+@pytest.mark.parametrize('target', ['backend.modules.b.infrastructure.repo', 'backend.modules.a.api',
+                                    'backend.modules.a.infrastructure_extra'])
+def test_an_ignore_entry_into_another_module_or_a_look_alike_is_still_refused(tmp_path, target):
+    backend = _two_modules(tmp_path)
+    (backend / 'modules' / 'a' / 'infrastructure').mkdir()
+    (backend / 'modules' / 'a' / 'infrastructure' / '__init__.py').write_text('', encoding='utf-8')
+    legacy = list(rules.LEGACY_SOURCES)
+    private = ['backend.modules.a.http', 'backend.modules.a.domain', 'backend.modules.a.infrastructure']
+    toml = _boundary_toml('a', private, legacy + ['backend.modules.b'], ignore=[f'backend.routers.x -> {target}'])
+    probs = rules.check_boundary_contracts(toml, ['a'], backend)
+    assert len(probs) == 1 and 'may only open an import into a private child' in probs[0], probs
