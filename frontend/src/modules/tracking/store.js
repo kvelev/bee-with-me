@@ -77,11 +77,45 @@ export const useTrackingStore = defineStore('tracking', () => {
     wsConnected.value = connected
   }
 
+  // Ordering of live messages against requests. A counter, not the clock: two events in the same
+  // millisecond still have an order. `liveSeq[deviceId]` = the tick of the last applied live message.
+  let seq = 0
+  const liveSeq = {}
+
+  /** Replace the picture with the /live answer, except that a device whose live message arrived
+   *  after this request started keeps its row: the answer is older than that message. The answer's
+   *  fields are merged under the row, so a name the message lacks still arrives. */
   async function fetchLive() {
+    const startedAt = ++seq
     const rows = await getLivePositions()
-    positions.value = Object.fromEntries(rows.map(r => [r.device_id, normaliseGroups(r)]))
+    const isNewer = id => (liveSeq[id] ?? 0) > startedAt
+    const next = {}
+    for (const r of rows) {
+      const kept = isNewer(r.device_id) ? positions.value[r.device_id] : null
+      next[r.device_id] = normaliseGroups(kept ? { ...r, ...kept } : r)
+    }
+    for (const [id, row] of Object.entries(positions.value)) {
+      if (!(id in next) && isNewer(id)) next[id] = row
+    }
+    positions.value = next
     markSynced()
     saveSnapshot(positions.value)
+  }
+
+  // Single-flight roster refresh: one /live request at a time, at most one queued behind it.
+  let rosterRunning = false
+  let rosterQueued  = false
+  async function requestRoster() {
+    if (rosterRunning) { rosterQueued = true; return }
+    rosterRunning = true
+    try {
+      do {
+        rosterQueued = false
+        try { await fetchLive() } catch { /* the resync tick repeats it */ }
+      } while (rosterQueued)
+    } finally {
+      rosterRunning = false
+    }
   }
 
   async function fetchTrail() {
@@ -115,12 +149,17 @@ export const useTrackingStore = defineStore('tracking', () => {
   }
 
   function applyLocationUpdate(message) {
-    const existing = positions.value[message.device_id] ?? {}
+    const known = positions.value[message.device_id]
+    const existing = known ?? {}
     const data = updateHooks.reduce((d, fn) => fn(d, existing) ?? d, message)
 
     positions.value[data.device_id] = normaliseGroups({ ...existing, ...data })
+    liveSeq[data.device_id] = ++seq
     markSynced()
     saveSnapshot(positions.value)
+
+    // A thin message has no name: a device we do not hold, or one handed to another person, needs /live.
+    if (!known || (data.user_id !== undefined && known.user_id !== data.user_id)) requestRoster()
 
     // A frame with no GNSS fix carries the last known position forward — it proves contact,
     // not movement. Recording it as a new trail point would draw a line the rescuer never

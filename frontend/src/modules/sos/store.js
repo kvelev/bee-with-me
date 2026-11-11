@@ -22,18 +22,26 @@ export const useSosStore = defineStore('sos', () => {
     const effectiveSOS = data.sos_active && !resolvedSOS.has(data.device_id)
 
     if (effectiveSOS && !existing.sos_active) {
+      const row = { ...existing, ...data }   // a thin message has no name: take it from the row we hold
       sosNotifications.value.push({
         id:        Date.now() + Math.random(),
         device_id: data.device_id,
-        name:      data.full_name || data.device_name || `SN:${data.dev_sn ?? ''}`,
+        name:      row.full_name || row.device_name || `SN:${row.dev_sn ?? ''}`,
         timestamp: new Date().toISOString(),
       })
     }
     return { ...data, sos_active: effectiveSOS }
   })
 
+  // device ids whose alert was pushed while a fetch was in flight: the answer predates them, so it must not drop them
+  const pushedDuringFetch = new Set()
+
   async function fetchSOS() {
-    sosAlerts.value = await getOpenSOS()
+    pushedDuringFetch.clear()
+    const rows = await getOpenSOS()
+    if (!Array.isArray(rows)) return
+    const kept = sosAlerts.value.filter(a => pushedDuringFetch.has(a.device_id) && !rows.some(r => r.device_id === a.device_id))
+    sosAlerts.value = [...rows, ...kept]
   }
 
   function dismissSOSNotification(id) {
@@ -45,8 +53,38 @@ export const useSosStore = defineStore('sos', () => {
     resolvedSOS.delete(deviceId)
   }
 
+  // Single-flight completion read: one /sos request at a time, at most one queued behind it. A failure is
+  // swallowed and never touches the alerts that are already shown.
+  let sosRunning = false
+  let sosQueued  = false
+  async function requestSOS() {
+    if (sosRunning) { sosQueued = true; return }
+    sosRunning = true
+    try {
+      do {
+        sosQueued = false
+        try { await fetchSOS() } catch { /* keep what is shown */ }
+      } while (sosQueued)
+    } finally {
+      sosRunning = false
+    }
+  }
+
   function applySOSAlert(data) {
-    const { type, ...alert } = data
+    const { type, ...pushed } = data
+    // A thin alert has no name: fill what is missing from the tracking position of that device.
+    // A field that is present wins.
+    const pos = tracking.positions[pushed.device_id] ?? {}
+    const alert = { ...pushed }
+    for (const key of ['full_name', 'rank', 'device_name', 'dev_sn']) {
+      if (alert[key] == null && pos[key] != null) alert[key] = pos[key]
+    }
+    pushedDuringFetch.add(alert.device_id)
+    showAlert(alert)
+    requestSOS()
+  }
+
+  function showAlert(alert) {
     const idx = sosAlerts.value.findIndex(a => a.device_id === alert.device_id)
     if (idx === -1) {
       sosAlerts.value.push(alert)
