@@ -19,7 +19,7 @@
 
 **Base:** `upstream/develop` at `d174ce3` (PR #150, T542 merged; `git fetch upstream; git log --oneline -1 upstream/develop` on 2026-11-11).
 
-**Review:** the first version of these plans (`f92c977`) was read by `task-reviewer` (verdict: needs fixes) and `breaker` (verdict: FAIL). This version carries their corrections; the main ones are listed in section 10. It has not been re-reviewed.
+**Review:** three rounds so far (`f92c977`, `546fb5e`, `30881ab`), each by `task-reviewer` and `breaker`; every round found defects and every round's findings are applied in the next commit (section 10). The latest head has been read by both reviewers once more; their verdicts are not PASS until a round finds nothing to fix.
 
 ## Global Constraints
 
@@ -151,7 +151,7 @@ For each: what it blocks and the default this wave takes when nobody answers.
 | # | Question | Blocks | Default |
 |---|----------|--------|---------|
 | O1 | Who runs the validation protocol, on which gateway, in which window (spec section 9, question 2)? | T611, T612, T613 and the release | Kiril Penev on his bench; nothing of stage H is merged before |
-| O2 | The policy table (hardware plan, section 1.1). Four lines are decisions: no ACK for an unknown or inactive device; ACK for a no-fix frame without SOS that is dropped for lack of an earlier fix; ACK plus an ERROR log for a frame the database can never store; and new behaviour: an SOS in a frame without any fix opens an alert without a position (today that SOS is dropped and acknowledged). R-07 asks for exactly this decision. | T612, T613 | the table as written |
+| O2 | The policy table (hardware plan, section 1.1). Four lines are decisions: no ACK for an unknown or inactive device; ACK for a no-fix frame without SOS that is dropped for lack of an earlier fix; ACK plus an ERROR log for a frame the database can never store; and new behaviour: an SOS in a frame without any fix opens an alert without a position (today that SOS is dropped and acknowledged). R-07 asks for exactly this decision. | T612, T613 | the table as written, for implementation only: T612 is merged only after the owner and the device maker confirmed it (O2 and the numbers of V2) |
 | O3 | `docs/PROTOCOL.md` after the move: see the text proposals of section 8. | nothing | the file is not edited by this wave |
 | O4 | The split the spec allows: may the move (T602, T603, T604: no decode, filter or ACK line changes, proven by T601) be merged without a run on the real gateway, with check V0 required before the next release instead? | the merge of T602, T603, T604 and of T621 and T690 behind them | none: without an answer the three stay open PRs. Recommended answer: yes |
 | O5 | `.github/CODEOWNERS` has `/backend/hardware_reader/ @kvelev`; after T602 the code is in `/backend/modules/gateway/`. | nothing (the `*` rule still names the same owner) | the owner adds the line; T602's PR body asks for it |
@@ -201,6 +201,7 @@ For each: what it blocks and the default this wave takes when nobody answers.
 - **Gateway plan.** The pin hashes normalised source text, not `ast.dump` (which differs between the CI's Python and newer ones), keeps import names in the hash and also pins the command numbers and frame classes. The handlers return outcomes already in T604 (the simulation needs them and must not depend on a hardware-gated task), so T610 moves before T604. `gateway.tasks` is added to the boundary contract. The move tasks are no longer called "safe to merge" without the owner's yes (O4).
 - **Tracking plan.** Tests the first version called unedited are listed with their edits (`test_main_names_no_fire_internals`, the loop-driving cases of the anonymise tests, a smoke-shape assertion, two `db`-marked simulation tests). `seed` returns the columns the new path reads. A start without a reset sends a falling edge first, or the simulated SOS would stay silent. The no-fix 400 comes from the handler's outcome.
 - **Frontend plan.** The two text keys keep their names (a snapshot test compares names). `MapView.b66.test.js` is listed. The status is refetched on every tick, because `setup` runs once per page. The 10 second tick stays with the list it sorts and is owned by the view; the list is passed as a ref.
+- **Round 2 and 3 (hardware plan).** The parser can raise (the MGRS conversion) before any store, so `parse_frame` is inside the guard. `REJECTED` is exactly the database's class 22 (`DataError`); everything else, including a bare `ValueError`, `TypeError` and `ProgramLimitExceededError` (SQLSTATE 54000: also a full notification queue), is `STORE_FAILED`, so a systematic fault can never acknowledge and drop frames. A duplicate never refreshes the window (an existing test depends on it). T613 edits `delegates_helper.py` (a transaction mock) and the fire manifest tests are edited in T620. T611 uses a temporary ACK rule so an unknown device keeps being acknowledged until T612.
 - **Overview.** Chains for the gateway module files, the gateway tests, the TOML and the tracking API were missing; T690 needs T590.
 
 ---
