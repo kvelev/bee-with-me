@@ -93,5 +93,5 @@ class FixtureSource:
         return self._payload
 
 
-HOTSPOTS = GwisFeed('hotspots', 'ms:viirs.hs.week')
+HOTSPOTS = GwisFeed('hotspots', 'ms:viirs.hs.week.points')   # renamed upstream (B106); GetCapabilities lists the names
 BURNT_AREAS = GwisFeed('burnt_areas', 'ms:nrt.ba.poly.week')
