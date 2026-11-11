@@ -161,6 +161,8 @@ export const useTrackingStore = defineStore('tracking', () => {
   function removePosition(deviceId) {
     const { [deviceId]: _removed, ...rest } = positions.value
     positions.value = rest
+    delete liveSeq[deviceId]
+    delete carried[deviceId]
     const { [deviceId]: _removedTrail, ...restTrails } = trails.value
     trails.value = restTrails
   }
@@ -168,7 +170,13 @@ export const useTrackingStore = defineStore('tracking', () => {
   function applyLocationUpdate(message) {
     const known = positions.value[message.device_id]
     const existing = known ?? {}
-    const data = updateHooks.reduce((d, fn) => fn(d, existing) ?? d, message)
+    // A hook that throws is logged and skipped: it must not drop the whole frame.
+    const data = updateHooks.reduce((d, fn) => {
+      try { return fn(d, existing) ?? d } catch (e) {
+        console.error('tracking update hook failed: %s', e?.message ?? String(e))
+        return d
+      }
+    }, message)
 
     positions.value[data.device_id] = normaliseGroups({ ...existing, ...data })
     liveSeq[data.device_id] = ++seq
