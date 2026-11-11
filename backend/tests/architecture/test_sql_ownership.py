@@ -50,8 +50,7 @@ def test_known_cross_module_writes_are_found():
     for expected in [
         ('simulation.py', 'users', 'INSERT'),   # found only by the multi-line scan (T541 moved the devices, users and test.py writers into the modules)
         ('simulation.py', 'groups', 'INSERT'),
-        ('main.py', 'users', 'INSERT'),
-        ('hardware_reader/reader.py', 'location_events', 'INSERT'),
+        ('main.py', 'users', 'INSERT'),   # T542 moved the reader's writers into tracking and sos
     ]:
         assert expected in found, expected
     assert not [v for v in found if v[0] == 'routers/locations.py']   # mapped to tracking and sos

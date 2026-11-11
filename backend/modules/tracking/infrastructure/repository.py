@@ -128,3 +128,56 @@ async def delete_positions_of_devices(conn: asyncpg.Connection, device_ids) -> i
     return await conn.fetchval(
         'WITH d AS (DELETE FROM location_events WHERE device_id = ANY($1::uuid[]) RETURNING 1) SELECT count(*) FROM d',
         device_ids)
+
+
+# ── Writers used by the hardware reader (T542) ───────────────────────────────
+# Statements copied unchanged from hardware_reader/reader.py; same connection, no transaction of their own.
+
+async def last_fix(conn: asyncpg.Connection, device_id) -> asyncpg.Record | None:
+    return await conn.fetchrow(
+        """
+            SELECT latitude, longitude, mgrs FROM location_events
+            WHERE device_id = $1 AND gnss_valid = TRUE
+            ORDER BY received_at DESC LIMIT 1
+            """,
+        device_id,
+    )
+
+
+async def previous_sos_flag(conn: asyncpg.Connection, device_id) -> bool | None:
+    return await conn.fetchval(
+        'SELECT sos_active FROM location_events WHERE device_id = $1 ORDER BY received_at DESC LIMIT 1',
+        device_id,
+    )
+
+
+async def insert_position(conn: asyncpg.Connection, *, device_id, user_id, msg_id, recorded_at, received_at,
+                          latitude, longitude, mgrs, altitude_m, speed_knots, course_deg, gnss_satellites,
+                          battery_voltage, sos_active, repeater_mode, raw_flags, gnss_valid) -> None:
+    await conn.execute(
+        """
+        INSERT INTO location_events (
+            device_id, user_id, msg_id, recorded_at, received_at,
+            position, latitude, longitude, mgrs,
+            altitude_m, speed_knots, course_deg, gnss_satellites,
+            battery_voltage, sos_active, repeater_mode, raw_flags, gnss_valid
+        ) VALUES (
+            $1, $2, $3, $4, $5,
+            ST_SetSRID(ST_MakePoint($7, $6), 4326), $6, $7, $8,
+            $9, $10, $11, $12,
+            $13, $14, $15, $16, $17
+        )
+        """,
+        device_id, user_id, msg_id, recorded_at, received_at,
+        latitude, longitude, mgrs,
+        altitude_m, speed_knots, course_deg, gnss_satellites,
+        battery_voltage, sos_active, repeater_mode, raw_flags,
+        gnss_valid,
+    )
+
+
+async def insert_heartbeat(conn: asyncpg.Connection, device_id, msg_id, battery_voltage) -> None:
+    await conn.execute(
+        'INSERT INTO repeater_events (device_id, msg_id, battery_voltage) VALUES ($1, $2, $3)',
+        device_id, msg_id, battery_voltage,
+    )
