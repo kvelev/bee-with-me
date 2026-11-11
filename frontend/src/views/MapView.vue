@@ -100,42 +100,12 @@
 
     <MapPopupHost :map="hostMap" :popups="popups" :selection="firePopup" anchor-class="fire-popup-anchor">
       <template #default="{ popup, selection }">
-        <component
-          :is="popup.component"
-          :kind="selection.kind"
-          :properties="selection.properties"
-          :lon-lat="firePopupLonLat"
-          :is-admin="isAdmin"
-          :busy="fireBusy"
-          :error-text="fireError"
-          @close="closeFirePopup"
-          @dismiss="onPopupDismiss"
-          @extinguish="onPopupExtinguish"
-          @create-zone="onPopupCreateZone"
-        />
+        <component :is="popup.component" :selection="selection" :context="mapContext" @close="firePopup = null" />
       </template>
     </MapPopupHost>
 
-    <!-- Right-click / long-press on the map: the only item is "Report fire here". -->
+    <!-- Right-click / long-press on the map: the items come from the modules' contextMenu contributions. -->
     <MapContextMenu ref="ctxMenu" :items="menuItems" />
-
-    <FieldReportForm
-      v-if="dialog?.kind === 'report'"
-      :target="dialog.target"
-      :busy="dialogBusy"
-      :error-text="dialogError"
-      @submit="submitReport"
-      @cancel="closeDialog"
-    />
-    <SuppressionZoneForm
-      v-if="dialog?.kind === 'zone'"
-      :latitude="dialog.latitude"
-      :longitude="dialog.longitude"
-      :busy="dialogBusy"
-      :error-text="dialogError"
-      @submit="submitZone"
-      @cancel="closeDialog"
-    />
 
     <!-- Measure readout -->
     <div v-if="measureReadout" class="measure-readout">
@@ -304,7 +274,7 @@ import { fromLonLat, toLonLat } from 'ol/proj'
 import Overlay from 'ol/Overlay'
 import { useLocationsStore } from '../stores/locations'
 import { useFireStore } from '../stores/fire'
-import { useFireUi } from '../modules/fire/ui.js'
+import { useFireUi } from '../modules/fire/index.js'
 import { useAuthStore } from '../stores/auth'
 import { useSettingsStore } from '../stores/settings'
 import { useWebSocket } from '../composables/useWebSocket'
@@ -315,15 +285,11 @@ import { recolorFor, tempLegendGradient } from '../lib/weatherTiles'
 import { compassFrom, windPoint, gridPoints, openMeteoUrl, parseOpenMeteo, nearestPoint } from '../lib/wind'
 import { unByKey } from 'ol/Observable'
 import SOSToast from '../components/SOSToast.vue'
-import FirePopup from '../components/FirePopup.vue'
 import MapPopupHost from '../platform/map-shell/MapPopupHost.vue'
 import MapContextMenu from '../platform/map-shell/MapContextMenu.vue'
 import PanelHost from '../platform/PanelHost.vue'
 import { collectContextMenu, collectLayerToggles, collectPanels, collectPopups } from '../platform/map-shell/contributions.js'
 import { MODULES } from '../modules'
-import FieldReportForm from '../components/FieldReportForm.vue'
-import SuppressionZoneForm from '../components/SuppressionZoneForm.vue'
-import { fireErrorKey } from '../lib/fireErrors'
 
 const WEATHER_LAYERS = [
   {
@@ -484,116 +450,12 @@ const layerToggles = computed(() => collectLayerToggles(MODULES).filter(t => !t.
 const layerButtons = computed(() => layerToggles.value
   .map(toggle => ({ toggle, name: toggle.key ?? toggle.id.replace(/^fire-/, '') })))
 const firePopup   = ref(null)   // { kind, properties, coordinate } | null
-// Popups come from contributions; the fire popup is a legacy entry until step 2.
-const popups = collectPopups(MODULES, [{ id: 'fire', component: FirePopup, kinds: ['hotspot', 'burnt_area'] }]) // until step 2
+// Popups come from the modules' contributions; the selected feature stays here, the popup owns its actions.
+const popups = collectPopups(MODULES)
 const hostMap = shallowRef(null)   // set once the map exists; the popup host puts its overlay on it
 
 const toggleOn = (toggle, name) => (toggle.isOn ? !!toggle.isOn() : !!fireStore.layers[name])
 const onToggle = (toggle, name) => (toggle.set ? toggle.set(!toggleOn(toggle, name)) : useFireUi().setLayer(name, !toggleOn(toggle, name)))
-
-// A fire popup is closed when its layer is switched off (hotspot <-> hotspots, burnt_area <-> burnt; zones never).
-// Moves with the popup to the fire module in T508.
-watch(() => fireStore.layers.hotspots, (on) => { if (!on && firePopup.value?.kind === 'hotspot') closeFirePopup() })
-watch(() => fireStore.layers.burnt, (on) => { if (!on && firePopup.value?.kind === 'burnt_area') closeFirePopup() })
-
-// The overlay coordinate is in the map projection (EPSG:3857); the popup wants WGS84.
-const firePopupLonLat = computed(() => {
-  const c = firePopup.value?.coordinate
-  return Array.isArray(c) ? toLonLat(c) : null
-})
-
-function closeFirePopup() {
-  firePopup.value = null
-  fireError.value = ''
-}
-
-// ── Popup actions (admin: dismiss, create zone; anyone: extinguish a field report) ──────────
-const fireBusy  = ref(false)
-const fireError = ref('')
-
-// Only one popup action runs at a time. The server answers with the changed row; the popup then
-// shows that row (state chip, notes) instead of the copy it was opened with.
-async function runPopupAction(id, action) {
-  if (fireBusy.value) return
-  fireBusy.value = true
-  fireError.value = ''
-  try {
-    await action()
-    syncPopup(id)
-  } catch (err) {
-    if (firePopup.value?.properties?.id === id) fireError.value = t(fireErrorKey(err))
-  } finally {
-    fireBusy.value = false
-  }
-}
-
-function syncPopup(id) {
-  if (firePopup.value?.properties?.id !== id) return
-  const next = fireStore.hotspots.features.find(f => f.id === id)
-  if (next) firePopup.value = { ...firePopup.value, properties: { ...next.properties } }
-}
-
-const onPopupDismiss    = ({ id, notes }) => runPopupAction(id, () => fireStore.dismissHotspot(id, notes))
-const onPopupExtinguish = ({ id }) => runPopupAction(id, () => fireStore.extinguish(id))
-function onPopupCreateZone() {
-  const ll = firePopupLonLat.value
-  if (!ll) return
-  openDialog({ kind: 'zone', latitude: ll[1], longitude: ll[0] })
-  closeFirePopup()
-}
-
-// ── Dialogs: field report, suppression zone (one at a time) ──────────────────────────────────
-const dialog      = ref(null)   // { kind: 'report', target } | { kind: 'zone', latitude, longitude } | null
-const dialogBusy  = ref(false)
-const dialogError = ref('')
-let   dialogSeq   = 0
-
-function openDialog(next) {
-  ctxMenu.value?.close()
-  dialogSeq++
-  dialogBusy.value = false
-  dialogError.value = ''
-  dialog.value = next
-}
-function closeDialog() {
-  dialogSeq++
-  dialog.value = null
-  dialogBusy.value = false
-  dialogError.value = ''
-}
-
-// Runs a write for the open dialog. A dialog that was closed or replaced while the request was
-// in flight takes neither the result nor the error.
-async function runDialogAction(action, context) {
-  if (dialogBusy.value) return false
-  const mine = ++dialogSeq
-  dialogBusy.value = true
-  dialogError.value = ''
-  try {
-    await action()
-    if (mine === dialogSeq) closeDialog()
-    return true
-  } catch (err) {
-    if (mine === dialogSeq) { dialogError.value = t(fireErrorKey(err, context)); dialogBusy.value = false }
-  }
-  return false
-}
-
-async function submitReport({ notes }) {
-  const target = dialog.value?.target
-  if (!target) return
-  if (target.noPosition) return
-  const body = { latitude: target.latitude, longitude: target.longitude, notes }
-  // A 404 here means the running backend lacks the field-report endpoint (older than T18).
-  if (await runDialogAction(() => fireStore.reportFire(body), 'report')) useFireUi().ensureLayer('hotspots')
-}
-
-async function submitZone(values) {
-  const d = dialog.value
-  if (d?.kind !== 'zone') return
-  const body = { ...values, latitude: d.latitude, longitude: d.longitude }
-  if (await runDialogAction(() => fireStore.createZone(body))) useFireUi().ensureLayer('zones')
-}
 
 // ── Volunteer selection and "Report fire at this position" ───────────────────────────────────
 // Selecting a volunteer (panel row, or their marker on the map) reveals the action under their row.
@@ -615,7 +477,7 @@ function reportFromRow(pos) {
   const lat = Number(live?.latitude), lon = Number(live?.longitude)
   const usable = !!live && live.latitude != null && live.longitude != null
     && Number.isFinite(lat) && Number.isFinite(lon) && age != null && age <= REPORT_MAX_AGE_MS
-  openDialog({
+  useFireUi().openDialog({
     kind: 'report',
     target: usable
       ? { name, latitude: lat, longitude: lon, mgrs: live.mgrs ?? '', receivedAt: contactAt(live), gnssValid: live.gnss_valid }
@@ -638,12 +500,9 @@ watch(displayList, (list) => {
 })
 
 // ── Right-click / long-press: "Report fire here" ─────────────────────────────────────────────
-// The menu items come from contributions; "Report fire here" is a legacy entry until step 2.
+// The menu items come from the modules' contributions ("Report fire here" is the fire module's).
 const ctxMenu = ref(null)   // the MapContextMenu instance
-const menuItems = collectContextMenu(MODULES, [{
-  id: 'fire-report-here', order: 10, labelKey: 'fire.report.here', testId: 'report-fire-here',
-  onSelect: ({ lonLat }) => openDialog({ kind: 'report', target: { latitude: lonLat[1], longitude: lonLat[0] } }),
-}]) // until step 2
+const menuItems = collectContextMenu(MODULES)
 
 function openContextMenu(e) {
   ctxMenu.value?.open({
@@ -656,10 +515,7 @@ onMounted(() => {
   const m = map()
   if (!m) return
   hostMap.value = m
-  onFireFeatureClick((sel) => {
-    fireError.value = ''
-    firePopup.value = sel
-  })
+  onFireFeatureClick((sel) => { firePopup.value = sel })
 })
 
 onTrackerClick(onMarkerClick)
