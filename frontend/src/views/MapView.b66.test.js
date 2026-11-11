@@ -62,7 +62,7 @@ async function mountMap({ liveFails = false, hotspotsOn = false } = {}) {
   const snapshot = () => (liveFails ? vi.fn().mockRejectedValue(down()) : vi.fn(async () => {}))
   loc.fetchLive = snapshot(); loc.fetchSOS = snapshot(); loc.fetchTrail = snapshot()
   if (hotspotsOn) useFireStore().layers = { ...useFireStore().layers, hotspots: true }
-  const w = mount(MapView, { attachTo: document.body, global: { plugins: [pinia, i18n], stubs: { SOSToast: true } } })
+  const w = mount(MapView, { attachTo: document.body, global: { plugins: [pinia, i18n] } })
   await flushPromises()
   return w
 }
@@ -108,7 +108,7 @@ describe('MapView: B66 start before the backend is up', () => {
     const l = useLocationsStore()
     l.fetchLive = vi.fn(async () => {}); l.fetchTrail = vi.fn(async () => {})
     l.fetchSOS = vi.fn().mockRejectedValue(down())
-    const w = mount(MapView, { attachTo: document.body, global: { plugins: [pinia, i18n], stubs: { SOSToast: true } } })
+    const w = mount(MapView, { attachTo: document.body, global: { plugins: [pinia, i18n] } })
     await flushPromises()
     expect(ws.connect).toHaveBeenCalledWith({ catchUp: true })
     w.unmount()
@@ -122,7 +122,7 @@ describe('MapView: B66 start before the backend is up', () => {
     let release
     const gate = new Promise(r => { release = r })
     l.fetchLive = vi.fn(() => gate); l.fetchSOS = vi.fn(async () => {}); l.fetchTrail = vi.fn(async () => {})
-    const w = mount(MapView, { attachTo: document.body, global: { plugins: [pinia, i18n], stubs: { SOSToast: true } } })
+    const w = mount(MapView, { attachTo: document.body, global: { plugins: [pinia, i18n] } })
     await flushPromises()
     w.unmount()
     tick.mockClear()
