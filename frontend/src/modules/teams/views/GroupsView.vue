@@ -333,6 +333,7 @@ async function reactivate(g) {
 async function remove(g) {
   pageError.value = ''
   if (!confirm(t('groups.confirmDelete', { name: g.name }))) return
+  selectSeq++
   try {
     await deleteGroup(g.id)
     if (selected.value?.id === g.id) selected.value = null
