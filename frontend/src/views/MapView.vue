@@ -63,6 +63,7 @@
         <button class="bm-btn" @click="loadSettings">{{ t('map.settingsRetry') }}</button>
       </span>
       <span v-if="hqError" class="bm-hq-error" role="alert">{{ t('map.hqSaveFailed') }}</span>
+      <span v-if="hqLayerFailed" class="bm-hq-error" role="alert">{{ t('map.hqLayerFailed') }}</span>
       <button v-if="isAdmin && repeaters.length" :class="['bm-btn', { active: repeaterMode }]" @click="toggleRepeaterMode">
         {{ t('map.repeaterSet') }}
       </button>
@@ -441,6 +442,7 @@ const isAdmin    = computed(() => authStore.user?.role === 'admin')
 const hqLocation = computed(() => settingsStore.hq)
 const hqMode     = ref(false)
 const hqError    = ref(false)
+const hqLayerFailed = ref(false)    // the HQ map layer is missing: placement mode could not start
 const hqClearAsk = ref(false)       // the Clear HQ confirmation is showing
 const settingsFailed = ref(false)   // settings could not be loaded: HQ is unknown, not absent
 const settingsReady  = computed(() => !!settingsStore.settings)
@@ -480,6 +482,7 @@ const { map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpo
   groupsMap,
   (coords) => {
     hqMode.value = false
+    hqLayerFailed.value = false
     setHQPlacementMode(false)
     saveHQ(() => settingsStore.setHQ(coords.lat, coords.lon))
   },
@@ -880,16 +883,27 @@ function toggleMeasure() {
   setMeasureMode(measureOn.value)
 }
 function toggleHQMode() {
-  hqMode.value = !hqMode.value
-  if (hqMode.value && measureOn.value) {
+  hqLayerFailed.value = false
+  if (hqMode.value) {
+    hqMode.value = false
+    setHQPlacementMode(false)
+    return
+  }
+  // The HQ map entry may be missing: only a strict `false` means it could not switch on.
+  // Then nothing else is touched, so measure/repeater modes stay as they were.
+  if (setHQPlacementMode(true) === false) {
+    hqLayerFailed.value = true
+    return
+  }
+  hqMode.value = true
+  if (measureOn.value) {
     measureOn.value = false
     setMeasureMode(false)
   }
-  if (hqMode.value && repeaterMode.value) {
+  if (repeaterMode.value) {
     repeaterMode.value = false
     setRepeaterPlacementMode(false)
   }
-  setHQPlacementMode(hqMode.value)
 }
 function clearHQ() {
   hqClearAsk.value = false

@@ -809,7 +809,12 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     }
   }
   const setHQ = (loc, label) => settingsMapFn('setHQ')(loc, label)
-  const setHQPlacementMode = (on) => settingsMapFn('setHQPlacementMode')(on)
+  // true when the settings entry handled the call, false when it is missing (T580: the view shows it).
+  const setHQPlacementMode = (on) => {
+    const handled = typeof moduleApis.settings?.setHQPlacementMode === 'function'
+    settingsMapFn('setHQPlacementMode')(on)
+    return handled
+  }
 
   function makeRepeaterStyle(label, active) {
     const color = active ? '#22d3ee' : '#64748b'
