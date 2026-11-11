@@ -8,8 +8,8 @@ from pydantic import BaseModel, Field, model_validator
 
 from ..auth import get_current_user, require_role
 from ..database import get_conn
-from ..fire import repository as fire_repository
-from ..fire.service import ALARM_LOCK_KEY, notify as fire_notify, notify_alerts_updated
+from ..modules.fire import api as fire_repository
+from ..modules.fire.api import notify as fire_notify, notify_alerts_updated
 
 logger = logging.getLogger(__name__)
 
@@ -208,20 +208,10 @@ async def delete_device_permanent(
             await conn.execute('DELETE FROM sos_alerts       WHERE device_id = $1', device_id)
             await conn.execute('DELETE FROM location_events  WHERE device_id = $1', device_id)
             await conn.execute('DELETE FROM repeater_events  WHERE device_id = $1', device_id)
-            # Serialise with the alarm tick (it holds the same lock while evaluating): a tick inserting an alert for
-            # this device must not interleave with the resolve + delete below, or the FK SET NULL leaves an open
-            # alert without a device. Blocking on purpose (the tick itself only try-locks) but bounded: after 10 s
-            # the whole delete rolls back with 503 instead of queueing behind a stuck tick. An xact lock may be
-            # taken mid-transaction; it is held to commit.
-            await conn.execute("SET LOCAL lock_timeout = '10s'")
-            await conn.execute('SELECT pg_advisory_xact_lock($1)', ALARM_LOCK_KEY)
-            # Open fire alerts for this device end now, with a reason (BP-02); resolved rows keep the history
-            # (device_id -> NULL through the FK). Must run before the delete so none is left open and orphaned.
-            resolved = await conn.fetch(
-                "UPDATE fire_alerts SET resolved_at = NOW(), resolve_reason = 'disabled', "
-                "resolved_by = $2::uuid WHERE device_id = $1 AND resolved_at IS NULL RETURNING id::text",
-                device_id, user['id'],
-            )
+            # Fire part (BP-02): take the alarm lock (blocking but bounded, after 10 s the whole delete rolls back
+            # with 503 instead of queueing behind a stuck tick) and end this device's open alerts with a reason.
+            # Must run before the delete so none is left open and orphaned.
+            resolved = await fire_repository.lock_and_resolve_device_alerts(conn, device_id, user['id'])
             deleted = await conn.fetchval(
                 'DELETE FROM devices WHERE id = $1 RETURNING id', device_id
             )

@@ -50,7 +50,7 @@ def test_known_cross_module_writes_are_found():
     for expected in [
         ('routers/devices.py', 'sos_alerts', 'DELETE'),
         ('routers/users.py', 'location_events', 'UPDATE'),   # found only by the multi-line scan
-        ('routers/devices.py', 'fire_alerts', 'UPDATE'),
+        ('routers/devices.py', 'repeater_events', 'DELETE'),   # T503: the fire_alerts UPDATE moved into the fire repository
         ('main.py', 'users', 'INSERT'),
         ('hardware_reader/reader.py', 'location_events', 'INSERT'),
     ]:

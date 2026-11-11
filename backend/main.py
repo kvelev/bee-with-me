@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import math
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -21,9 +21,7 @@ from .ws import manager
 from .core.modules import include_module_routers, start_module_tasks, stop_module_tasks
 from .modules import MODULES
 from .core.request_id import RequestIdLogFilter, RequestIdMiddleware, make_log_formatter
-from .fire import poller as fire_poller
-from .fire.repository import anonymise_alerts, anonymise_hotspots, prune_fire_data
-from .fire.service import service as fire_alarm
+from .modules.fire.api import anonymise_alerts, anonymise_hotspots, prune_fire_data
 
 _log_handler = logging.StreamHandler()
 _log_handler.setFormatter(make_log_formatter())
@@ -175,12 +173,6 @@ async def lifespan(app: FastAPI):
 
     notify_task  = asyncio.create_task(manager.listen_notifications())
     cleanup_task = asyncio.create_task(_cleanup_old_locations())
-    fire_task = asyncio.create_task(fire_poller.run())
-    fire_task.add_done_callback(lambda t: _log_task_failure(t, 'Fire poller'))
-    # Hooks only signal re-evaluation; the single alarm actor does the work and never raises into a router/poller.
-    fire_poller.after_refresh = fire_alarm.request_evaluation
-    alarm_task = asyncio.create_task(fire_alarm.run())
-    alarm_task.add_done_callback(lambda t: _log_task_failure(t, 'Fire alarm'))
     module_tasks = start_module_tasks(MODULES, _log_task_failure)
 
     # Serial (LoRaWAN) reader — runs only when a real port is available
@@ -208,8 +200,6 @@ async def lifespan(app: FastAPI):
     try:
         notify_task.cancel()
         cleanup_task.cancel()
-        fire_task.cancel()
-        alarm_task.cancel()
         if serial_task:
             serial_task.cancel()
         if hid_task:
@@ -217,11 +207,9 @@ async def lifespan(app: FastAPI):
         if settings.enable_test_endpoints:
             from .simulation import simulation
             await simulation.stop()
-        # The alarm task may hold a pooled connection mid-tick: let its cancellation finish before the pool closes.
-        with suppress(asyncio.CancelledError):
-            await alarm_task
     finally:
-        # B93: whatever the alarm task raised on its way out, the module tasks are still stopped and the pool closed.
+        # The module tasks (the fire alarm may hold a pooled connection mid-tick) are cancelled and awaited before the
+        # pool closes (B93: even when the shutdown above raised).
         try:
             await stop_module_tasks(module_tasks)
         finally:

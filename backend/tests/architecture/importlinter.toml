@@ -88,16 +88,6 @@ source_modules = [
 forbidden_modules = ["backend.fire"]
 allow_indirect_imports = true
 ignore_imports = [
-    "backend.main -> backend.fire.poller",  # until step 2
-    "backend.main -> backend.fire.repository",  # until step 2
-    "backend.main -> backend.fire.service",  # until step 2
-    "backend.routers.devices -> backend.fire.repository",  # until step 4
-    "backend.routers.devices -> backend.fire.service",  # until step 4
-    "backend.modules.settings.http -> backend.fire.repository",  # until step 4
-    "backend.modules.settings.http -> backend.fire.service",  # until step 4
-    "backend.modules.settings.infrastructure.publisher -> backend.fire.service",  # until step 4
-    "backend.routers.users -> backend.fire.repository",  # until step 4
-    "backend.routers.users -> backend.fire.service",  # until step 4
 ]
 
 [[tool.importlinter.contracts]]
@@ -193,6 +183,7 @@ forbidden_modules = [
     "backend.modules.fire.http",
     "backend.modules.fire.infrastructure",
     "backend.modules.fire.module",
+    "backend.modules.fire.tasks",
 ]
 allow_indirect_imports = true
 ignore_imports = [

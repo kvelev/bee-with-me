@@ -1,5 +1,5 @@
 {
-  "completed_step": 1,
+  "completed_step": 2,
   "sql_writes": [
     {
       "file": "hardware_reader/reader.py",
@@ -30,12 +30,6 @@
       "table": "users",
       "verb": "INSERT",
       "until": 5
-    },
-    {
-      "file": "routers/devices.py",
-      "table": "fire_alerts",
-      "verb": "UPDATE",
-      "until": 2
     },
     {
       "file": "routers/devices.py",
@@ -128,5 +122,26 @@
       "until": 4
     }
   ],
-  "module_edges": []
+  "module_edges": [
+    {
+      "from": "backend.modules.settings.http",
+      "to": "backend.modules.fire.api",
+      "until": 4
+    },
+    {
+      "from": "backend.modules.settings.infrastructure.publisher",
+      "to": "backend.modules.fire.api",
+      "until": 4
+    },
+    {
+      "from": "backend.routers.users",
+      "to": "backend.modules.fire.api",
+      "until": 4
+    },
+    {
+      "from": "backend.routers.devices",
+      "to": "backend.modules.fire.api",
+      "until": 4
+    }
+  ]
 }

@@ -92,7 +92,7 @@ def test_manifest():
                                            'fire_zones_updated'}
     assert manifest.router is http.router
     assert manifest.public_routes == ()
-    assert manifest.tasks == ()
+    assert [t.__name__ for t in manifest.tasks] == ['poll_feeds', 'alarm_loop']   # T503
     assert manifest in MODULES
     names = [m.name for m in MODULES]
     assert names.index('fire') < names.index('settings')

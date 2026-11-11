@@ -1,9 +1,15 @@
-"""B93: a failing alarm task must not leave module tasks running and the pool open at shutdown."""
+"""B93: a module task that fails on cancellation must not leave the other tasks running and the pool open at shutdown.
+
+T503: the fire tasks are module tasks now; the real `start_module_tasks` and `stop_module_tasks` run on a patched
+`main.MODULES` with one task that fails when it is cancelled.
+"""
 import asyncio
+import logging
 
 import pytest
 
 from backend import main
+from backend.core.modules import ModuleManifest
 
 pytestmark = pytest.mark.Trait("Bug", "B93")
 
@@ -12,12 +18,9 @@ async def _park():
     await asyncio.Event().wait()
 
 
-def _quiet_startup(monkeypatch, alarm_run, calls):
+def _quiet_startup(monkeypatch, module_task, calls):
     async def _noop():
         return None
-
-    async def _stop(tasks):
-        calls.append('stop_module_tasks')
 
     async def _close():
         calls.append('close_pool')
@@ -27,10 +30,7 @@ def _quiet_startup(monkeypatch, alarm_run, calls):
     monkeypatch.setattr(main, '_ensure_default_admin', _noop)
     monkeypatch.setattr(main, '_cleanup_old_locations', _park)
     monkeypatch.setattr(main.manager, 'listen_notifications', _park)
-    monkeypatch.setattr(main.fire_poller, 'run', _park)
-    monkeypatch.setattr(main.fire_alarm, 'run', alarm_run)
-    monkeypatch.setattr(main, 'start_module_tasks', lambda modules, on_done: [])
-    monkeypatch.setattr(main, 'stop_module_tasks', _stop)
+    monkeypatch.setattr(main, 'MODULES', (ModuleManifest(name='probe', tasks=(module_task,)),))
     monkeypatch.setattr(main, 'close_pool', _close)
     import backend.hardware_reader.hid_reader as hid
     import backend.hardware_reader.reader as reader
@@ -38,21 +38,25 @@ def _quiet_startup(monkeypatch, alarm_run, calls):
     monkeypatch.setattr(reader, 'run', _park, raising=False)
 
 
+@pytest.mark.Trait("Task", "T503")
 @pytest.mark.asyncio
-async def test_a_failing_alarm_task_still_stops_module_tasks_and_closes_the_pool(monkeypatch):
+async def test_a_module_task_failing_on_cancel_still_closes_the_pool(monkeypatch, caplog):
     calls: list[str] = []
 
-    async def alarm_that_fails_on_cancel():
+    async def task_that_fails_on_cancel():
         try:
             await asyncio.Event().wait()
         except asyncio.CancelledError:
+            calls.append('task cancelled')
             raise RuntimeError('cleanup failed')
 
-    _quiet_startup(monkeypatch, alarm_that_fails_on_cancel, calls)
-    with pytest.raises(RuntimeError, match='cleanup failed'):
-        async with main.lifespan(main.app):
-            await asyncio.sleep(0)       # let the alarm task start, so the cancellation reaches its try block
-    assert calls == ['stop_module_tasks', 'close_pool']
+    _quiet_startup(monkeypatch, task_that_fails_on_cancel, calls)
+    with caplog.at_level(logging.ERROR):
+        async with main.lifespan(main.app):     # no exception leaves the lifespan
+            await asyncio.sleep(0)       # let the task start, so the cancellation reaches its try block
+    assert calls == ['task cancelled', 'close_pool']
+    named = [r for r in caplog.records if r.levelno == logging.ERROR and 'probe.task_that_fails_on_cancel' in r.getMessage()]
+    assert len(named) == 1
 
 
 @pytest.mark.asyncio
@@ -61,4 +65,4 @@ async def test_a_cancelled_alarm_task_is_the_normal_shutdown(monkeypatch):
     _quiet_startup(monkeypatch, _park, calls)
     async with main.lifespan(main.app):
         await asyncio.sleep(0)
-    assert calls == ['stop_module_tasks', 'close_pool']
+    assert calls == ['close_pool']
