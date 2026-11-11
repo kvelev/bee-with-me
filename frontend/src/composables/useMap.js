@@ -29,8 +29,6 @@ import { createMapShell } from '../platform/map-shell/createMapShell'
 import { Z } from '../platform/map-shell/zorder'
 import { MODULES } from '../modules'
 import { MAP_MODULES } from '../modules/mapEntries'
-import { FIRE_MAP_LAYERS } from './map/fireLayerList'
-import { LEGACY_FIRE_MAP } from './map/fireLayers'
 
 const DEFAULT_COLOR = '#3b82f6'
 
@@ -298,7 +296,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   const checkpointSource = new VectorSource()
   const checkpointLayer  = new VectorLayer({ source: checkpointSource, visible: false })
 
-  // Callbacks of the map's clicks; the fire layers (map/fireLayers.js) reach them through mapCtx.
+  // Callbacks of the map's clicks; the fire layers (modules/fire/map/index.js) reach them through mapCtx.
   let fireClickCb = null
   let trackerClickCb = null
   let contextMenuCb = null
@@ -388,10 +386,6 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     reportFireClick: (selection) => fireClickCb?.(selection),
     onHQPlaced: (loc) => onHQPlaced?.(loc),
   }
-
-  // Fire (burnt areas, zones, hotspots) is one contribution: its three layers keep their place at the
-  // bottom of the stack and its five functions are delegated below. A failed install gives an empty api.
-  const fire = shell.install(LEGACY_FIRE_MAP, FIRE_MAP_LAYERS, mapCtx)
 
   // The map's own layers, in the order they have always been on the map. Their z-index comes from
   // the shell's z-order table; the basemap (first) is the shell's own.
@@ -723,7 +717,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   }, { mode: 'measure' })
 
   // A tracker click opens the tracker popup and closes any fire popup (the fire click handler, order 20,
-  // is in map/fireLayers.js; this one runs first and stops the click).
+  // is in modules/fire/map/index.js; this one runs first and stops the click).
   shell.onClick((evt) => {
     if (!mapCtx.fireClickRegistered()) return false
     if (!mapCtx.trackerHit(evt.pixel)) return false
@@ -855,14 +849,16 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   }
   function onRepeaterPlaced(cb) { repeaterPlacedCb = cb }
 
-  // Fire functions: delegated to the fire contribution (map/fireLayers.js). They work before the map
-  // is mounted. When its install failed the api is empty: the two GeoJSON setters report false (the
-  // pill then shows the feed as failed, which is true) and the other three do nothing.
-  const setBurntAreas      = (fc)      => fire.setBurntAreas?.(fc) ?? false
-  const setHotspots        = (fc)      => fire.setHotspots?.(fc) ?? false
-  const setZones           = (list)    => fire.setZones?.(list)
-  const setFireLayerVisible = (n, v)   => { fire.setFireLayerVisible?.(n, v) }
-  const setFireLabels      = (labels)  => { fire.setFireLabels?.(labels) }
+  // Fire functions: delegated to the fire module's map entry (modules/fire/map/index.js), read from
+  // moduleApis at call time so they work before the map is mounted. When its install failed the api is
+  // empty: the two GeoJSON setters report false (the pill then shows the feed as failed, which is true)
+  // and the other three do nothing.
+  const fireApi = () => moduleApis.fire ?? {}
+  const setBurntAreas      = (fc)      => fireApi().setBurntAreas?.(fc) ?? false
+  const setHotspots        = (fc)      => fireApi().setHotspots?.(fc) ?? false
+  const setZones           = (list)    => fireApi().setZones?.(list)
+  const setFireLayerVisible = (n, v)   => { fireApi().setFireLayerVisible?.(n, v) }
+  const setFireLabels      = (labels)  => { fireApi().setFireLabels?.(labels) }
 
   function onFireFeatureClick(cb) { fireClickCb = cb }
   // A click on a tracker marker passes its device id; a click on bare map passes null.

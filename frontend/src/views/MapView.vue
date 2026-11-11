@@ -339,7 +339,6 @@ import MapPopupHost from '../platform/map-shell/MapPopupHost.vue'
 import MapContextMenu from '../platform/map-shell/MapContextMenu.vue'
 import PanelHost from '../platform/PanelHost.vue'
 import { collectContextMenu, collectLayerToggles, collectPanels, collectPopups } from '../platform/map-shell/contributions.js'
-import { FIRE_MAP_LAYERS } from '../composables/map/fireLayerList'
 import { MODULES } from '../modules'
 import FieldReportForm from '../components/FieldReportForm.vue'
 import SuppressionZoneForm from '../components/SuppressionZoneForm.vue'
@@ -498,7 +497,7 @@ const { connect } = useWebSocket()
 // ── Fire layers ──────────────────────────────────────────────────────────────
 const LEGACY_LAYER_NAMES = { 'fire-burnt': 'burnt', 'fire-hotspots': 'hotspots', 'fire-zones': 'zones' } // until step 2
 // Suppression zones are an admin tool: the button, the circles and the zone fetch are admin-only.
-const layerToggles = computed(() => collectLayerToggles(MODULES, FIRE_MAP_LAYERS).filter(t => !t.adminOnly || isAdmin.value))
+const layerToggles = computed(() => collectLayerToggles(MODULES).filter(t => !t.adminOnly || isAdmin.value))
 // A toggle without a legacy store name is not rendered in this wave.
 const layerButtons = computed(() => layerToggles.value
   .filter(toggle => (toggle.isOn && toggle.set) || LEGACY_LAYER_NAMES[toggle.id])

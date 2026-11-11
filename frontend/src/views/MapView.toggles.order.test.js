@@ -35,7 +35,7 @@ vi.mock('../composables/useMap', () => ({
 }))
 vi.mock('ol/Overlay', () => ({ default: class { setPosition() {} } }))
 // The layer list is data: here burnt and hotspots swap their orders.
-vi.mock('../composables/map/fireLayerList', () => ({
+vi.mock('../modules/fire/map/layers', () => ({
   FIRE_MAP_LAYERS: [
     { id: 'fire-burnt',    zIndex: 1, toggle: { labelKey: 'fire.layers.burnt',    order: 20 } },
     { id: 'fire-zones',    zIndex: 2, toggle: { labelKey: 'fire.layers.zones',    order: 30, adminOnly: true } },
