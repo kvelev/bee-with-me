@@ -2,24 +2,6 @@
   "completed_step": 2,
   "sql_writes": [
     {
-      "file": "hardware_reader/reader.py",
-      "table": "location_events",
-      "verb": "INSERT",
-      "until": 3
-    },
-    {
-      "file": "hardware_reader/reader.py",
-      "table": "repeater_events",
-      "verb": "INSERT",
-      "until": 3
-    },
-    {
-      "file": "hardware_reader/reader.py",
-      "table": "sos_alerts",
-      "verb": "INSERT",
-      "until": 3
-    },
-    {
       "file": "main.py",
       "table": "location_events",
       "verb": "DELETE",
