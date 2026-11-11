@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import FirePopup from './FirePopup.vue'
-import { i18n } from '../i18n/index.js'
+import { i18n } from '../../../i18n/index.js'
 
 const mountPopup = (kind, properties) =>
   mount(FirePopup, { props: { kind, properties }, global: { plugins: [i18n] } })
