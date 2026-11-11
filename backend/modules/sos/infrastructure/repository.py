@@ -4,6 +4,8 @@ from uuid import UUID
 
 import asyncpg
 
+from ..domain.payload import SosAlert, SosPerson, sos_alert_payload
+
 
 async def fetch_open_alerts(conn: asyncpg.Connection) -> list[asyncpg.Record]:
     return await conn.fetch("""
@@ -68,8 +70,11 @@ async def has_open_alert(conn: asyncpg.Connection, device_id) -> bool:
     )
 
 
-async def raise_sos(conn: asyncpg.Connection, *, device_id, user_id, dev_sn, triggered_at) -> bool:
-    """Open an alert unless one is open already; True when this call opened one."""
+async def raise_sos(conn: asyncpg.Connection, *, device_id, user_id, dev_sn, triggered_at,
+                    with_person: bool = True) -> bool:
+    """Open an alert unless one is open already; True when this call opened one.
+
+    `with_person` (LIVE_PERSONAL_FIELDS) adds the name read and the name and rank to the message."""
     existing = await conn.fetchrow(
         'SELECT id FROM sos_alerts WHERE device_id = $1 AND resolved_at IS NULL',
         device_id,
@@ -87,20 +92,13 @@ async def raise_sos(conn: asyncpg.Connection, *, device_id, user_id, dev_sn, tri
 
     who = await conn.fetchrow(
         'SELECT full_name, rank FROM users WHERE id = $1', user_id,
-    )
+    ) if with_person else None
+    person = SosPerson(who['full_name'] if who else None, who['rank'] if who else None) if with_person else None
     # The payload has to carry the alert id: the browser puts these straight into the SOS
     # banner, whose Resolve button posts back to /sos/{id}/resolve. Without it the button
     # posts "undefined" and the alert can never be cleared from the UI.
     await conn.execute(
         "SELECT pg_notify('sos_alert', $1)",
-        json.dumps({
-            'id':           str(alert['id']),
-            'device_id':    str(device_id),
-            'user_id':      str(user_id) if user_id else None,
-            'dev_sn':       dev_sn,
-            'full_name':    who['full_name'] if who else None,
-            'rank':         who['rank'] if who else None,
-            'triggered_at': alert['triggered_at'].isoformat(),
-        }),
+        json.dumps(sos_alert_payload(SosAlert(alert['id'], device_id, user_id, dev_sn, alert['triggered_at']), person)),
     )
     return True

@@ -32,8 +32,27 @@ export function collectLiveHooks(modules, legacy = {}) {
   return hooks
 }
 
+// Message and HTTP status only: an axios error carries the request config, and with it the bearer token.
+function describe(error) {
+  const text = error?.message ?? String(error)
+  const status = error?.response?.status
+  return status ? `${text} (HTTP ${status})` : text
+}
+
 function report(type, error) {
-  console.error(`live handler ${type} failed`, error)
+  console.error(`live handler ${type} failed: ${describe(error)}`)
+}
+
+/** Run the `setup` hooks once: a throw or a rejected promise is logged, the next hook still runs. */
+export function runSetup(list) {
+  for (const fn of list) {
+    try {
+      const result = fn()
+      if (result && typeof result.then === 'function') result.then(undefined, (e) => report('setup', e))
+    } catch (e) {
+      report('setup', e)
+    }
+  }
 }
 
 /** Run every handler of `msg.type`. A throw or a rejected promise is logged; the next handler still runs. */

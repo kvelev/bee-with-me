@@ -216,6 +216,7 @@ onMounted(load)
 
 let loadSeq = 0
 let selectSeq = 0
+let pendingSelectId = null   // id of the in-flight selectGroup(), or null
 
 async function load() {
   const seq = ++loadSeq
@@ -236,13 +237,16 @@ async function load() {
 
 async function selectGroup(g) {
   const seq = ++selectSeq
+  pendingSelectId = g.id
   pageError.value = ''
   try {
     const detail = await getGroup(g.id)
     if (seq !== selectSeq) return
+    pendingSelectId = null
     selected.value = detail
   } catch (e) {
     if (seq !== selectSeq) return
+    pendingSelectId = null
     pageError.value = errorText(e, t('groups.loadError'))
   }
 }
@@ -293,14 +297,16 @@ function removePendingMember(idx) {
 
 async function save() {
   formError.value = ''
+  const editId = editingGroup.value?.id
+  const selId  = selected.value?.id
   try {
-    if (editingGroup.value) {
-      await updateGroup(editingGroup.value.id, form.value)
+    if (editId) {
+      await updateGroup(editId, form.value)
       // Sync members: remove all then re-add from pendingMembers
-      const detail = await getGroup(editingGroup.value.id)
-      await Promise.all(detail.members.map(m => removeMember(editingGroup.value.id, m.id)))
+      const detail = await getGroup(editId)
+      await Promise.all(detail.members.map(m => removeMember(editId, m.id)))
       await Promise.all(pendingMembers.value.map(m =>
-        addMember(editingGroup.value.id, { user_id: m.user_id, is_leader: m.is_leader })
+        addMember(editId, { user_id: m.user_id, is_leader: m.is_leader })
       ))
     } else {
       const created = await createGroup(form.value)
@@ -310,7 +316,10 @@ async function save() {
     }
     showForm.value = false
     await load()
-    if (selected.value) selected.value = await getGroup(selected.value.id)
+    if (selId && selected.value?.id === selId) {
+      const detail = await getGroup(selId)
+      if (selected.value?.id === selId) selected.value = detail
+    }
   } catch (e) { formError.value = errorText(e) }
 }
 
@@ -333,7 +342,7 @@ async function reactivate(g) {
 async function remove(g) {
   pageError.value = ''
   if (!confirm(t('groups.confirmDelete', { name: g.name }))) return
-  selectSeq++
+  if (pendingSelectId === g.id) { selectSeq++; pendingSelectId = null }
   try {
     await deleteGroup(g.id)
     if (selected.value?.id === g.id) selected.value = null
@@ -359,26 +368,36 @@ function onCandidateChange(uid) {
 async function saveMember() {
   memberError.value = ''
   const uids = memberCandidates.value.map(u => u.id).filter(id => candidateChecked[id])
-  if (!uids.length) return
+  const id = selected.value?.id
+  if (!uids.length || !id) return
+  const leaderId = leaderCandidateId.value
   try {
     await Promise.all(
-      uids.map(uid =>
-        addMember(selected.value.id, { user_id: uid, is_leader: leaderCandidateId.value === uid })
-      )
+      uids.map(uid => addMember(id, { user_id: uid, is_leader: leaderId === uid }))
     )
     showAddMember.value = false
-    selected.value = await getGroup(selected.value.id)
+    if (selected.value?.id !== id) return
+    const detail = await getGroup(id)
+    if (selected.value?.id === id) selected.value = detail
   } catch (e) {
+    if (selected.value?.id !== id) return
     memberError.value = errorText(e)
   }
 }
 
 async function kickMember(member) {
   pageError.value = ''
+  const id = selected.value?.id
+  if (!id) return
   try {
-    await removeMember(selected.value.id, member.id)
-    selected.value = await getGroup(selected.value.id)
-  } catch (e) { pageError.value = errorText(e) }
+    await removeMember(id, member.id)
+    if (selected.value?.id !== id) return
+    const detail = await getGroup(id)
+    if (selected.value?.id === id) selected.value = detail
+  } catch (e) {
+    if (selected.value?.id !== id) return
+    pageError.value = errorText(e)
+  }
 }
 </script>
 
