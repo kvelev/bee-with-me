@@ -10,8 +10,6 @@ import fireMap from './index'
 import listSource from './layers.js?raw'
 import facadeSource from '../../../composables/useMap.js?raw'
 
-const LEGACY_FIRE_MAP = fireMap
-
 globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} }
 
 const PIXEL = [5, 5]
@@ -47,7 +45,7 @@ function make({ ctx = {} } = {}) {
     onHQPlaced: vi.fn(),
     ...ctx,
   }
-  const api = shell.install(LEGACY_FIRE_MAP, FIRE_MAP_LAYERS, full)
+  const api = shell.install(fireMap, FIRE_MAP_LAYERS, full)
   const mount = () => {
     const el = document.createElement('div')
     document.body.append(el)
@@ -228,7 +226,7 @@ describe('fire map install failure', () => {
   it('an entry whose setup throws gives an empty api, so the facade falls back [T423]', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
     const shell = createMapShell({ view: new View({ center: [0, 0], zoom: 3 }), createLongPress: () => ({ down() {}, move() {}, end() {}, shouldSwallowClick: () => false }), modes: [] })
-    const api = shell.install({ ...LEGACY_FIRE_MAP, setup: () => { throw new Error('x') } }, FIRE_MAP_LAYERS, {})
+    const api = shell.install({ ...fireMap, setup: () => { throw new Error('x') } }, FIRE_MAP_LAYERS, {})
     expect(api).toEqual({})
   })
 })
