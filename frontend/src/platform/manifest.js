@@ -3,6 +3,8 @@
 // manifests and never name a module in code. Nothing imports this file yet (step 0 of the vertical-slice
 // programme); `validateManifest` is the contract that later steps and the architecture test use.
 
+import { PANEL_HOSTS } from './map-shell/contributions.js'
+
 const NAME = /^[a-z][a-z0-9-]*$/
 const LIVE_HOOKS = ['setup', 'onTick', 'onReconnect']
 
@@ -38,11 +40,23 @@ const navProblems = (n) => !isObject(n) ? ['must be an object']
       ...(isText(n.labelKey) ? [] : ['labelKey must be an i18n key']),
     ]
 
+// `isOn` and `set` drive the layer's state from the module; both or neither.
+const stateHookProblems = (t) => {
+  if (t.isOn === undefined && t.set === undefined) return []
+  if (t.isOn === undefined || t.set === undefined) return ['toggle.isOn and toggle.set must be given together']
+  return [
+    ...(typeof t.isOn === 'function' ? [] : ['toggle.isOn must be a function']),
+    ...(typeof t.set === 'function' ? [] : ['toggle.set must be a function']),
+  ]
+}
+
 const toggleProblems = (t) => !isObject(t) ? ['toggle must be an object']
   : [
       ...(isText(t.labelKey) ? [] : ['toggle.labelKey must be an i18n key']),
       ...(Number.isFinite(t.order) ? [] : ['toggle.order must be a finite number']),
       ...(t.adminOnly === undefined || typeof t.adminOnly === 'boolean' ? [] : ['toggle.adminOnly must be a boolean']),
+      ...(t.key === undefined || isText(t.key) ? [] : ['toggle.key must be a non-empty string']),
+      ...stateHookProblems(t),
     ]
 
 const layerProblems = (l) => !isObject(l) ? ['must be an object']
@@ -57,6 +71,9 @@ const panelProblems = (p) => !isObject(p) ? ['must be an object']
   : [
       ...(isText(p.id) ? [] : ['id must be a non-empty string']),
       ...(isComponent(p.component) ? [] : ['component must be a component']),
+      ...(p.host === undefined || PANEL_HOSTS.includes(p.host) ? [] : [`host must be one of ${PANEL_HOSTS.join(', ')}`]),
+      ...(p.order === undefined || Number.isFinite(p.order) ? [] : ['order must be a finite number']),
+      ...(p.retryKey === undefined || typeof p.retryKey === 'function' ? [] : ['retryKey must be a function']),
     ]
 
 const bannerProblems = (b) => !isObject(b) ? ['must be an object']

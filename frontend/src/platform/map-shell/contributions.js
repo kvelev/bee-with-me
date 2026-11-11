@@ -2,10 +2,14 @@
 // with "legacy entries" (items of the same shape for features that have no module yet) and sort them.
 // Each collector takes (modules, legacy = []); `legacy` is a list of items of that one kind.
 // `contributionProblems` checks all kinds at once, so its `legacy` is an object
-// { banners, mapLayers, popups, contextMenu } (each optional).
+// { banners, mapLayers, panels, popups, contextMenu } (each optional).
 import { BANNER_PRIORITY } from './zorder.js'
 
 const SOS_ID = 'sos'
+
+// Where a module panel may be mounted (`PanelHost` tags in MapView.vue and the settings view).
+export const PANEL_HOSTS = ['map-root', 'map', 'map-toolbar', 'settings']
+const DEFAULT_PANEL_ORDER = 100
 
 const fromModules = (modules, field) =>
   (Array.isArray(modules) ? modules : []).flatMap((m) => (m && Array.isArray(m[field]) ? m[field] : []))
@@ -45,8 +49,19 @@ export function collectLayerToggles(modules, legacy = []) {
       labelKey: l.toggle.labelKey,
       order: l.toggle.order,
       adminOnly: l.toggle.adminOnly === true,
+      key: l.toggle.key,
+      isOn: l.toggle.isOn,
+      set: l.toggle.set,
     }))
     .sort(byNumberThenId('order'))
+}
+
+// Panels of one host, by `order` (default 100), then id. A panel without a known host is in no list.
+export function collectPanels(modules, host, legacy = []) {
+  const order = (p) => (finite(p.order) ? p.order : DEFAULT_PANEL_ORDER)
+  return gather(modules, 'panels', legacy)
+    .filter((p) => p.host === host && PANEL_HOSTS.includes(host))
+    .sort((a, b) => (order(a) - order(b)) || (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0))
 }
 
 export function collectPopups(modules, legacy = []) {
@@ -64,7 +79,7 @@ export function collectContextMenu(modules, legacy = []) {
 /** Cross-module checks the single-manifest validator cannot do. One message per problem; [] is clean. */
 export function contributionProblems(modules, legacy = {}) {
   if (Array.isArray(legacy) || (legacy !== undefined && legacy !== null && typeof legacy !== 'object')) {
-    throw new TypeError('contributionProblems: legacy must be { banners, mapLayers, popups, contextMenu }')
+    throw new TypeError('contributionProblems: legacy must be { banners, mapLayers, panels, popups, contextMenu }')
   }
   const extra = legacy || {}
   const problems = []
@@ -72,6 +87,7 @@ export function contributionProblems(modules, legacy = {}) {
   const lists = {
     banners: gather(modules, 'banners', extra.banners),
     mapLayers: gather(modules, 'mapLayers', extra.mapLayers),
+    panels: gather(modules, 'panels', extra.panels),
     popups: gather(modules, 'popups', extra.popups),
     contextMenu: gather(modules, 'contextMenu', extra.contextMenu),
   }

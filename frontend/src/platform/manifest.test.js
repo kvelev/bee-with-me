@@ -30,3 +30,24 @@ describe('toggle.adminOnly', () => {
     expect(msg).toContain('toggle.adminOnly must be a boolean')
   })
 })
+
+describe('panels and the toggle state hook', () => {
+  const withPanel = (panel) => ({ ...base(undefined), panels: [panel] })
+  const C = { render: () => null }
+
+  it('validateManifest accepts host, order and the toggle pair and names each malformed one [T504]', () => {
+    expect(validateManifest(withPanel({ id: 'p', component: C, host: 'map', order: 3 }))).toEqual([])
+    expect(validateManifest(withPanel({ id: 'p', component: C }))).toEqual([])
+    expect(validateManifest(withPanel({ id: 'p', component: C, retryKey: () => 1 }))).toEqual([])
+    expect(validateManifest(withPanel({ id: 'p', component: C, host: 'nowhere' })).join('\n')).toContain('host must be one of')
+    expect(validateManifest(withPanel({ id: 'p', component: C, order: '1' })).join('\n')).toContain('order must be a finite number')
+    expect(validateManifest(withPanel({ id: 'p', component: C, retryKey: 'x' })).join('\n')).toContain('retryKey must be a function')
+
+    const t = { labelKey: 'k', order: 1 }
+    expect(validateManifest(base({ ...t, key: 'fire-burnt', isOn: () => true, set: () => {} }))).toEqual([])
+    expect(validateManifest(base({ ...t, isOn: () => true })).join('\n')).toContain('toggle.isOn and toggle.set must be given together')
+    expect(validateManifest(base({ ...t, set: () => {} })).join('\n')).toContain('toggle.isOn and toggle.set must be given together')
+    expect(validateManifest(base({ ...t, isOn: 1, set: () => {} })).join('\n')).toContain('toggle.isOn must be a function')
+    expect(validateManifest(base({ ...t, key: 5 })).join('\n')).toContain('toggle.key must be a non-empty string')
+  })
+})
