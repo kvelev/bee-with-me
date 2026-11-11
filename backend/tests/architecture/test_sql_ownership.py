@@ -48,9 +48,8 @@ def test_schema_migrations_and_own_settings_writes_are_not_violations():
 def test_known_cross_module_writes_are_found():
     found = rules.sql_violations(sql_scan.scan_writes(BACKEND))
     for expected in [
-        ('routers/devices.py', 'sos_alerts', 'DELETE'),
-        ('routers/users.py', 'location_events', 'UPDATE'),   # found only by the multi-line scan
-        ('routers/devices.py', 'repeater_events', 'DELETE'),   # T503: the fire_alerts UPDATE moved into the fire repository
+        ('simulation.py', 'users', 'INSERT'),   # found only by the multi-line scan (T541 moved the devices, users and test.py writers into the modules)
+        ('simulation.py', 'groups', 'INSERT'),
         ('main.py', 'users', 'INSERT'),
         ('hardware_reader/reader.py', 'location_events', 'INSERT'),
     ]:

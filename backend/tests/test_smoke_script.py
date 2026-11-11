@@ -440,7 +440,11 @@ def test_the_frontend_index_really_has_the_mount_point():
 @pytest.mark.Trait("Task", "T202")
 def test_test_endpoint_and_ws_message_shape_match_the_checks():
     src = (ROOT / 'backend/routers/test.py').read_text(encoding='utf-8')
-    assert "prefix='/api/test'" in src and "'/simulate'" in src and "'device_id':" in src
+    assert "prefix='/api/test'" in src and "'/simulate'" in src
+    # T541: the message is built by tracking.api.location_update_payload (domain/payload.py), not inline
+    assert 'tracking_api.location_update_payload(' in src
+    payload_src = (ROOT / 'backend/modules/tracking/domain/payload.py').read_text(encoding='utf-8')
+    assert "'device_id':" in payload_src
     ws = (ROOT / 'backend/core/ws.py').read_text(encoding='utf-8')
     assert "'type': channel" in ws and "'location_update'" in ws
 

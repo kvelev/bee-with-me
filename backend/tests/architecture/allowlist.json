@@ -32,48 +32,6 @@
       "until": 5
     },
     {
-      "file": "routers/devices.py",
-      "table": "location_events",
-      "verb": "DELETE",
-      "until": 3
-    },
-    {
-      "file": "routers/devices.py",
-      "table": "repeater_events",
-      "verb": "DELETE",
-      "until": 3
-    },
-    {
-      "file": "routers/devices.py",
-      "table": "sos_alerts",
-      "verb": "DELETE",
-      "until": 3
-    },
-    {
-      "file": "routers/test.py",
-      "table": "location_events",
-      "verb": "INSERT",
-      "until": 3
-    },
-    {
-      "file": "routers/test.py",
-      "table": "sos_alerts",
-      "verb": "INSERT",
-      "until": 3
-    },
-    {
-      "file": "routers/users.py",
-      "table": "location_events",
-      "verb": "UPDATE",
-      "until": 3
-    },
-    {
-      "file": "routers/users.py",
-      "table": "sos_alerts",
-      "verb": "UPDATE",
-      "until": 3
-    },
-    {
       "file": "simulation.py",
       "table": "devices",
       "verb": "INSERT",
@@ -90,18 +48,6 @@
       "table": "groups",
       "verb": "INSERT",
       "until": 4
-    },
-    {
-      "file": "simulation.py",
-      "table": "location_events",
-      "verb": "DELETE",
-      "until": 3
-    },
-    {
-      "file": "simulation.py",
-      "table": "sos_alerts",
-      "verb": "DELETE",
-      "until": 3
     },
     {
       "file": "simulation.py",
@@ -142,6 +88,46 @@
       "from": "backend.routers.devices",
       "to": "backend.modules.fire.api",
       "until": 4
+    },
+    {
+      "from": "backend.routers.users",
+      "to": "backend.modules.tracking.api",
+      "until": 4
+    },
+    {
+      "from": "backend.routers.users",
+      "to": "backend.modules.sos.api",
+      "until": 4
+    },
+    {
+      "from": "backend.routers.devices",
+      "to": "backend.modules.tracking.api",
+      "until": 4
+    },
+    {
+      "from": "backend.routers.devices",
+      "to": "backend.modules.sos.api",
+      "until": 4
+    },
+    {
+      "from": "backend.routers.test",
+      "to": "backend.modules.tracking.api",
+      "until": 3
+    },
+    {
+      "from": "backend.routers.test",
+      "to": "backend.modules.sos.api",
+      "until": 3
+    },
+    {
+      "from": "backend.simulation",
+      "to": "backend.modules.tracking.api",
+      "until": 3
+    },
+    {
+      "from": "backend.simulation",
+      "to": "backend.modules.sos.api",
+      "until": 3
     }
   ]
 }

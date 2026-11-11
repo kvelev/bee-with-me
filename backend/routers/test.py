@@ -4,7 +4,6 @@ POST /api/test/simulate  →  injects a fake location event for a given device
 and fires pg_notify so the WebSocket layer pushes it to the browser.
 """
 
-import json
 import random
 from datetime import datetime, timezone
 from uuid import UUID
@@ -17,6 +16,8 @@ import mgrs as mgrs_lib
 
 from ..auth import require_role
 from ..database import get_conn
+from ..modules.sos import api as sos_api
+from ..modules.tracking import api as tracking_api
 
 router = APIRouter(prefix='/api/test', tags=['test'])
 
@@ -69,76 +70,30 @@ async def record_position(conn: asyncpg.Connection, device, lat: float, lon: flo
     sats  = random.randint(4, 12) if gnss_valid else 0
     bat   = battery if battery is not None else round(random.uniform(3.0, 4.2), 2)
 
-    row = await conn.fetchrow(
-        """
-        INSERT INTO location_events (
-            device_id, user_id, msg_id, recorded_at,
-            position, latitude, longitude, mgrs,
-            altitude_m, speed_knots, gnss_satellites,
-            battery_voltage, sos_active, repeater_mode, raw_flags, gnss_valid, received_at
-        ) VALUES (
-            $1, $2, $3, $4,
-            ST_SetSRID(ST_MakePoint($6, $5), 4326), $5, $6, $7,
-            $8, $9, $10, $11, $12, FALSE, 0, $13, $4
-        ) RETURNING id
-        """,
-        device['id'], device['user_id'], random.randint(0, 255), now,
-        lat, lon, mgrs_str, alt, speed, sats, bat, sos_active, gnss_valid,
+    row = await tracking_api.insert_simulated_position(
+        conn, device_id=device['id'], user_id=device['user_id'], msg_id=random.randint(0, 255), at=now,
+        latitude=lat, longitude=lon, mgrs=mgrs_str, altitude_m=alt, speed_knots=speed, gnss_satellites=sats,
+        battery_voltage=bat, sos_active=sos_active, gnss_valid=gnss_valid,
     )
 
     if sos_active:
-        await conn.execute(
-            """
-            INSERT INTO sos_alerts (device_id, user_id, triggered_at)
-            SELECT $1, $2, $3
-            WHERE NOT EXISTS (
-                SELECT 1 FROM sos_alerts
-                WHERE device_id = $1 AND resolved_at IS NULL
-            )
-            """,
-            device['id'], device['user_id'], now,
-        )
+        await sos_api.open_simulated_alert(conn, device['id'], device['user_id'], now)
 
-    user_row = await conn.fetchrow(
-        'SELECT full_name, rank, photo_url, phone, is_active FROM users WHERE id = $1',
-        device['user_id'],
-    )
+    user_row = await tracking_api.person_of(conn, device['user_id'])
     if user_row and not user_row['is_active']:
         raise HTTPException(status_code=400, detail='User is inactive')
 
-    group_rows = await conn.fetch("""
-        SELECT g.id, g.name, g.color, ug.is_leader
-        FROM user_groups ug
-        JOIN groups g ON g.id = ug.group_id
-        WHERE ug.user_id = $1 AND g.is_active = TRUE
-    """, device['user_id'])
-    groups = [
-        {'id': str(r['id']), 'name': r['name'], 'color': r['color'], 'is_leader': r['is_leader']}
-        for r in group_rows
-    ]
+    groups = await tracking_api.groups_of(conn, device['user_id'])
 
-    payload = json.dumps({
-        'device_id':       str(device['id']),
-        'user_id':         str(device['user_id']) if device['user_id'] else None,
-        'full_name':       user_row['full_name'] if user_row else None,
-        'rank':            user_row['rank'] if user_row else None,
-        'photo_url':       user_row['photo_url'] if user_row else None,
-        'phone':           user_row['phone'] if user_row else None,
-        'mgrs':            mgrs_str,
-        'latitude':        lat,
-        'longitude':       lon,
-        'altitude_m':      alt,
-        'speed_knots':     speed,
-        'battery_voltage': bat,
-        'gnss_satellites': sats,
-        'gnss_valid':      gnss_valid,
-        'sos_active':      sos_active,
-        'repeater_mode':   False,
-        'recorded_at':     now.isoformat(),
-        'received_at':     now.isoformat(),
-        'groups':          groups,
-    })
-    await conn.execute("SELECT pg_notify('location_update', $1)", payload)
+    payload = tracking_api.location_update_payload(
+        device_id=device['id'], user_id=device['user_id'], roster=user_row, groups=groups, mgrs=mgrs_str,
+        latitude=lat, longitude=lon, altitude_m=alt, speed_knots=speed, course_deg=None, battery_voltage=bat,
+        gnss_satellites=sats, gnss_valid=gnss_valid, sos_active=sos_active, repeater_mode=False,
+        recorded_at=now, received_at=now,
+    )
+    # The simulation has never sent course_deg (the reader's message has it): the difference is kept.
+    del payload['course_deg']
+    await tracking_api.publish_position(conn, payload)
 
     return {
         'inserted': str(row['id']),

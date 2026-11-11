@@ -1,4 +1,5 @@
 """SQL of the `tracking` module's HTTP side (statements copied unchanged from routers/locations.py)."""
+import json
 from datetime import datetime
 from uuid import UUID
 
@@ -60,3 +61,70 @@ async def fetch_history(conn: asyncpg.Connection, device_id: UUID, from_dt: date
         ORDER BY recorded_at DESC
         LIMIT $4 OFFSET $5
     """, device_id, from_dt, to_dt, limit, offset)
+
+
+# ── Writers used outside the hardware reader (T541) ──────────────────────────
+# Each runs on the caller's connection and opens no transaction.
+
+async def insert_simulated_position(conn: asyncpg.Connection, *, device_id, user_id, msg_id, at, latitude,
+                                    longitude, mgrs, altitude_m, speed_knots, gnss_satellites, battery_voltage,
+                                    sos_active, gnss_valid) -> asyncpg.Record:
+    return await conn.fetchrow(
+        """
+        INSERT INTO location_events (
+            device_id, user_id, msg_id, recorded_at,
+            position, latitude, longitude, mgrs,
+            altitude_m, speed_knots, gnss_satellites,
+            battery_voltage, sos_active, repeater_mode, raw_flags, gnss_valid, received_at
+        ) VALUES (
+            $1, $2, $3, $4,
+            ST_SetSRID(ST_MakePoint($6, $5), 4326), $5, $6, $7,
+            $8, $9, $10, $11, $12, FALSE, 0, $13, $4
+        ) RETURNING id
+        """,
+        device_id, user_id, msg_id, at,
+        latitude, longitude, mgrs, altitude_m, speed_knots, gnss_satellites, battery_voltage, sos_active,
+        gnss_valid,
+    )
+
+
+async def person_of(conn: asyncpg.Connection, user_id) -> asyncpg.Record | None:
+    return await conn.fetchrow(
+        'SELECT full_name, rank, photo_url, phone, is_active FROM users WHERE id = $1',
+        user_id,
+    )
+
+
+async def groups_of(conn: asyncpg.Connection, user_id) -> list[dict]:
+    rows = await conn.fetch("""
+        SELECT g.id, g.name, g.color, ug.is_leader
+        FROM user_groups ug
+        JOIN groups g ON g.id = ug.group_id
+        WHERE ug.user_id = $1 AND g.is_active = TRUE
+    """, user_id)
+    return [
+        {'id': str(r['id']), 'name': r['name'], 'color': r['color'], 'is_leader': r['is_leader']}
+        for r in rows
+    ]
+
+
+async def publish_position(conn: asyncpg.Connection, payload: dict) -> None:
+    await conn.execute("SELECT pg_notify('location_update', $1)", json.dumps(payload))
+
+
+async def forget_person(conn: asyncpg.Connection, user_id) -> None:
+    await conn.execute('UPDATE location_events SET user_id = NULL WHERE user_id = $1', user_id)
+
+
+async def delete_device_positions(conn: asyncpg.Connection, device_id) -> None:
+    await conn.execute('DELETE FROM location_events  WHERE device_id = $1', device_id)
+
+
+async def delete_device_heartbeats(conn: asyncpg.Connection, device_id) -> None:
+    await conn.execute('DELETE FROM repeater_events  WHERE device_id = $1', device_id)
+
+
+async def delete_positions_of_devices(conn: asyncpg.Connection, device_ids) -> int:
+    return await conn.fetchval(
+        'WITH d AS (DELETE FROM location_events WHERE device_id = ANY($1::uuid[]) RETURNING 1) SELECT count(*) FROM d',
+        device_ids)
