@@ -24,7 +24,7 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import FieldReportForm from './FieldReportForm.vue'
-import SuppressionZoneForm from '../../../components/SuppressionZoneForm.vue'
+import SuppressionZoneForm from './SuppressionZoneForm.vue'
 import { fireErrorKey } from '../lib/fireErrors.js'
 import { useFireStore } from '../store.js'
 import { useFireUi } from '../ui.js'

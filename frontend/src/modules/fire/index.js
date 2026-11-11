@@ -6,6 +6,7 @@ import FireDialogs from './components/FireDialogs.vue'
 import FireMapPopup from './components/FireMapPopup.vue'
 import FireMapPanel from './components/FireMapPanel.vue'
 import FireZonesNote from './components/FireZonesNote.vue'
+import FireZonesSettings from './components/FireZonesSettings.vue'
 import bg from './i18n/bg.js'
 import en from './i18n/en.js'
 import { FIRE_MAP_LAYERS } from './map/layers.js'
@@ -29,6 +30,8 @@ export default {
     { id: 'fire-zones-note', host: 'map-toolbar', order: 10, component: FireZonesNote },
     // The field-report and zone dialogs (state in useFireUi); they open from the popup, the menu and the tracker row.
     { id: 'fire-dialogs', host: 'map', order: 30, component: FireDialogs },
+    // The suppression-zones section of the Settings page.
+    { id: 'fire-zones-settings', host: 'settings', order: 10, component: FireZonesSettings },
   ],
   // The popup of a hotspot or burnt-area feature, and the map context-menu item that reports a fire at the pointer.
   popups: [{ id: 'fire', component: FireMapPopup, kinds: ['hotspot', 'burnt_area'] }],

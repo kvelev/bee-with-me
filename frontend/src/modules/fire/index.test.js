@@ -6,6 +6,7 @@ import {
   collectBanners, collectContextMenu, collectPanels, collectPopups, contributionProblems, popupFor,
 } from '../../platform/map-shell/contributions.js'
 import { checkModules } from '../../platform/registry.js'
+import { settingsPanels } from '../../composables/settingsPanels.js'
 import { useFireStore as legacyUseFireStore } from '../../stores/fire.js'
 import { MODULES } from '../index.js'
 import mapViewSource from '../../views/MapView.vue?raw'
@@ -28,6 +29,23 @@ describe('fire module manifest', () => {
 
   it('the old store path is the same store [T505]', () => {
     expect(legacyUseFireStore).toBe(useFireStore)
+  })
+
+  it('the settings module imports nothing of fire [T509]', () => {
+    const files = import.meta.glob('../settings/**/*.{js,vue}', { query: '?raw', import: 'default', eager: true })
+    const entries = Object.entries(files).filter(([path]) => !/\.test\.js$/.test(path))
+    expect(entries.length).toBeGreaterThan(0)
+    for (const [path, text] of entries) {
+      for (const needle of ['stores/fire', 'fireErrors', 'SuppressionZoneForm']) {
+        expect(text.includes(needle), `${path} contains ${needle}`).toBe(false)
+      }
+    }
+  })
+
+  it('the zones section of Settings is a settings panel of fire [T509]', () => {
+    expect(collectPanels(MODULES, 'settings').map((p) => p.id)).toEqual(['fire-zones-settings'])
+    expect(settingsPanels).toEqual(collectPanels(MODULES, 'settings'))
+    expect(contributionProblems(MODULES)).toEqual([])
   })
 
   it('the fire texts are in the merged dictionaries in both languages [T505]', () => {

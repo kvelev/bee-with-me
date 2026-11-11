@@ -152,58 +152,7 @@
       <p v-if="rescuerAlarmBlind" class="notice flush" role="status" data-testid="targets-warning">{{ t('settings.targets.noRescuers') }}</p>
     </section>
 
-    <section class="card zones" aria-labelledby="zones-title">
-      <h3 id="zones-title" class="section-title">{{ t('settings.zones.title') }}</h3>
-      <p class="hint flush">{{ t('settings.zones.hint') }}</p>
-
-      <p v-if="zonesLoading && !fire.zones.length" class="muted flush">{{ t('settings.zones.loading') }}</p>
-      <div v-else-if="fire.zonesFailed" class="zones-failed">
-        <p class="msg-warn" role="alert">{{ t('settings.zones.loadFailed') }}</p>
-        <button type="button" class="secondary" @click="loadZones">{{ t('settings.zones.retry') }}</button>
-      </div>
-      <p v-else-if="!zoneList.length" class="muted flush" data-testid="zones-empty">{{ t('settings.zones.empty') }}</p>
-
-      <ul v-if="zoneList.length" class="zone-list">
-        <li v-for="z in zoneList" :key="z.id" class="zone-item" :class="{ 'zone-off': !z.is_active }" data-testid="zone-item">
-          <div v-if="editingId === z.id" class="zone-edit">
-            <div v-if="editStale" class="zone-stale" data-testid="zone-stale">
-              <p class="msg-warn flush" role="alert">{{ t('fire.errors.zoneStale') }}</p>
-              <button type="button" class="secondary" data-testid="zone-reload" @click="reloadEdit(z)">{{ t('settings.zones.reloadValues') }}</button>
-            </div>
-            <SuppressionZoneForm
-              :key="editFormKey"
-              inline mode="edit"
-              :initial="editSnapshot"
-              :busy="zoneBusy"
-              :locked="editStale"
-              :error-text="zoneError"
-              @submit="onZoneSave(z, $event)"
-              @cancel="stopEdit"
-            />
-          </div>
-          <template v-else>
-            <div class="zone-main">
-              <div class="zone-name">
-                <span class="zone-label">{{ z.label }}</span>
-                <span :class="['state', z.is_active ? 'state-on' : 'state-off']">{{ z.is_active ? t('settings.zones.active') : t('settings.zones.disabled') }}</span>
-              </div>
-              <div class="zone-facts">
-                <span class="mono">{{ t('settings.zones.radiusValue', { n: z.radius_m }) }}</span>
-                <span class="mono">{{ Number(z.latitude).toFixed(5) }}, {{ Number(z.longitude).toFixed(5) }}</span>
-              </div>
-              <p v-if="z.notes" class="zone-notes">{{ z.notes }}</p>
-              <p v-if="rowError?.id === z.id" class="msg-warn" role="alert">{{ rowError.text }}</p>
-            </div>
-            <div v-if="isAdmin" class="zone-actions">
-              <button type="button" class="secondary" data-testid="zone-edit" :disabled="zoneBusy" @click="startEdit(z)">{{ t('settings.zones.edit') }}</button>
-              <button v-if="z.is_active" type="button" class="secondary" data-testid="zone-disable" :disabled="zoneBusy" @click="onZoneDisable(z)">{{ t('settings.zones.disable') }}</button>
-              <button v-else type="button" class="secondary" data-testid="zone-enable" :disabled="zoneBusy" @click="onZoneEnable(z)">{{ t('settings.zones.enable') }}</button>
-            </div>
-          </template>
-        </li>
-      </ul>
-      <p v-if="zoneList.some(z => !z.is_active)" class="hint flush zones-note" data-testid="zones-disabled-note">{{ t('settings.zones.disabledNote') }}</p>
-    </section>
+    <PanelHost :panels="settingsPanels" :context="{ isAdmin }" />
 
     <OfflineMapsCard v-if="isAdmin" />
     <TestModeCard v-if="isAdmin" />
@@ -226,11 +175,10 @@ import { routerKey } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useSettingsStore } from '../store'
 import { useAuthStore } from '../../../stores/auth'
-import { useFireStore } from '../../../stores/fire'
 import { getFireStatus } from '../../../api'
 import { detailOf } from '../../../api/client'
-import { fireErrorKey } from '../../../lib/fireErrors'
-import SuppressionZoneForm from '../../../components/SuppressionZoneForm.vue'
+import PanelHost from '../../../platform/PanelHost.vue'
+import { settingsPanels } from '../../../composables/settingsPanels'
 import TestModeCard from '../../../components/TestModeCard.vue'
 import OfflineMapsCard from '../../../components/OfflineMapsCard.vue'
 import { LIMITS, alarmsTurnedOff, kmError, kmToM, mToKm, photosOnMapOf, wholeError } from '../lib/settingsForm'
@@ -238,7 +186,6 @@ import { LIMITS, alarmsTurnedOff, kmError, kmToM, mToKm, photosOnMapOf, wholeErr
 const { t } = useI18n()
 const store = useSettingsStore()
 const auth = useAuthStore()
-const fire = useFireStore()
 const router = inject(routerKey, null)
 const isAdmin = computed(() => auth.user?.role === 'admin')
 
@@ -297,7 +244,7 @@ async function load() {
     loadFailed.value = true
   }
 }
-onMounted(() => { if (store.settings) reset(); load(); loadZones(); loadTargets() })
+onMounted(() => { if (store.settings) reset(); load(); loadTargets() })
 
 // ---- Alarm targets: what GET /api/fire/status says the alarm can watch right now ----------------
 // undefined = loading, null = unavailable (request failed, or the server has no settings row).
@@ -313,87 +260,6 @@ async function loadTargets() {
 // The rescuer alarm is on but there is nothing for it to watch: say so (amber, not red).
 const rescuerAlarmBlind = computed(() =>
   !!store.settings?.is_rescuer_alarm_enabled && !!targets.value && targets.value.rescuers === 0)
-
-// ---- Suppression zones ------------------------------------------------------------------------
-// Disabled zones are listed too (the server removes them after 48 h), so an operator can bring one back.
-const zonesLoading = ref(true)
-const editingId = ref(null)
-const zoneBusy = ref(false)
-const zoneError = ref('')      // shown inside the open edit form
-const rowError = ref(null)     // { id, text } for a disable / re-enable that failed
-
-const zoneList = computed(() => [...fire.zones].sort((a, b) =>
-  Number(b.is_active) - Number(a.is_active) || String(a.label).localeCompare(String(b.label))))
-
-async function loadZones() {
-  zonesLoading.value = true
-  try { await fire.fetchZones(true) } catch { /* fire.zonesFailed drives the retry notice */ } finally { zonesLoading.value = false }
-}
-
-// An edit carries the version the form was opened on (B54): a push that refetches the zone while
-// the form is open must never pair newer server data with the operator's older values.
-const editingVersion = ref(null)
-const editSnapshot = ref({})   // the values the open form started from
-const editFormKey = ref(0)     // bumped to rebuild the form from fresh values
-const editStale = computed(() => {
-  if (editingId.value == null) return false
-  const cur = fire.zones.find(z => z.id === editingId.value)
-  return !!cur && cur.updated_at !== editingVersion.value
-})
-
-function startEdit(z) {
-  editingId.value = z.id; editingVersion.value = z.updated_at; editSnapshot.value = { ...z }
-  editFormKey.value++; zoneError.value = ''; rowError.value = null
-}
-function stopEdit() { editingId.value = null; editingVersion.value = null; zoneError.value = '' }
-// Reload the current server values into the form (drops the operator's unsaved typing).
-function reloadEdit(z) {
-  editingVersion.value = z.updated_at; editSnapshot.value = { ...z }; editFormKey.value++; zoneError.value = ''
-}
-
-// Edits send the version the form opened on; it never carries is_active (activation has its own endpoints).
-const zoneBody = (z, over = {}) => ({
-  label: z.label, latitude: z.latitude, longitude: z.longitude, radius_m: z.radius_m, notes: z.notes ?? null,
-  expected_updated_at: z.updated_at, ...over,
-})
-
-async function runZoneAction(id, action, onError) {
-  if (zoneBusy.value) return
-  zoneBusy.value = true
-  try {
-    await action()
-    return true
-  } catch (err) {
-    const text = t(fireErrorKey(err))
-    if (err?.status === 409 && err?.detail === 'zone_stale') {
-      // Someone changed the zone: pull the current list, close any edit form (its values are out of date)
-      // and say so on the row. The operator reopens Edit on the fresh values.
-      await loadZones()
-      stopEdit()
-      rowError.value = { id, text }
-    } else {
-      onError(text)
-    }
-  } finally {
-    zoneBusy.value = false
-  }
-}
-
-async function onZoneSave(z, values) {
-  if (editStale.value) return   // the notice is showing: reload the values first
-  zoneError.value = ''
-  const body = zoneBody(editSnapshot.value, { ...values, expected_updated_at: editingVersion.value })
-  const ok = await runZoneAction(z.id, () => fire.updateZone(z.id, body), (text) => { zoneError.value = text })
-  if (ok) stopEdit()
-}
-async function onZoneDisable(z) {
-  rowError.value = null
-  await runZoneAction(z.id, () => fire.disableZone(z.id, z.updated_at), (text) => { rowError.value = { id: z.id, text } })
-}
-async function onZoneEnable(z) {
-  rowError.value = null
-  await runZoneAction(z.id, () => fire.enableZone(z.id, z.updated_at), (text) => { rowError.value = { id: z.id, text } })
-}
 
 const errors = computed(() => ({
   hq_radius_km:        kmError(draft.value.hq_radius_km),
@@ -500,7 +366,7 @@ watch(draft, () => {
 .page { padding: 24px; flex: 1; max-width: 720px; }
 .stack { display: flex; flex-direction: column; gap: 16px; }
 .account { margin-top: 16px; }
-.targets, .zones { margin-top: 16px; }
+.targets { margin-top: 16px; }
 .hint.flush { margin-left: 0; }
 .hint.flush-bottom { margin-bottom: 0; }
 .muted.flush { margin-bottom: 0; }
@@ -511,23 +377,6 @@ watch(draft, () => {
 .target-row + .target-row { padding-top: 6px; border-top: 1px solid var(--border); }
 .targets .notice { margin-top: 12px; margin-bottom: 0; }
 
-.zones .hint { margin-bottom: 12px; }
-.zones-failed { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.zone-list { list-style: none; display: flex; flex-direction: column; }
-.zone-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 0; }
-.zone-item + .zone-item { border-top: 1px solid var(--border); }
-.zone-item > :only-child { flex: 1; }
-.zone-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.zone-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.zone-label { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
-.zone-off .zone-label, .zone-off .zone-facts, .zone-off .zone-notes { color: var(--text-muted); }
-.zone-facts { display: flex; gap: 6px 16px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
-.zone-notes { font-size: 13px; color: var(--text-muted); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 4.2em; overflow-y: auto; }
-.zone-edit { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.zone-stale { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.zone-actions { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
-.zone-actions button { padding: 6px 12px; font-size: 13px; }
-.zones .zones-note { margin-top: 8px; margin-bottom: 0; }
 .who { font-size: 14px; margin-bottom: 4px; }
 .hint-inline { font-size: 13px; color: var(--text-muted); }
 .section-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: var(--text-muted); }
@@ -582,7 +431,5 @@ button:disabled { opacity: .45; cursor: not-allowed; }
 
 @media (max-width: 600px) {
   .timing { grid-template-columns: 1fr; }
-  .zone-item { flex-direction: column; }
-  .zone-actions { justify-content: flex-start; }
 }
 </style>
