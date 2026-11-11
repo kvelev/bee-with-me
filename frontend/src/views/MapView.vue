@@ -87,10 +87,6 @@
         :data-layer="name"
         @click="onToggle(toggle, name)"
       >{{ t(toggle.labelKey) }}</button>
-      <span v-if="isAdmin && fireStore.layers.zones && fireStore.zonesFailed" class="bm-hq-note" role="status">
-        {{ t('fire.zone.loadFailed') }}
-        <button class="bm-btn" @click="retryZones">{{ t('fire.zone.retry') }}</button>
-      </span>
       <template v-if="activeBasemap === 'satellite' || activeBasemap === 'offline'">
         <span class="bm-row-break" />
         <button
@@ -102,21 +98,6 @@
       <PanelHost :panels="toolbarPanels" :context="mapContext" />
     </div>
 
-    <!-- Fire data freshness: always shows its age, and says so when it cannot. -->
-    <div v-if="fireDataLayerOn" class="fire-pill" :class="`fire-${firePill.kind}`" role="status">
-      <i18n-t v-if="firePill.time" keypath="fire.asOf" tag="span" class="fire-pill-main">
-        <template #time><span class="fire-time">{{ firePill.time }}</span></template>
-      </i18n-t>
-      <span v-if="firePill.note" class="fire-pill-note">{{ firePill.note }}</span>
-    </div>
-
-    <!-- Licence attribution (text only: the offline build loads nothing from the network). -->
-    <div v-if="fireDataLayerOn" class="fire-attribution">{{ t('fire.attribution') }}</div>
-
-    <!-- "Show on map" from a fire alarm: a ring on the exact spot for a few seconds. -->
-    <div ref="focusRingEl" class="fire-focus-anchor" aria-hidden="true">
-      <div v-if="focusRingKey" :key="focusRingKey" class="fire-focus-ring" data-testid="fire-focus-ring" />
-    </div>
     <MapPopupHost :map="hostMap" :popups="popups" :selection="firePopup" anchor-class="fire-popup-anchor">
       <template #default="{ popup, selection }">
         <component
@@ -323,13 +304,13 @@ import { fromLonLat, toLonLat } from 'ol/proj'
 import Overlay from 'ol/Overlay'
 import { useLocationsStore } from '../stores/locations'
 import { useFireStore } from '../stores/fire'
+import { useFireUi } from '../modules/fire/ui.js'
 import { useAuthStore } from '../stores/auth'
 import { useSettingsStore } from '../stores/settings'
 import { useWebSocket } from '../composables/useWebSocket'
 import { useMap, BASEMAPS } from '../composables/useMap'
 import { getDevices, getGroupsWithMembers, getSerialStatus, getWeatherBox, getWeatherCurrent, setDeviceLocation } from '../api'
 import { ageMs, contactAt, formatAge, freshnessOf, byUrgency } from '../lib/freshness'
-import { firePillState } from '../lib/fireStyle'
 import { recolorFor, tempLegendGradient } from '../lib/weatherTiles'
 import { compassFrom, windPoint, gridPoints, openMeteoUrl, parseOpenMeteo, nearestPoint } from '../lib/wind'
 import { unByKey } from 'ol/Observable'
@@ -370,7 +351,7 @@ const WEATHER_LAYERS = [
   },
 ]
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const store   = useLocationsStore()
 const fireStore = useFireStore()
 const authStore = useAuthStore()
@@ -491,45 +472,29 @@ const facade = useMap(
   },
   computed(() => settingsStore.photosOnMap),
 )
-const { map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, setWeatherLayer, refreshMarkers, setHQ, setHQPlacementMode, setRepeaters, setRepeaterPlacementMode, onRepeaterPlaced, setBurntAreas, setHotspots, setFireLayerVisible, setFireLabels, onFireFeatureClick, setZones, onTrackerClick, onMapContextMenu } = facade
+const { map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, setWeatherLayer, refreshMarkers, setHQ, setHQPlacementMode, setRepeaters, setRepeaterPlacementMode, onRepeaterPlaced, onFireFeatureClick, onTrackerClick, onMapContextMenu } = facade
 const { connect } = useWebSocket()
 
 // ── Fire layers ──────────────────────────────────────────────────────────────
-const LEGACY_LAYER_NAMES = { 'fire-burnt': 'burnt', 'fire-hotspots': 'hotspots', 'fire-zones': 'zones' } // until step 2
 // Suppression zones are an admin tool: the button, the circles and the zone fetch are admin-only.
+// The layer state, the pill and the focus ring belong to the fire module's map panel.
 const layerToggles = computed(() => collectLayerToggles(MODULES).filter(t => !t.adminOnly || isAdmin.value))
-// A toggle without a legacy store name is not rendered in this wave.
+// A toggle without the state pair (key + isOn + set) is a bare layer declaration: its name is the layer id
+// without the `fire-` prefix and the fire stores drive it.
 const layerButtons = computed(() => layerToggles.value
-  .filter(toggle => (toggle.isOn && toggle.set) || LEGACY_LAYER_NAMES[toggle.id])
-  .map(toggle => ({ toggle, name: toggle.isOn && toggle.set ? toggle.key : LEGACY_LAYER_NAMES[toggle.id] })))
-// The freshness pill and the licence line describe EFFIS data; zones are our own and need neither.
-const fireDataLayerOn = computed(() => fireStore.layers.burnt || fireStore.layers.hotspots)
-const focusRingEl = ref(null)
-const focusRingKey = ref(0)   // 0 = hidden; a new value restarts the pulse
-const FOCUS_RING_MS = 8000
-let focusOverlay = null
-let focusRingTimer = null
+  .map(toggle => ({ toggle, name: toggle.key ?? toggle.id.replace(/^fire-/, '') })))
 const firePopup   = ref(null)   // { kind, properties, coordinate } | null
 // Popups come from contributions; the fire popup is a legacy entry until step 2.
 const popups = collectPopups(MODULES, [{ id: 'fire', component: FirePopup, kinds: ['hotspot', 'burnt_area'] }]) // until step 2
 const hostMap = shallowRef(null)   // set once the map exists; the popup host puts its overlay on it
-let   focusMap = null
 
-// A toggle with the state pair (isOn + set) is driven by its module; the others use the legacy fire store path.
 const toggleOn = (toggle, name) => (toggle.isOn ? !!toggle.isOn() : !!fireStore.layers[name])
-const onToggle = (toggle, name) => (toggle.isOn && toggle.set ? toggle.set(!toggle.isOn()) : toggleFire(name))
+const onToggle = (toggle, name) => (toggle.set ? toggle.set(!toggleOn(toggle, name)) : useFireUi().setLayer(name, !toggleOn(toggle, name)))
 
-function toggleFire(name) {
-  const on = !fireStore.layers[name]
-  setFireLayerVisible(name, on)
-  if (!on && firePopup.value && name !== 'zones' && (name === 'hotspots') === (firePopup.value.kind === 'hotspot')) closeFirePopup()
-  fireStore.setLayer(name, on).catch(() => { /* fetchFailed / zonesFailed drive the notices */ })
-}
-
-// A new report or zone must be visible where it was just made: switch its layer on if it is off.
-function ensureLayer(name) { if (!fireStore.layers[name]) toggleFire(name) }
-
-function retryZones() { fireStore.fetchZones().catch(() => { /* zonesFailed shows the note */ }) }
+// A fire popup is closed when its layer is switched off (hotspot <-> hotspots, burnt_area <-> burnt; zones never).
+// Moves with the popup to the fire module in T508.
+watch(() => fireStore.layers.hotspots, (on) => { if (!on && firePopup.value?.kind === 'hotspot') closeFirePopup() })
+watch(() => fireStore.layers.burnt, (on) => { if (!on && firePopup.value?.kind === 'burnt_area') closeFirePopup() })
 
 // The overlay coordinate is in the map projection (EPSG:3857); the popup wants WGS84.
 const firePopupLonLat = computed(() => {
@@ -620,14 +585,14 @@ async function submitReport({ notes }) {
   if (target.noPosition) return
   const body = { latitude: target.latitude, longitude: target.longitude, notes }
   // A 404 here means the running backend lacks the field-report endpoint (older than T18).
-  if (await runDialogAction(() => fireStore.reportFire(body), 'report')) ensureLayer('hotspots')
+  if (await runDialogAction(() => fireStore.reportFire(body), 'report')) useFireUi().ensureLayer('hotspots')
 }
 
 async function submitZone(values) {
   const d = dialog.value
   if (d?.kind !== 'zone') return
   const body = { ...values, latitude: d.latitude, longitude: d.longitude }
-  if (await runDialogAction(() => fireStore.createZone(body))) ensureLayer('zones')
+  if (await runDialogAction(() => fireStore.createZone(body))) useFireUi().ensureLayer('zones')
 }
 
 // ── Volunteer selection and "Report fire at this position" ───────────────────────────────────
@@ -687,43 +652,15 @@ function openContextMenu(e) {
   })
 }
 
-// What the pill says; the priority rules live in lib/fireStyle.js (firePillState).
-const firePill = computed(() => {
-  const at = fireStore.shownFetchedAt
-  const time = at
-    ? new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : ''
-  const state = firePillState({
-    at, upstreamState: fireStore.shownUpstreamState, failed: fireStore.fetchFailed, nowMs: nowTick.value,
-  })
-  return { kind: state.kind, time, note: state.noteKey ? t(state.noteKey) : '' }
-})
-
 onMounted(() => {
   const m = map()
   if (!m) return
   hostMap.value = m
-  focusMap = m
-  focusOverlay = new Overlay({ element: focusRingEl.value, positioning: 'center-center', stopEvent: false })
-  m.addOverlay(focusOverlay)
   onFireFeatureClick((sel) => {
     fireError.value = ''
     firePopup.value = sel
   })
-  setFireLabels({ fieldReport: t('fire.source.field_report') })
-  // Layers remembered from the last session show again after a reload.
-  for (const name of Object.values(LEGACY_LAYER_NAMES)) setFireLayerVisible(name, fireStore.layers[name] && (name !== 'zones' || isAdmin.value))
-  fireStore.refreshVisible().catch(() => { /* fetchFailed drives the pill */ })
-  if (isAdmin.value && fireStore.layers.zones) retryZones()
 })
-
-// immediate: a remounted MapView shows what the store already holds even if its own first
-// refresh fails.
-watch(() => fireStore.hotspots,   (fc) => { if (!setHotspots(fc))   fireStore.markFeedFailed('hotspots') }, { immediate: true })
-watch(() => fireStore.burntAreas, (fc) => { if (!setBurntAreas(fc)) fireStore.markFeedFailed('burnt') },    { immediate: true })
-watch(locale, () => setFireLabels({ fieldReport: t('fire.source.field_report') }))
-// Only active zones are drawn; Settings may have loaded disabled ones into the same list.
-watch(() => fireStore.zones, (list) => setZones(list.filter(z => z.is_active)), { immediate: true })
 
 onTrackerClick(onMarkerClick)
 onMapContextMenu(openContextMenu)
@@ -841,10 +778,6 @@ onUnmounted(() => {
   onRepeaterPlaced(null)
   ctxMenu.value?.close()
   hostMap.value = null
-  if (focusOverlay) focusMap?.removeOverlay(focusOverlay)
-  clearTimeout(focusRingTimer)
-  focusOverlay = null
-  focusMap = null
 })
 
 function switchBasemap(id) {
@@ -1220,29 +1153,9 @@ watch(weatherLayerId, async (id) => {
     fetchWindField()
   }
 })
-// "Show on map" from a fire alarm (FireAlarmBanner). The view is kept alive, so a request can
-// land while it is hidden: it waits until the map is on screen, then centres once and is cleared.
+// The view is kept alive; the fire map panel waits for mapActive before it handles a "Show on map" request.
 const mapActive = ref(false)
-function consumeFireFocus() {
-  const req = fireStore.focusRequest
-  const m = map()
-  if (!req || !m || !mapActive.value) return
-  fireStore.clearFocusRequest()
-  // The fire is drawn on the hotspots layer, which is off by default: centring on it with the
-  // layer off showed an empty map, as if the button did nothing.
-  ensureLayer('hotspots')
-  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  const center = fromLonLat([req.longitude, req.latitude])
-  m.updateSize()
-  m.getView().animate({ center, zoom: 12, duration: reduce ? 0 : 500 })
-  // Mark the spot itself, so it is found at once even before the hotspot data has drawn.
-  focusOverlay?.setPosition(center)
-  focusRingKey.value++
-  clearTimeout(focusRingTimer)
-  focusRingTimer = setTimeout(() => { focusRingKey.value = 0; focusOverlay?.setPosition(undefined) }, FOCUS_RING_MS)
-}
-watch(() => fireStore.focusRequest, consumeFireFocus)
-onActivated(() => { mapActive.value = true; nextTick(consumeFireFocus); loadRepeaters() })
+onActivated(() => { mapActive.value = true; loadRepeaters() })
 onDeactivated(() => { mapActive.value = false })
 
 // What a module panel may use of the map shell: the refs themselves, not their values.
@@ -1315,32 +1228,6 @@ function batClass(v) {
 .bm-select { background: var(--bg-panel); border: 1px solid var(--border); color: var(--text); padding: 4px 6px; font-size: 12px; border-radius: 4px; width: auto; }
 .bm-row-break { flex-basis: 100%; height: 0; }
 
-/* Fire data freshness. Neutral when live, muted when quiet or unknown, amber (never red)
-   when stale or failed: red is reserved for alarms. */
-.fire-pill {
-  position: absolute; top: 48px; left: 12px; z-index: 50;
-  display: flex; flex-direction: column; gap: 2px;
-  max-width: 300px; padding: 5px 10px;
-  background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: 4px; font-size: 12px; color: var(--text);
-}
-.fire-pill-main { font-weight: 600; }
-.fire-time { font-family: monospace; font-variant-numeric: tabular-nums; }
-.fire-pill-note { font-size: 11px; color: var(--text-muted); line-height: 1.35; }
-.fire-unknown .fire-pill-main, .fire-quiet .fire-pill-main { color: var(--text-muted); }
-.fire-error {
-  border-color: var(--warning-line);
-  background: linear-gradient(var(--warning-wash), var(--warning-wash)), var(--bg-panel);
-}
-.fire-error .fire-pill-main, .fire-error .fire-pill-note { color: var(--warning); }
-
-.fire-attribution {
-  position: absolute; bottom: 8px; left: 12px; z-index: 50;
-  max-width: max(calc(100% - 300px), 200px); padding: 2px 6px;
-  background: rgba(15,17,23,.78); border-radius: 3px;
-  font-size: 10.5px; line-height: 1.35; color: var(--text-muted);
-  pointer-events: none;
-}
 /* Not positioned: OpenLayers sizes its overlay container from this element. */
 .fire-popup-anchor { display: block; }
 
@@ -1450,24 +1337,8 @@ function batClass(v) {
   animation: feed-blink 1.6s ease-in-out infinite;
 }
 @keyframes feed-blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
-
-/* "Show on map" ring: fire-alarm orange (the alarm the operator came from), dark halo for light
-   basemaps. Pulses a few times, then holds until it is removed. */
-.fire-focus-anchor { pointer-events: none; }
-.fire-focus-ring {
-  width: 56px; height: 56px; border-radius: 50%;
-  border: 3px solid var(--fire-alarm);
-  box-shadow: 0 0 0 2px rgba(0,0,0,.55), inset 0 0 0 2px rgba(0,0,0,.55);
-  animation: fire-focus-pulse 1.2s ease-out 4;
-}
-@keyframes fire-focus-pulse {
-  0%   { transform: scale(.5); opacity: 1; }
-  70%  { transform: scale(1.15); opacity: .9; }
-  100% { transform: scale(1); opacity: 1; }
-}
 @media (prefers-reduced-motion: reduce) {
   .stale-feed-dot { animation: none; }
-  .fire-focus-ring { animation: none; }
 }
 
 .tracker-dot  { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
