@@ -39,6 +39,14 @@ APPROVED: dict[str, dict[str, str]] = {
             'old import path kept as an alias until step 5; 24 test files import it',
         'module boundary: fire: backend.routers.fire -> backend.modules.fire.http':
             'old import path kept as an alias until step 5; 24 test files import it',
+        # Step 2 (T540): tracking and sos become modules; the old locations router is a named shim of both.
+        # Net change of the allowlist: 3 lines deleted (shims), 2 added.
+        'module boundary: tracking: backend.routers.locations -> backend.modules.tracking.http':
+            'the old import path backend.routers.locations passes on the tracking functions and the router, kept '
+            'so the existing tests and imports work until step 5',
+        'module boundary: sos: backend.routers.locations -> backend.modules.sos.http':
+            'the old import path backend.routers.locations passes on the sos functions and the router, kept '
+            'so the existing tests and imports work until step 5',
     },
     'backend/tests/architecture/allowlist.json': {
         # Step 2 (T503): fire gets a public face (fire.api); these callers use it until the events and the outbox of step 4.

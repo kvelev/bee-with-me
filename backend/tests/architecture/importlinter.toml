@@ -63,9 +63,6 @@ ignore_imports = [
     "backend.routers.export -> backend.database",  # until step 5
     "backend.routers.groups -> backend.database",  # until step 4
     "backend.routers.groups -> backend.json_columns",  # until step 4
-    "backend.routers.locations -> backend.config",  # until step 3
-    "backend.routers.locations -> backend.database",  # until step 3
-    "backend.routers.locations -> backend.json_columns",  # until step 3
     "backend.routers.test -> backend.database",  # until step 5
     "backend.routers.tiles -> backend.config",  # until step 5
     "backend.routers.users -> backend.database",  # until step 4
@@ -127,6 +124,8 @@ source_modules = [
     "backend.db",
     "backend.modules.fire",
     "backend.modules.weather",
+    "backend.modules.tracking",
+    "backend.modules.sos",
 ]
 forbidden_modules = [
     "backend.modules.settings.domain",
@@ -153,6 +152,8 @@ source_modules = [
     "backend.db",
     "backend.modules.fire",
     "backend.modules.settings",
+    "backend.modules.tracking",
+    "backend.modules.sos",
 ]
 forbidden_modules = [
     "backend.modules.weather.http",
@@ -177,6 +178,8 @@ source_modules = [
     "backend.db",
     "backend.modules.settings",
     "backend.modules.weather",
+    "backend.modules.tracking",
+    "backend.modules.sos",
 ]
 forbidden_modules = [
     "backend.modules.fire.domain",
@@ -196,4 +199,58 @@ ignore_imports = [
     "backend.fire.poller -> backend.modules.fire.infrastructure.poller",  # until step 5
     "backend.fire.service -> backend.modules.fire.infrastructure.service",  # until step 5
     "backend.routers.fire -> backend.modules.fire.http",  # until step 5
+]
+
+[[tool.importlinter.contracts]]
+id = "boundary-tracking"
+name = "module boundary: tracking"
+type = "forbidden"
+source_modules = [
+    "backend.routers",
+    "backend.fire",
+    "backend.hardware_reader",
+    "backend.simulation",
+    "backend.main",
+    "backend.auth",
+    "backend.db",
+    "backend.modules.fire",
+    "backend.modules.settings",
+    "backend.modules.weather",
+    "backend.modules.sos",
+]
+forbidden_modules = [
+    "backend.modules.tracking.http",
+    "backend.modules.tracking.infrastructure",
+    "backend.modules.tracking.module",
+]
+allow_indirect_imports = true
+ignore_imports = [
+    "backend.routers.locations -> backend.modules.tracking.http",  # until step 5
+]
+
+[[tool.importlinter.contracts]]
+id = "boundary-sos"
+name = "module boundary: sos"
+type = "forbidden"
+source_modules = [
+    "backend.routers",
+    "backend.fire",
+    "backend.hardware_reader",
+    "backend.simulation",
+    "backend.main",
+    "backend.auth",
+    "backend.db",
+    "backend.modules.fire",
+    "backend.modules.settings",
+    "backend.modules.weather",
+    "backend.modules.tracking",
+]
+forbidden_modules = [
+    "backend.modules.sos.http",
+    "backend.modules.sos.infrastructure",
+    "backend.modules.sos.module",
+]
+allow_indirect_imports = true
+ignore_imports = [
+    "backend.routers.locations -> backend.modules.sos.http",  # until step 5
 ]

@@ -496,6 +496,13 @@ class Smoke:
             raise StepFail(f'GET /api/weather/current: expected HTTP 200, 502 or 503, got {status}')
         return f'weather proxy answered {status} behind the login'
 
+    def s_sos(self):
+        status, body = http_request('GET', f"{self.ctx['api']}/api/locations/sos", token=self.ctx['token'])
+        expect_status(status, 200, 'GET /api/locations/sos')
+        if not isinstance(json.loads(body), list):
+            raise StepFail('GET /api/locations/sos: the answer is not a JSON list')
+        return 'open SOS alerts readable behind the login'
+
     def s_websocket(self):
         api, token, port = self.ctx['api'], self.ctx['token'], self.ctx['api_port']
         sn = 900000 + secrets.randbelow(90000)
@@ -550,6 +557,7 @@ class Smoke:
             self.step('g. GET /api/settings = 200', self.s_settings, needs=('c. admin login + token refresh',))
             self.step('h. GET /api/fire/status = 200', self.s_fire, needs=('c. admin login + token refresh',))
             self.step('i. GET /api/weather/current is served', self.s_weather, needs=('c. admin login + token refresh',))
+            self.step('j. GET /api/locations/sos = 200', self.s_sos, needs=('c. admin login + token refresh',))
             self.step('f. frontend image serves the SPA', self.s_frontend, needs=('build frontend image',))
         finally:
             started = time.monotonic()

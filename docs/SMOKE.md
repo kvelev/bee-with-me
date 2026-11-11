@@ -41,6 +41,7 @@ starts an empty PostGIS 16 and the backend with the environment of `deploy/k8s/a
 | g. GET /api/settings | with the token: 200 and a JSON object with `hq_radius_m` (the settings row exists; the route is served by the `settings` module, which the module list mounts behind the default auth, so this is the one step that exercises the loader and the module) |
 | h. GET /api/fire/status | with the token: 200 and a JSON object with the key `feeds` (the route is served by the `fire` module behind the default auth) |
 | i. GET /api/weather/current | with the token: 200, 502 or 503 (503 is the answer of an environment without `OWM_API_KEY`, which the smoke stack has; 502 = OpenWeatherMap unreachable). Any other status, 401 included, fails: it proves the `weather` module is mounted behind the login |
+| j. GET /api/locations/sos | with the token: 200 and a JSON list of the open SOS alerts (the route is served by the `sos` module behind the default auth; an empty list is the normal answer of the fresh smoke database) |
 | cleanup | containers, network and volumes are removed, also after a FAIL or Ctrl+C |
 
 ## Read the result
