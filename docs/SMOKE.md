@@ -16,7 +16,12 @@ Needs Python 3.11+ and Podman or Docker (the Podman machine must be running on W
 ```
 
 The engine is `CONTAINER_ENGINE` (`podman` or `docker`), else Podman, else Docker. Options: `--engine podman|docker`,
-`--no-build` (reuse the `smoke-local` images of the previous run).
+`--no-build` (reuse the `smoke-local` images of the previous run), `--live-personal-fields true|false` (start the
+backend with `LIVE_PERSONAL_FIELDS` set to that value; without the option the variable is not passed and the backend
+uses its default, `true`). The steps are the same in every mode; with the option step e also checks that the
+`location_update` is the full message (`true`) or the thin one without the personal keys (`false`), and says so in
+its line. A change to the live messages is smoke-tested in both modes: once plain, once with
+`--no-build --live-personal-fields false`.
 
 Equivalent by hand: `python tools/smoke.py`. Nothing in `data/`, `tiles/` or `backend/uploads/` is used, no `.env` is
 read or written. The database and the backend's upload/tile folders are named volumes created for the run.
