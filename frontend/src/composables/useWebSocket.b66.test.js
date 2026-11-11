@@ -4,7 +4,7 @@ const loc  = { setConnected: vi.fn(), fetchLive: vi.fn(async () => {}), fetchSOS
 const fire = { retryFailed: vi.fn(async () => {}), refreshVisible: vi.fn(async () => {}), applyFireDataUpdated: vi.fn(async () => {}),
   applyFireZonesUpdated: vi.fn(async () => {}), fetchOpenAlerts: vi.fn(async () => {}), applyFireAlert: vi.fn(), applyFireAlertRepeat: vi.fn(async () => {}), applyFireAlertUpdated: vi.fn() }
 vi.mock('../stores/locations', () => ({ useLocationsStore: () => loc }))
-vi.mock('../stores/fire', () => ({ useFireStore: () => fire }))
+vi.mock('../modules/fire/store.js', () => ({ useFireStore: () => fire }))
 vi.mock('vue', async (orig) => ({ ...(await orig()), onUnmounted: vi.fn() }))
 
 describe('useWebSocket catch-up after a failed first snapshot', () => {
