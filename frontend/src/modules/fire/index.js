@@ -2,6 +2,8 @@
 // The alarm banner is imported statically on purpose: the alarm must not wait for a chunk.
 import { BANNER_PRIORITY } from '../../platform/map-shell/zorder.js'
 import FireAlarmBanner from './components/FireAlarmBanner.vue'
+import FireDialogs from './components/FireDialogs.vue'
+import FireMapPopup from './components/FireMapPopup.vue'
 import FireMapPanel from './components/FireMapPanel.vue'
 import FireZonesNote from './components/FireZonesNote.vue'
 import bg from './i18n/bg.js'
@@ -9,6 +11,7 @@ import en from './i18n/en.js'
 import { FIRE_MAP_LAYERS } from './map/layers.js'
 
 import { useFireStore } from './store.js'
+import { useFireUi } from './ui.js'
 
 export { useFireStore }
 export { useFireUi } from './ui.js'
@@ -24,7 +27,15 @@ export default {
   panels: [
     { id: 'fire-map', host: 'map', order: 20, component: FireMapPanel },
     { id: 'fire-zones-note', host: 'map-toolbar', order: 10, component: FireZonesNote },
+    // The field-report and zone dialogs (state in useFireUi); they open from the popup, the menu and the tracker row.
+    { id: 'fire-dialogs', host: 'map', order: 30, component: FireDialogs },
   ],
+  // The popup of a hotspot or burnt-area feature, and the map context-menu item that reports a fire at the pointer.
+  popups: [{ id: 'fire', component: FireMapPopup, kinds: ['hotspot', 'burnt_area'] }],
+  contextMenu: [{
+    id: 'fire-report-here', order: 10, labelKey: 'fire.report.here', testId: 'report-fire-here',
+    onSelect: ({ lonLat }) => useFireUi().openDialog({ kind: 'report', target: { latitude: lonLat[1], longitude: lonLat[0] } }),
+  }],
   banners: [{ id: 'fire-alarm', priority: BANNER_PRIORITY.fireAlarm, component: FireAlarmBanner }],
   // Live socket contributions (read by platform/live/dispatch.js). The store is read inside each function so
   // the Pinia that is active at call time is the one used. A rejected promise is logged by dispatchLive.
