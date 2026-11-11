@@ -146,7 +146,7 @@ def test_zone_edits_need_admin(client, test_app, monkeypatch, zone_calls, viewer
 def test_zone_write_audit_line_has_ids_only(client, monkeypatch, zone_calls, admin_user, caplog):
     _stub(monkeypatch, 'update_zone', _zone())
     zid = uuid.uuid4()
-    with caplog.at_level(logging.INFO, logger='backend.routers.fire'):
+    with caplog.at_level(logging.INFO, logger='backend.modules.fire.http'):
         client.put(f'/api/fire/suppression-zones/{zid}', json=EDIT)
     lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith('fire zone')]
     assert len(lines) == 1

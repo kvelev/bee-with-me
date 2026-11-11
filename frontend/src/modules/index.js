@@ -6,6 +6,7 @@ import fire from './fire/index.js'
 import people from './people/index.js'
 import settings from './settings/index.js'
 import teams from './teams/index.js'
+import weather from './weather/index.js'
 
 export const MODULES = [
   devices,
@@ -13,4 +14,5 @@ export const MODULES = [
   people,
   settings,
   teams,
+  weather,
 ]
