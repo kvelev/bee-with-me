@@ -113,6 +113,25 @@ describe('FireDialogs', () => {
     w.unmount()
   })
 
+  it('a second submit while the first is in flight is ignored [T590]', async () => {
+    const { w, store, ui } = setup()
+    let resolveFirst
+    store.reportFire = vi.fn(() => new Promise((resolve) => { resolveFirst = resolve }))
+    ui.openDialog(REPORT())
+    await flushPromises()
+    submit(form())
+    await flushPromises()
+    submit(form())
+    submit(form())
+    await flushPromises()
+    expect(store.reportFire).toHaveBeenCalledTimes(1)
+    resolveFirst()
+    await flushPromises()
+    expect(ui.dialog).toBeNull()
+    expect(store.reportFire).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+
   it('opening a dialog closes the context menu [T508]', async () => {
     const { w, ui, context } = setup()
     expect(context.closeContextMenu).not.toHaveBeenCalled()

@@ -18,6 +18,10 @@ const core = {
   },
   map: {
     trackers:      'Trackers',
+    offlineMapsLoading:     'Loading offline maps…',
+    offlineMapsNoMaps:      'No offline maps are available on the server',
+    offlineMapsServerError: 'The offline map server did not answer. Try again.',
+    offlineMapsSelectError: 'The map could not be selected. Try again.',
     noTrackers:    'No active trackers',
     noFix:         'no fix',
     silenceNotice: 'No contact with {n} tracker(s) for over 10 min',

@@ -86,7 +86,7 @@ export const putSettings  = (body) => api.put('/settings', body)
 export const putHQ        = (body) => api.put('/settings/hq', body)
 export const putHQInitial = (body) => api.put('/settings/hq-initial', body)
 
-// Weather: OpenWeatherMap through the backend, which holds the key (routers/weather.py)
+// Weather: OpenWeatherMap through the backend, which holds the key (backend/modules/weather/http.py)
 export const getWeatherCurrent = (lat, lon)   => api.get('/weather/current', { params: { lat, lon } })
 export const getWeatherBox     = (bbox, zoom) => api.get('/weather/box', { params: { bbox, zoom } })
 export const getWeatherTile    = (src)        => api.get(src.replace(/^\/api/, ''), { responseType: 'blob' })
