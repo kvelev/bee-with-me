@@ -40,6 +40,9 @@ ALLOWED_EDGES: frozenset[tuple[str, str]] = frozenset({
 
 SHIM_FILES = ('config', 'database', 'json_columns', 'ws')
 
+# Children of backend.modules that are kernel files, not modules (owner `core` in module_map)
+KERNEL_CHILDREN = frozenset({'registry'})
+
 # Production code outside the modules that must not reach into a module's private children (`module boundary: <x>`).
 LEGACY_SOURCES = ('backend.routers', 'backend.fire', 'backend.hardware_reader', 'backend.simulation',
                   'backend.main', 'backend.auth', 'backend.db')
@@ -67,6 +70,46 @@ def until_step(file: str, table: str) -> int:
         if dotted == prefix or dotted.startswith(prefix + '.'):
             return step
     return module_map.STEP_OF_MODULE[TABLE_OWNER[table]]
+
+
+# ── direction of calls between modules ────────────────────────────────────────
+
+def _owners_of_dotted(dotted: str) -> tuple[str, ...]:
+    """Owner modules of a dotted `backend.*` name; an unmapped name (tests, tools) has none."""
+    parts = dotted.split('.')[1:]
+    if not parts:
+        return ('core',)
+    for rel in ('/'.join(parts) + '.py', '/'.join(parts) + '/__init__.py'):
+        try:
+            return module_map.owners_of(rel)
+        except KeyError:
+            continue
+    return ()
+
+
+def module_edge_violations(imports: Iterable[tuple[str, str]]) -> set[tuple[str, str]]:
+    """Direct imports `(importer, imported)` into `backend.modules.<X>` that no rule allows.
+
+    Allowed: the importer is inside X; X is one of the importer's owners; an owner has `(owner, X)` in ALLOWED_EDGES;
+    the importer has no owner (`main.py`) or is `core` (`core/**`, `modules/registry.py`, `modules/__init__.py`).
+    """
+    prefix = 'backend.modules.'
+    bad: set[tuple[str, str]] = set()
+    for importer, imported in imports:
+        if not imported.startswith(prefix):
+            continue
+        target = imported[len(prefix):].split('.')[0]
+        if target in KERNEL_CHILDREN:
+            continue
+        if importer == 'backend.modules.' + target or importer.startswith('backend.modules.' + target + '.'):
+            continue
+        owners = _owners_of_dotted(importer)
+        if not owners or 'core' in owners or target in owners:
+            continue
+        if any((owner, target) in ALLOWED_EDGES for owner in owners):
+            continue
+        bad.add((importer, imported))
+    return bad
 
 
 # ── module graph ──────────────────────────────────────────────────────────────

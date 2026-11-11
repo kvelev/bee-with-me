@@ -127,5 +127,6 @@
       "verb": "UPDATE",
       "until": 4
     }
-  ]
+  ],
+  "module_edges": []
 }
