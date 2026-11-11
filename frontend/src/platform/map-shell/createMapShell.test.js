@@ -110,7 +110,7 @@ describe('createMapShell layers', () => {
     expect(err).toHaveBeenCalledTimes(2)
     expect(err.mock.calls[0][0]).toContain('bad-factory')
     expect(err.mock.calls[0][0]).toContain('failed to install')
-    expect(err.mock.calls[0][1]).toBe(boom)
+    expect(err.mock.calls[0][1]).toBe('boom')   // the message text, never the error object [B108]
     expect(err.mock.calls[1][0]).toContain('bad-setup')
   })
 })
@@ -351,6 +351,29 @@ describe('createMapShell lifecycle', () => {
     const t = make()
     expect(() => t.shell.dispose()).not.toThrow()
     expect(t.shell.map).toBeNull()
+  })
+})
+
+describe('createMapShell logs carry the message and status, never the error object [B108]', () => {
+  const axiosLike = () => Object.assign(new Error('Request failed'), { config: { headers: { Authorization: 'Bearer SECRET-TOKEN-B108' } }, response: { status: 500 } })
+  const fail = () => { throw axiosLike() }
+  const cases = {
+    'a throwing click handler': (t) => { t.shell.onClick(fail, { id: 'h' }); t.shell.mount(t.el); t.click() },
+    'a contribution that fails to install': (t) => { t.shell.install({ name: 'c', setup: fail }, [], {}) },
+    'an onMounted callback that throws': (t) => { t.shell.onMounted(fail); t.shell.mount(t.el) },
+    'a contribution dispose that throws': (t) => { t.shell.install({ name: 'c', setup: () => ({ dispose: fail }) }, [], {}); t.shell.mount(t.el); t.shell.dispose() },
+  }
+
+  it.each(Object.keys(cases))('%s [B108]', (name) => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    cases[name](make())
+    expect(err).toHaveBeenCalled()
+    const args = err.mock.calls.flat()
+    expect(args.some((a) => a !== null && typeof a === 'object')).toBe(false)
+    const text = args.join(' ')
+    expect(text).not.toContain('SECRET-TOKEN-B108')
+    expect(text).toContain('Request failed')
+    expect(text).toContain('HTTP 500')
   })
 })
 

@@ -114,6 +114,7 @@
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { describeError } from '../platform/describeError.js'
 
 
 const { t } = useI18n()
@@ -170,7 +171,7 @@ async function loadMaps() {
 
     console.error(
       'Offline map server error:',
-      e
+      describeError(e)
     )
 
     maps.value = []
@@ -254,7 +255,7 @@ async function loadMap() {
 
     console.error(
       'Offline map selection error:',
-      e
+      describeError(e)
     )
 
     error.value =

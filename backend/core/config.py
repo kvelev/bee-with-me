@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     offline_maps_password: str = 'change_me'
 
-    # OpenWeatherMap key, used only server-side by routers/weather.py (the browser never sees it).
+    # OpenWeatherMap key, used only server-side by modules/weather/http.py (the browser never sees it).
     # VITE_OWM_API_KEY is the name older .env files use from when the browser called OWM directly.
     owm_api_key: str = Field('', validation_alias=AliasChoices('owm_api_key', 'vite_owm_api_key'))
 
