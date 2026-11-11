@@ -1,5 +1,6 @@
 <script>
 import { defineComponent, h, ref, watch, onErrorCaptured, onBeforeUnmount } from 'vue'
+import { describeError } from '../describeError.js'
 
 const RETRY_MS = 5000
 
@@ -34,7 +35,7 @@ const BannerBoundary = defineComponent({
       if (key !== lastKey || now - lastAt >= RETRY_MS) {
         lastKey = key
         lastAt = now
-        console.error(`banner ${props.id} failed`, error)
+        console.error(`banner ${props.id} failed`, describeError(error))
       }
       scheduleRetry()
       return false

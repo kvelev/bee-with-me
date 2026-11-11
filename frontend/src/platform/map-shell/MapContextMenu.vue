@@ -23,6 +23,7 @@ import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toLonLat } from 'ol/proj'
 import { contributionProblems } from './contributions.js'
+import { describeError } from '../describeError.js'
 
 const props = defineProps({
   items: { type: Array, default: () => [] },
@@ -33,7 +34,7 @@ const state = ref(null)   // { x, y, coordinate } | null
 const menuEl = ref(null)
 
 function logFailure(item, err) {
-  console.error('[map-shell] context-menu item "%s" failed', item?.id ?? '?', err)
+  console.error('[map-shell] context-menu item "%s" failed', item?.id ?? '?', describeError(err))
 }
 
 function onOutsidePointer(e) { if (!menuEl.value?.contains(e.target)) close() }

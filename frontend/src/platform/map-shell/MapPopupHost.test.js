@@ -153,6 +153,21 @@ describe('MapPopupHost', () => {
       expect(created[0].setPosition).toHaveBeenLastCalledWith([2, 2])
     })
 
+    it('a failing popup logs the message and status, never the error object [B108]', async () => {
+      const axiosLike = Object.assign(new Error('Request failed'), { config: { headers: { Authorization: 'Bearer SECRET-TOKEN-B108' } }, response: { status: 500 } })
+      const Bad = defineComponent({ setup() { return () => { throw axiosLike } } })
+      const w = mountHost({}, { default: () => h(Bad) })
+      await w.setProps({ selection: { kind: 'hotspot', coordinate: [1, 1] } })
+      await nextTick()
+      expect(errSpy).toHaveBeenCalled()
+      const args = errSpy.mock.calls.flat()
+      expect(args.some((a) => a !== null && typeof a === 'object')).toBe(false)
+      const text = args.join(' ')
+      expect(text).not.toContain('SECRET-TOKEN-B108')
+      expect(text).toContain('Request failed')
+      expect(text).toContain('HTTP 500')
+    })
+
     it('an overlay position call that throws is logged by popup id and renders nothing [T424]', async () => {
       const w = mountHost()
       await nextTick()

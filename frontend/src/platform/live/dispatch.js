@@ -1,7 +1,9 @@
-// Live-message dispatch (vertical-slice step 2). Pure: imports nothing. The socket in
+// Live-message dispatch (vertical-slice step 2). Pure: imports only the error describer. The socket in
 // composables/useWebSocket.js stays where it is; what it does with a message or a timer tick is
 // read from the modules' contributions (`liveHandlers`, `live`) plus the `legacy` lists that hold
 // what has not moved into a module yet.
+
+import { describeError } from '../describeError.js'
 
 const HOOK_KINDS = ['setup', 'onTick', 'onReconnect']
 
@@ -32,15 +34,9 @@ export function collectLiveHooks(modules, legacy = {}) {
   return hooks
 }
 
-// Message and HTTP status only: an axios error carries the request config, and with it the bearer token.
-function describe(error) {
-  const text = error?.message ?? String(error)
-  const status = error?.response?.status
-  return status ? `${text} (HTTP ${status})` : text
-}
 
 function report(type, error) {
-  console.error(`live handler ${type} failed: ${describe(error)}`)
+  console.error(`live handler ${type} failed: ${describeError(error)}`)
 }
 
 /** Run the `setup` hooks once: a throw or a rejected promise is logged, the next hook still runs. */
