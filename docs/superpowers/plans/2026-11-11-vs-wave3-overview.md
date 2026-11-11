@@ -19,7 +19,7 @@
 
 **Base:** `upstream/develop` at `d174ce3` (PR #150, T542 merged; `git fetch upstream; git log --oneline -1 upstream/develop` on 2026-11-11).
 
-**Review:** four full rounds (`f92c977`, `546fb5e`, `30881ab`, `cb7a653`) and one narrow round by `breaker` on the round 4 changes (`6664743`: one major, applied), each by `task-reviewer` and `breaker`; every round's findings are applied in the next commit (section 10). Round 4: `task-reviewer` approved with no blocker; `breaker` failed it on two findings (a T604 test that T612 would break, and a platform-dependent `nan` test), both applied here. A plan review is not the PR gate: each task's PR still needs its own reviewers on its head.
+**Review:** four full rounds (`f92c977`, `546fb5e`, `30881ab`, `cb7a653`) and two narrow rounds by `breaker` on the changes (`6664743`: one major, applied; `c93ef97`: PASS, four wording points applied afterwards), each by `task-reviewer` and `breaker`; every round's findings are applied in the next commit (section 10). Round 4: `task-reviewer` approved with no blocker; `breaker` failed it on two findings (a T604 test that T612 would break, and a platform-dependent `nan` test), both applied here. A plan review is not the PR gate: each task's PR still needs its own reviewers on its head.
 
 ## Global Constraints
 
@@ -145,7 +145,7 @@ For each: what it blocks and the default this wave takes when nobody answers.
 | M6 | The dead serial attempt in `lifespan` (`reader.run` is inside a string, so every boot logs `Serial reader not started`) is dropped by T603. | nothing | drop the attempt, leave the string |
 | M7 | Wave 2's T590 is not merged; the frontend allowlist still says `completed_step: 1`. | T690 | T590 runs first; T690 needs it |
 | M8 | After T602 the kit's `.claude/protected-paths.txt` should also name `bee-with-me/backend/modules/gateway/**` (decode and ACK now live there). The agent cannot edit the kit. | nothing; the hardware PRs lose the path guard until it is done | the maintainer adds the line when T602 is merged |
-| M9 | On Linux, what does `python -c "import mgrs; mgrs.MGRS().toMGRS(42.0, float('nan'))"` do: raise, return, or end the process? On Windows it raises `OSError` (an access violation). | nothing in this wave: T611 keeps `nan` and infinite coordinates away from the parser on every platform | run it once in the Linux CI image or on a Linux bench and write the result in T611's PR; if the process dies, the field check of T611 is the only guard and must not be removed |
+| M9 | On Linux, what does `python -c "import mgrs; mgrs.MGRS().toMGRS(42.0, float('nan'))"` do: raise, return, or end the process? On Windows it raises `OSError` (an access violation). | nothing in this wave: T611 keeps `nan` and infinite coordinates of a frame with a fix (status `A`) away from the parser on every platform; a no-fix frame is never converted | run it once in the Linux CI image or on a Linux bench and write the result in T611's PR; if the process dies, the field check of T611 is the only guard and must not be removed |
 
 **To the owner (kvelev)**
 
@@ -166,7 +166,7 @@ For each: what it blocks and the default this wave takes when nobody answers.
 | P3 | Does `EventID` restart after a device reboot? A restarted counter inside the 15 second window would be dropped as a duplicate and acknowledged. | nothing now (today's behaviour) | unchanged; recorded as a risk |
 | P4 | The thin payload question of wave 2 (does anything outside the browser read names or phones from `/ws`) is still open; T547 ships with `LIVE_PERSONAL_FIELDS` true until it is answered. | switching the setting off | stays on |
 | P5 | The Cyrillic `А` in `GNSSStatus` (PROTOCOL.md, "known gap"): does any firmware send it? | nothing in this wave | not fixed; needs a decode change and hardware |
-| P6 | Can a real device send a field outside the ranges the database stores (`MsgId` above 32767, `Course` above 32767) or a latitude the MGRS conversion refuses (above 90, `nan`)? | nothing; a database-range frame is `REJECTED` after T611, a latitude the parser cannot convert is dropped with a WARNING and no ACK (T611's guard around `parse_frame`); today both tear the reader down | no range check is added to the parser in this wave (T601 pins it) |
+| P6 | Can a real device send a field outside the ranges the database stores (`MsgId` above 32767, `Course` above 32767) or a latitude the MGRS conversion refuses (above 90, `nan`)? | nothing; a database-range frame is `REJECTED` after T611, a frame with a fix whose latitude the parser cannot convert is dropped with a WARNING and no ACK (T611's guard around `parse_frame`, and its coordinate check for `nan` and infinity); today both tear the reader down | no range check is added to the parser in this wave (T601 pins it) |
 
 **To the architecture owner** (text proposals, not edited by this wave)
 
