@@ -3,18 +3,23 @@
     python backend/tests/architecture/regen.py --print-violations   # what the contracts find with empty ignore lists
     python backend/tests/architecture/regen.py --remove-stale       # delete allowlist lines that no longer match
 
+`--remove-stale` cleans both allowlists: the `ignore_imports` lines of importlinter.toml and the `sql_writes` and
+`module_edges` rows of allowlist.json. It reads the tree this file is in, so in a worktree run the worktree's copy.
+
 Run from the repo root with the project venv. Nothing here adds a line to the allowlist: printing is read-only and the
 only write is a deletion. A justified new entry is a deliberate, reviewed edit of the TOML and of the ratchet test.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
 TOML = Path(__file__).with_name('importlinter.toml')
+ALLOWLIST = Path(__file__).with_name('allowlist.json')
 
 _LINE = re.compile(r'^\s*"([^"]+ -> [^"]+)"\s*,?')
 
@@ -63,8 +68,47 @@ def print_violations(config: Path = TOML) -> int:
     return 0
 
 
-def remove_stale(config: Path = TOML) -> int:
-    """Delete ignore_imports lines whose edge no longer exists; returns 0 and prints what it removed."""
+def _stale_json_rows(allowlist: Path) -> list[str]:
+    """Delete the `sql_writes` and `module_edges` rows of allowlist.json that the tree no longer has; returns them.
+
+    The same two sets as test_sql_ownership and test_module_edges compare with, so a row those tests call stale is
+    a row this deletes. The file is rewritten in its own layout (indent 2) only when a row went.
+    """
+    import grimp
+
+    from backend.tests.architecture import rules, sql_scan
+
+    data = json.loads(allowlist.read_text(encoding='utf-8'))
+    writes = rules.sql_violations(sql_scan.scan_writes(REPO / 'backend'))
+    graph = grimp.build_graph('backend', include_external_packages=False)
+    edges = rules.module_edge_violations(
+        (importer, imported)
+        for importer in graph.modules
+        for imported in graph.find_modules_directly_imported_by(importer))
+    removed: list[str] = []
+    kept_writes = []
+    for row in data.get('sql_writes', []):
+        if (row['file'], row['table'], row['verb']) in writes:
+            kept_writes.append(row)
+        else:
+            removed.append(f"[sql_writes] {row['file']}: {row['verb']} {row['table']}")
+    kept_edges = []
+    for row in data.get('module_edges', []):
+        if (row['from'], row['to']) in edges:
+            kept_edges.append(row)
+        else:
+            removed.append(f"[module_edges] {row['from']} -> {row['to']}")
+    if removed:
+        data['sql_writes'], data['module_edges'] = kept_writes, kept_edges
+        allowlist.write_text(json.dumps(data, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+    return removed
+
+
+def remove_stale(config: Path = TOML, allowlist: Path | None = None) -> int:
+    """Delete ignore_imports lines whose edge no longer exists, and with `allowlist` its stale rows too.
+
+    Returns 0 and prints what it removed.
+    """
     live = {cid: {f'{a} -> {b}' for a, b in edges} for cid, edges in violations(config).items()}
     kept: list[str] = []
     removed: list[str] = []
@@ -86,6 +130,8 @@ def remove_stale(config: Path = TOML) -> int:
         kept.append(line)
     if removed:
         config.write_text(''.join(kept), encoding='utf-8')
+    if allowlist is not None:
+        removed.extend(_stale_json_rows(allowlist))
     for item in removed:
         print('removed stale:', item)
     print(f'{len(removed)} stale line(s) removed')
@@ -98,7 +144,7 @@ def main(argv: list[str]) -> int:
     group.add_argument('--print-violations', action='store_true')
     group.add_argument('--remove-stale', action='store_true')
     args = parser.parse_args(argv)
-    return print_violations() if args.print_violations else remove_stale()
+    return print_violations() if args.print_violations else remove_stale(TOML, ALLOWLIST)
 
 
 if __name__ == '__main__':
