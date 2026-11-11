@@ -129,6 +129,25 @@ describe('FireMapPanel', () => {
     w.unmount()
   })
 
+  it('turning a layer off while its request is in flight keeps the late answer off the map [T590]', async () => {
+    const { context, facade } = makeContext()
+    let resolveLate
+    api.getFireHotspots.mockReturnValue(new Promise((resolve) => { resolveLate = resolve }))
+    const w = mountPanel(context)
+    await flushPromises()
+    const fire = useFireStore()
+    const pending = fire.setLayer('hotspots', true)
+    await fire.setLayer('hotspots', false)
+    facade.setHotspots.mockClear()
+    resolveLate({ type: 'FeatureCollection', features: [{ id: 'late', type: 'Feature', properties: {}, geometry: null }], meta: {} })
+    await pending
+    await flushPromises()
+    expect(fire.hotspots.features).toEqual([])
+    expect(facade.setHotspots).not.toHaveBeenCalledWith(expect.objectContaining({ features: [expect.objectContaining({ id: 'late' })] }))
+    expect(fire.layers.hotspots).toBe(false)
+    w.unmount()
+  })
+
   it('a focus request centres the map and shows the ring for 8 s, and unmount removes the overlay [T507]', async () => {
     const { context, map } = makeContext()
     const w = mountPanel(context)
