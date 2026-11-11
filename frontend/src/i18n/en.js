@@ -82,14 +82,6 @@ const core = {
     generating: 'Generating…',
     failed:     'Export failed',
   },
-  sos: {
-    active:     '🚨 SOS ACTIVE —',
-    resolve:    'Resolve',
-    resolving:     'Resolving…',
-    resolveFailed: 'Could not resolve — check the connection and try again',
-    alertTitle: 'SOS Activated',
-    unknown:    'Unknown',
-  },
   about: {
     download: {
       title:       'Download',

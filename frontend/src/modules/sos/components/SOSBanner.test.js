@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 
-vi.mock('../api', () => ({ resolveSOS: vi.fn() }))
+vi.mock('../../../api', () => ({ resolveSOS: vi.fn() }))
 
-import { ApiError } from '../api/client'
+import { ApiError } from '../../../api/client'
 import SOSBanner from './SOSBanner.vue'
-import { useLocationsStore } from '../stores/locations'
-import { i18n } from '../i18n/index.js'
-import en from '../i18n/en.js'
+import { useSosStore } from '../store.js'
+import { i18n } from '../../../i18n/index.js'
+import en from '../../../i18n/en.js'
 
 const A1 = { id: 'a1', device_id: 'd1', full_name: 'Ivan Petrov', dev_sn: 1001 }
 const A2 = { id: 'a2', device_id: 'd2', full_name: null, dev_sn: 1002 }
@@ -16,7 +16,7 @@ const A2 = { id: 'a2', device_id: 'd2', full_name: null, dev_sn: 1002 }
 function mountBanner(alerts) {
   const pinia = createPinia()
   setActivePinia(pinia)
-  const store = useLocationsStore()
+  const store = useSosStore()
   store.sosAlerts = alerts
   store.resolveSOS = vi.fn()
   return { w: mount(SOSBanner, { global: { plugins: [pinia, i18n] } }), store }

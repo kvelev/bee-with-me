@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-const loc  = { setConnected: vi.fn(), fetchLive: vi.fn(async () => {}), fetchSOS: vi.fn(async () => {}), fetchTrail: vi.fn(async () => {}) }
+const loc  = { setConnected: vi.fn(), fetchLive: vi.fn(async () => {}), fetchTrail: vi.fn(async () => {}) }
+const sos  = { fetchSOS: vi.fn(async () => {}), applySOSAlert: vi.fn() }
 const fire = { retryFailed: vi.fn(async () => {}), refreshVisible: vi.fn(async () => {}), applyFireDataUpdated: vi.fn(async () => {}),
   applyFireZonesUpdated: vi.fn(async () => {}), fetchOpenAlerts: vi.fn(async () => {}), applyFireAlert: vi.fn(), applyFireAlertRepeat: vi.fn(async () => {}), applyFireAlertUpdated: vi.fn() }
-vi.mock('../stores/locations', () => ({ useLocationsStore: () => loc }))
+vi.mock('../modules/tracking/store.js', () => ({ useTrackingStore: () => loc }))
+vi.mock('../modules/sos/store.js', () => ({ useSosStore: () => sos }))
 vi.mock('../modules/fire/store.js', () => ({ useFireStore: () => fire }))
 vi.mock('vue', async (orig) => ({ ...(await orig()), onUnmounted: vi.fn() }))
 

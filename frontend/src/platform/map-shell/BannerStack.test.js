@@ -8,7 +8,6 @@ vi.mock('../../api', () => ({ getMe: vi.fn(), login: vi.fn(), getFireAlerts: vi.
 
 import BannerStack from './BannerStack.vue'
 import AppLayout from '../../components/AppLayout.vue'
-import { LEGACY_BANNERS } from '../../components/legacyBanners.js'
 import { collectBanners, contributionProblems } from './contributions.js'
 import { MODULES } from '../../modules/index.js'
 import { useAuthStore } from '../../stores/auth'
@@ -36,9 +35,9 @@ describe('BannerStack', () => {
     expect(html.indexOf('class="a"')).toBeLessThan(html.indexOf('class="b"'))
   })
 
-  it('the legacy list puts SOS above fire and has no problem [T421]', () => {
+  it('a fixture list puts SOS above fire and the module list has no problem [T421]', () => {
     expect(collectBanners([], TWO_BANNERS).map((b) => b.id)).toEqual(['sos', 'fire-alarm'])
-    expect(contributionProblems(MODULES, { banners: LEGACY_BANNERS })).toEqual([])
+    expect(contributionProblems(MODULES)).toEqual([])
   })
 
   it('a module banner with priority 15 lands between them [T421]', () => {

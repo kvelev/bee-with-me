@@ -42,7 +42,6 @@ import { useAuthStore } from '../stores/auth'
 import { LOCALES, setLocale } from '../i18n'
 import BannerStack from '../platform/map-shell/BannerStack.vue'
 import { collectBanners } from '../platform/map-shell/contributions.js'
-import { LEGACY_BANNERS } from './legacyBanners.js'
 import { MODULES } from '../modules/index.js'
 import { useFireStore } from '../stores/fire'
 import { NAV_ITEMS } from '../nav-config.js'
@@ -52,8 +51,8 @@ const { t, locale } = useI18n()
 const auth   = useAuthStore()
 const fire   = useFireStore()
 
-// Alarm banners come from the modules' contributions plus the legacy list, sorted by priority (SOS first).
-const banners = collectBanners(MODULES, LEGACY_BANNERS)
+// Alarm banners come from the modules' contributions, sorted by priority (SOS first).
+const banners = collectBanners(MODULES)
 
 const currentLocale = computed(() => locale.value)
 // Cosmetic only: the router guard is what keeps non-admins off admin routes.
