@@ -73,7 +73,6 @@ ignore_imports = [
     "backend.routers.tiles -> backend.config",  # until step 5
     "backend.routers.users -> backend.database",  # until step 4
     "backend.routers.users -> backend.json_columns",  # until step 4
-    "backend.routers.weather -> backend.config",  # until step 5
     "backend.routers.ws -> backend.ws",  # until step 5
     "backend.simulation -> backend.database",  # until step 5
 ]
@@ -144,6 +143,7 @@ source_modules = [
     "backend.main",
     "backend.auth",
     "backend.db",
+    "backend.modules.weather",
 ]
 forbidden_modules = [
     "backend.modules.settings.domain",
@@ -156,3 +156,25 @@ ignore_imports = [
     "backend.routers.settings -> backend.modules.settings.http",  # until step 5
 ]
 
+[[tool.importlinter.contracts]]
+id = "boundary-weather"
+name = "module boundary: weather"
+type = "forbidden"
+source_modules = [
+    "backend.routers",
+    "backend.fire",
+    "backend.hardware_reader",
+    "backend.simulation",
+    "backend.main",
+    "backend.auth",
+    "backend.db",
+    "backend.modules.settings",
+]
+forbidden_modules = [
+    "backend.modules.weather.http",
+    "backend.modules.weather.module",
+]
+allow_indirect_imports = true
+ignore_imports = [
+    "backend.routers.weather -> backend.modules.weather.http",  # until step 5
+]

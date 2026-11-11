@@ -529,3 +529,22 @@ def test_settings_step_fails_on_503(monkeypatch):
     assert not s.step('g. GET /api/settings = 200', s.s_settings)
     last = s.report.results[-1]
     assert last.status == 'FAIL' and 'GET /api/settings' in last.detail
+
+
+# --------------------------------------------------------------------------- T520
+
+@pytest.mark.Trait("Task", "T520")
+@pytest.mark.parametrize('status', [200, 502, 503])
+def test_weather_step_passes_on_503_and_on_200(monkeypatch, status):
+    s, seen = _settings_step(monkeypatch, status, b'')
+    assert s.step('i. GET /api/weather/current is served', s.s_weather)
+    assert seen == [('GET', 'http://127.0.0.1:1/api/weather/current?lat=42.7&lon=23.3', 'tok')]
+    assert s.report.results[-1].status == 'PASS'
+
+
+@pytest.mark.Trait("Task", "T520")
+def test_weather_step_fails_on_401(monkeypatch):
+    s, _ = _settings_step(monkeypatch, 401, b'')
+    assert not s.step('i. GET /api/weather/current is served', s.s_weather)
+    last = s.report.results[-1]
+    assert last.status == 'FAIL' and '/api/weather/current' in last.detail and '401' in last.detail

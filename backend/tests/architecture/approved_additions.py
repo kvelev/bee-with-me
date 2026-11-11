@@ -26,6 +26,10 @@ APPROVED: dict[str, dict[str, str]] = {
         'module boundary: settings: backend.routers.settings -> backend.modules.settings.http':
             'the old import path backend.routers.settings is an alias of the module http, kept so '
             'the existing patches and imports work until step 5',
+        # Step 2 (T520): the weather proxy becomes a module. Net change of the allowlist: 1 line deleted, 1 added.
+        'module boundary: weather: backend.routers.weather -> backend.modules.weather.http':
+            'the old import path backend.routers.weather is an alias of the module http, kept so '
+            'the existing patches and imports work until step 5',
     },
     'backend/tests/architecture/allowlist.json': {},
 }
