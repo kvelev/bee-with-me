@@ -19,7 +19,7 @@
 
 **Base:** `upstream/develop` at `d174ce3` (PR #150, T542 merged; `git fetch upstream; git log --oneline -1 upstream/develop` on 2026-11-11).
 
-**Review:** three rounds so far (`f92c977`, `546fb5e`, `30881ab`), each by `task-reviewer` and `breaker`; every round found defects and every round's findings are applied in the next commit (section 10). The latest head has been read by both reviewers once more; their verdicts are not PASS until a round finds nothing to fix.
+**Review:** four rounds so far (`f92c977`, `546fb5e`, `30881ab`, `cb7a653`), each by `task-reviewer` and `breaker`; every round's findings are applied in the next commit (section 10). Round 4: `task-reviewer` approved with no blocker; `breaker` failed it on two findings (a T604 test that T612 would break, and a platform-dependent `nan` test), both applied here. A plan review is not the PR gate: each task's PR still needs its own reviewers on its head.
 
 ## Global Constraints
 
@@ -57,7 +57,7 @@ flowchart LR
     T547 --> T621
     T545[T545 wave 2] --> T630 --> T631 --> T632
     T590[T590 wave 2] --> T690
-    T603 & T604 & T620 & T621 & T630 & T631 --> T690
+    T603 & T604 & T610 & T620 & T621 & T630 & T631 --> T690
 ```
 
 Starting points with no dependency: T600, T601, and T545 followed by T630; T620 as soon as T600 is merged. Waiting for the owner's answer O4 or for V0: T602, T603, T604 and everything behind them; T610 is pure but needs the `gateway` package of T602, so with O4 = no it waits too. Waiting for the bench: T611, T612, T613. Optional end: T632. T690 does not wait for T611 to T613 or for T632; it reports their state.
@@ -145,6 +145,7 @@ For each: what it blocks and the default this wave takes when nobody answers.
 | M6 | The dead serial attempt in `lifespan` (`reader.run` is inside a string, so every boot logs `Serial reader not started`) is dropped by T603. | nothing | drop the attempt, leave the string |
 | M7 | Wave 2's T590 is not merged; the frontend allowlist still says `completed_step: 1`. | T690 | T590 runs first; T690 needs it |
 | M8 | After T602 the kit's `.claude/protected-paths.txt` should also name `bee-with-me/backend/modules/gateway/**` (decode and ACK now live there). The agent cannot edit the kit. | nothing; the hardware PRs lose the path guard until it is done | the maintainer adds the line when T602 is merged |
+| M9 | On Linux, what does `python -c "import mgrs; mgrs.MGRS().toMGRS(42.0, float('nan'))"` do: raise, return, or end the process? On Windows it raises `OSError` (an access violation). | nothing in this wave: T611 keeps `nan` and infinite coordinates away from the parser on every platform | run it once in the Linux CI image or on a Linux bench and write the result in T611's PR; if the process dies, the field check of T611 is the only guard and must not be removed |
 
 **To the owner (kvelev)**
 
@@ -202,6 +203,7 @@ For each: what it blocks and the default this wave takes when nobody answers.
 - **Tracking plan.** Tests the first version called unedited are listed with their edits (`test_main_names_no_fire_internals`, the loop-driving cases of the anonymise tests, a smoke-shape assertion, two `db`-marked simulation tests). `seed` returns the columns the new path reads. A start without a reset sends a falling edge first, or the simulated SOS would stay silent. The no-fix 400 comes from the handler's outcome.
 - **Frontend plan.** The two text keys keep their names (a snapshot test compares names). `MapView.b66.test.js` is listed. The status is refetched on every tick, because `setup` runs once per page. The 10 second tick stays with the list it sorts and is owned by the view; the list is passed as a ref.
 - **Round 2 and 3 (hardware plan).** The parser can raise (the MGRS conversion) before any store, so `parse_frame` is inside the guard. `REJECTED` is exactly the database's class 22 (`DataError`); everything else, including a bare `ValueError`, `TypeError` and `ProgramLimitExceededError` (SQLSTATE 54000: also a full notification queue), is `STORE_FAILED`, so a systematic fault can never acknowledge and drop frames. A duplicate never refreshes the window (an existing test depends on it). T613 edits `delegates_helper.py` (a transaction mock) and the fire manifest tests are edited in T620. T611 uses a temporary ACK rule so an unknown device keeps being acknowledged until T612.
+- **Round 4.** T604's test of the unchanged ACK no longer pins the temporary behaviour and is deleted in T611. A `nan` or infinite coordinate is kept away from the parser in T611, because the native MGRS fault is an `OSError` only on Windows (M9, P6). `REJECTED` is narrowed again: a client-side `DataError` counts only when its cause is an `OverflowError`, so a type bug cannot acknowledge and drop every frame. Log lines print `outcome.value`. T613 tests a failure at commit. The `Repeated ... ignored` lines stay, `ALERT_ONLY` does not change Resolve, and a `REJECTED` frame with SOS loses the alert (accepted, written in the hardware plan's risks). V5 counts one decision line per frame. T632 has a test for the failure note.
 - **Overview.** Chains for the gateway module files, the gateway tests, the TOML and the tracking API were missing; T690 needs T590.
 
 ---

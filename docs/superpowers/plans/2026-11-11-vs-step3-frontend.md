@@ -100,7 +100,7 @@ The plan does not depend on any backend task of wave 3 and can run from the firs
 | `frontend/src/composables/useWebSocket.dispatch.test.js` | the table row `['serial_status', loc, 'applySerialStatus']` points at a mock of `../modules/gateway/store.js` with the spies `applyStatus` and `fetchStatus` (the `setup` and tick hooks call `fetchStatus`; without it the hook throws inside `connect()`) | mock path | T630 |
 | `frontend/src/modules/tracking/index.test.js` | a case that expects `serial_status` among the tracking handlers expects it in the gateway manifest instead (the case moves to `modules/gateway/index.test.js`); the tracking handlers are then exactly `['location_update']` | deliberate: the handler moved | T630 |
 | `frontend/src/composables/useWebSocket.test.js`, `useWebSocket.b66.test.js` | they call `connect()` without an active Pinia, so the new gateway `setup` and tick hooks run for real; `runHooks` and `setup` isolate errors, so they should stay green, but they would log `live setup failed`. Each gets a mock of `../modules/gateway/store.js` next to its existing store mocks (the same spies as in `useWebSocket.dispatch.test.js`), so no console noise is accepted | mock added, no assertion changes | T630 |
-| `frontend/src/views/MapView.b66.test.js` | its two assertions `expect(api.getSerialStatus).toHaveBeenCalledTimes(1)` go: the view no longer calls it, and the test mocks `useWebSocket`, so no live hook runs. The same fact is asserted in `modules/gateway/index.test.js` (`the status is fetched in setup and on every tick`) | deliberate: the call moved into a live hook | T630 |
+| `frontend/src/views/MapView.b66.test.js` | the case whose title starts `does not stop serial status` loses its meaning with the assertions and gets a title that says what is left of it (the other calls of that case); its two assertions `expect(api.getSerialStatus).toHaveBeenCalledTimes(1)` go: the view no longer calls it, and the test mocks `useWebSocket`, so no live hook runs. The same fact is asserted in `modules/gateway/index.test.js` (`the status is fetched in setup and on every tick`) | deliberate: the call moved into a live hook | T630 |
 | the i18n tests (`no text key was lost`, parity, collisions) | none: the two keys keep their names | none | T630 |
 
 Every other `MapView*.test.js` file and every `useMap.*.test.js` file stays unedited (they mock or call the facade, whose names do not change). `modules/sos/store.test.js` runs the `setup` hooks of the real module list; `fetchStatus` catches every failure inside itself, so the gateway hook cannot reject there.
@@ -168,7 +168,7 @@ dod:
 **owner:** frontend-designer
 **hardware:** safe
 **Files:**
-- Create: `frontend/src/modules/tracking/map/layers.js`, `modules/tracking/map/index.js`, `modules/tracking/map/trackerLayers.test.js`
+- Create: `frontend/src/modules/tracking/map/layers.js`, `modules/tracking/map/index.js`, `modules/tracking/map/trackerLayers.test.js`, `frontend/src/views/MapView.trackerNote.test.js`
 - Modify: `frontend/src/modules/tracking/index.js` (`mapLayers`), `frontend/src/modules/mapEntries.js`
 - Modify: `frontend/src/composables/useMap.js` (the tracker, trail and checkpoint sources, layers, styles and upserts; the tooltip overlay and its handler; the tracker click handler; `staleTimer`; the watchers on the position list, the trails and the photo switch), `frontend/src/views/MapView.vue` (one note), `frontend/src/i18n/en.js`, `bg.js` (one key)
 
@@ -176,7 +176,7 @@ dod:
 
 **Interfaces:**
 - Consumes: `shell.install`, `shell.onMounted`, `shell.onClick`, `shell.onPointerMove` and the `ctx` of the map shell (shape unchanged); `Z.trail`, `Z.checkpoints`, `Z.trackers`; the libraries of `modules/tracking/lib/`.
-- Produces: the layer list, the map entry and its api, the facade's delegation and the failure note, all as section 1.3 says; the text `map.trackerLayerFailed` in both languages.
+- Produces: the layer list, the map entry and its api, the facade's delegation and the failure note, all as section 1.3 says; the note is pinned by `frontend/src/views/MapView.trackerNote.test.js` (new, `[T632]`: `the note is shown when refreshMarkers returns false` finds an element with `role="alert"` and the text of `map.trackerLayerFailed`; `no note when refreshMarkers returns true`); the text `map.trackerLayerFailed` in both languages.
 
 - [ ] **Step 1: Read, then write the failing tests.** Read every `useMap.*.test.js` file; they call the real composable and are the net. Tests in `trackerLayers.test.js`, each `[T632]`, with a shell as in the map-shell tests: `the three layers are registered with the z-indices of the z-order table`; `positions set before mount are drawn after mount`; `a position that goes stale is restyled by the timer without a new message` (fake timers, 60 seconds); `dispose stops the timer and removes the tooltip overlay`; `a tracker under the pointer shows the tooltip in every mode`; `a failed install makes refreshMarkers return false and the view shows the alert note` (the entry's `setup` replaced by one that throws); `a failed install leaves no timer behind` (fake timers: no pending interval after the failed `setup` and the shell's dispose).
 - [ ] **Step 2: Run, expect FAIL.** Run: `cd bee-with-me\frontend; npm test -- src/modules/tracking/map`. Expected: FAIL (`Failed to resolve import "./index.js"`).
