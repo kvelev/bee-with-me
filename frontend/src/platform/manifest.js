@@ -4,6 +4,7 @@
 // programme); `validateManifest` is the contract that later steps and the architecture test use.
 
 const NAME = /^[a-z][a-z0-9-]*$/
+const LIVE_HOOKS = ['setup', 'onTick', 'onReconnect']
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
 const isText = (v) => typeof v === 'string' && v.trim() !== ''
@@ -91,7 +92,8 @@ const dependsProblems = (d) => (isText(d) && NAME.test(d) ? [] : ['must be a mod
 /**
  * Check a module manifest. Returns one message per problem; an empty array means the manifest is valid.
  * Required fields: name, routes, nav, mapLayers, panels, banners, liveHandlers, i18n ({en, bg}), depends.
- * Optional fields (checked only when present): popups, contextMenu, and `toggle` on a mapLayers item.
+ * Optional fields (checked only when present): popups, contextMenu, live ({setup, onTick, onReconnect} functions),
+ * and `toggle` on a mapLayers item.
  */
 export function validateManifest(m) {
   if (!isObject(m)) return ['manifest: must be an object']
@@ -108,6 +110,15 @@ export function validateManifest(m) {
   listOf(m, 'depends', dependsProblems, problems)
   optionalListOf(m, 'popups', popupProblems, problems)
   optionalListOf(m, 'contextMenu', contextMenuProblems, problems)
+  if (m.live !== undefined) {
+    if (!isObject(m.live)) problems.push('live: must be an object with setup, onTick or onReconnect functions')
+    else {
+      for (const [key, fn] of Object.entries(m.live)) {
+        if (!LIVE_HOOKS.includes(key)) problems.push(`live.${key}: unknown hook (use ${LIVE_HOOKS.join(', ')})`)
+        else if (typeof fn !== 'function') problems.push(`live.${key}: must be a function`)
+      }
+    }
+  }
   if (m.mapSetup !== undefined) problems.push('mapSetup: map code belongs in map/index.js, not in the manifest')
 
   if (m.liveHandlers === undefined) problems.push('liveHandlers: missing (use {} when the module has no live data)')

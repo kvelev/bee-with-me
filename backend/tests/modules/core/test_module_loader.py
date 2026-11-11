@@ -219,3 +219,103 @@ async def test_start_module_tasks_names_a_task_without_a_name_attribute():
     await asyncio.sleep(0)
     assert [t.get_name() for t in tasks] == ['alpha.work', 'alpha.Job']
     assert [c.args[1] for c in on_done.call_args_list] == ['alpha.work', 'alpha.Job']
+
+
+# ── B96: a route type that cannot carry the auth dependency ──────────────────────────────────────────────────
+
+def _app_with(router: APIRouter, **kw) -> tuple[FastAPI, ModuleManifest]:
+    manifest = ModuleManifest(name='files', router=router, **kw)
+    return FastAPI(), manifest
+
+
+@pytest.mark.Trait("Bug", "B96")
+def test_a_mount_without_a_public_declaration_is_refused(tmp_path):
+    from starlette.staticfiles import StaticFiles
+    router = APIRouter()
+    router.mount('/files', StaticFiles(directory=tmp_path))
+    app, manifest = _app_with(router)
+    before = list(app.routes)
+    with pytest.raises(ValueError, match='cannot carry the auth dependency'):
+        include_module_routers(app, [manifest], auth=_deny)
+    assert list(app.routes) == before
+
+
+@pytest.mark.Trait("Bug", "B96")
+def test_a_plain_starlette_route_is_refused():
+    async def raw(request):
+        return None
+
+    router = APIRouter()
+    router.add_route('/raw', raw)
+    app, manifest = _app_with(router)
+    before = list(app.routes)
+    with pytest.raises(ValueError, match='cannot carry the auth dependency'):
+        include_module_routers(app, [manifest], auth=_deny)
+    assert list(app.routes) == before
+
+
+@pytest.mark.Trait("Bug", "B96")
+def test_a_mount_inside_a_nested_include_is_refused(tmp_path):
+    from starlette.staticfiles import StaticFiles
+    sub = APIRouter()
+    sub.mount('/files', StaticFiles(directory=tmp_path))
+    router = APIRouter()
+    router.include_router(sub, prefix='/api/x')
+    app, manifest = _app_with(router)
+    before = list(app.routes)
+    with pytest.raises(ValueError, match='cannot carry the auth dependency') as err:
+        include_module_routers(app, [manifest], auth=_deny)
+    assert '/api/x/files' in str(err.value)
+    assert list(app.routes) == before
+
+
+@pytest.mark.Trait("Bug", "B96")
+def test_a_public_mount_is_served(tmp_path):
+    from fastapi.testclient import TestClient
+    from starlette.staticfiles import StaticFiles
+    (tmp_path / 'a.txt').write_text('hello')
+    router = APIRouter()
+    router.mount('/files', StaticFiles(directory=tmp_path))
+    app, manifest = _app_with(router, public_routes=(('MOUNT', '/files'),))
+    include_module_routers(app, [manifest], auth=_deny)
+    res = TestClient(app).get('/files/a.txt')
+    assert res.status_code == 200 and res.text == 'hello'
+
+
+@pytest.mark.Trait("Bug", "B96")
+def test_api_routes_next_to_a_public_mount_keep_auth(tmp_path):
+    from fastapi.testclient import TestClient
+    from starlette.staticfiles import StaticFiles
+    router = APIRouter()
+    router.mount('/files', StaticFiles(directory=tmp_path))
+
+    @router.get('/api/x/data')
+    async def _data():
+        return {}
+
+    app, manifest = _app_with(router, public_routes=(('MOUNT', '/files'),))
+    include_module_routers(app, [manifest], auth=_deny)
+    assert TestClient(app).get('/api/x/data').status_code == 401
+
+
+@pytest.mark.Trait("Bug", "B96")
+@pytest.mark.parametrize('nested', [False, True], ids=['top-level', 'nested-include'])
+def test_a_route_type_without_a_path_is_refused(nested):
+    from starlette.routing import Host, Route, Router
+
+    async def handler(request):
+        return None
+
+    host = Host('example.test', app=Router([Route('/h', handler)]))
+    router = APIRouter()
+    if nested:
+        sub = APIRouter()
+        sub.routes.append(host)
+        router.include_router(sub, prefix='/p')
+    else:
+        router.routes.append(host)
+    app, manifest = _app_with(router)
+    before = list(app.routes)
+    with pytest.raises(ValueError, match='cannot carry the auth dependency'):
+        include_module_routers(app, [manifest], auth=_deny)
+    assert list(app.routes) == before

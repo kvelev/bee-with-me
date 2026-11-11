@@ -13,9 +13,11 @@ from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, FastAPI
+from fastapi.routing import APIRoute, APIWebSocketRoute
+from starlette.routing import Mount
 
 NAME_PATTERN = re.compile(r'^[a-z][a-z_]*$')
-HTTP_METHODS = frozenset({'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'WEBSOCKET'})
+HTTP_METHODS = frozenset({'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'WEBSOCKET', 'MOUNT'})
 
 
 @dataclass(frozen=True)
@@ -69,12 +71,57 @@ def validate_manifest(m: ModuleManifest) -> list[str]:
 
 
 def _route_keys(route) -> set[tuple[str, str]]:
-    """(METHOD, path) pairs of one route of a module router; a WebSocket route has the method WEBSOCKET."""
+    """(METHOD, path) pairs of one route of a module router.
+
+    A WebSocket route has the method WEBSOCKET, a `Mount` (for example `StaticFiles`) has the method MOUNT.
+    """
     path = getattr(route, 'path', None)
     if path is None:
         return set()
+    if isinstance(route, Mount):
+        return {('MOUNT', path)}
     methods = getattr(route, 'methods', None) or {'WEBSOCKET'}
     return {(method.upper(), path) for method in methods}
+
+
+def _leaf_routes(routes: Iterable, depth: int = 0):
+    """Yield (depth, type, keys) of every served route of a router, nested includes read through `effective_candidates()`.
+
+    FastAPI 0.142 keeps `router.include_router(sub)` as one lazy `_IncludedRouter` with no path and no methods; its
+    candidates carry the full prefixed path, and a non-API route (a `Mount`, a plain `Route`) sits in `starlette_route`.
+    """
+    for route in routes:
+        if hasattr(route, 'effective_candidates'):
+            yield from _leaf_routes(route.effective_candidates(), depth + 1)
+            continue
+        real = getattr(route, 'starlette_route', None)
+        if real is not None:                       # an effective context wrapping a non-API route
+            yield depth, type(real), _route_keys(real)
+        else:
+            original = getattr(route, 'original_route', route)
+            yield depth, type(original), _route_keys(route)
+
+
+def _unguardable_problems(m: ModuleManifest) -> list[str]:
+    """Routes the loader cannot put behind `Depends(auth)`: only an `APIRoute` or `APIWebSocketRoute` carries it.
+
+    A top-level route of another type must be declared in `public_routes`. Inside a nested include there is no way
+    to serve it publicly, so it is always a problem there.
+    """
+    if m.router is None:
+        return []
+    public = set(m.public_routes)
+    problems: list[str] = []
+    for depth, kind, keys in _leaf_routes(m.router.routes):
+        if issubclass(kind, (APIRoute, APIWebSocketRoute)):
+            continue
+        if depth == 0 and keys and keys <= public:
+            continue
+        # fail closed: a type that yields no keys (a `Host`, a custom route) is refused too, never skipped
+        for path in sorted({path for _, path in keys}) or [f'<{kind.__name__} without a path>']:
+            problems.append(f'{m.name}: {path} is a {kind.__name__}, which cannot carry the auth dependency: '
+                            'serve it from an endpoint or declare it in public_routes')
+    return problems
 
 
 def _public_problems(m: ModuleManifest) -> list[str]:
@@ -95,6 +142,7 @@ def check_modules(modules: Iterable[ModuleManifest]) -> list[str]:
     for m in modules:
         problems.extend(validate_manifest(m))
         problems.extend(_public_problems(m))
+        problems.extend(_unguardable_problems(m))
     names = [m.name for m in modules]
     for name in sorted({n for n in names if names.count(n) > 1}, key=str):
         problems.append(f'module {name} is listed twice')
@@ -120,7 +168,16 @@ def include_module_routers(app: FastAPI, modules: Iterable[ModuleManifest], *, a
             keys = _route_keys(route)
             # one route per include keeps the list order; a nested include (no path of its own) is always guarded
             is_public = bool(keys) and keys <= public
-            app.include_router(APIRouter(routes=[route]), dependencies=None if is_public else [Depends(auth)])
+            if is_public and isinstance(route, Mount):      # a mount cannot carry a dependency: served as declared
+                app.mount(route.path, route.app, name=route.name)
+            elif is_public and not isinstance(route, (APIRoute, APIWebSocketRoute)):
+                app.router.routes.append(route)
+            elif not is_public and not (isinstance(route, (APIRoute, APIWebSocketRoute))
+                                        or hasattr(route, 'effective_candidates')):
+                # unreachable after check_modules; kept so a gap in the checker cannot reach the mount step
+                raise ValueError(f'{m.name}: {type(route).__name__} cannot carry the auth dependency')
+            else:
+                app.include_router(APIRouter(routes=[route]), dependencies=None if is_public else [Depends(auth)])
 
 
 def start_module_tasks(modules: Iterable[ModuleManifest],
