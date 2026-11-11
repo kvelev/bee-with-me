@@ -1,7 +1,7 @@
 import { onUnmounted } from 'vue'
 import { MODULES } from '../modules/index.js'
 import { useTrackingStore } from '../modules/tracking/index.js'
-import { collectLiveHandlers, collectLiveHooks, dispatchLive, runHooks } from '../platform/live/dispatch.js'
+import { collectLiveHandlers, collectLiveHooks, dispatchLive, runHooks, runSetup } from '../platform/live/dispatch.js'
 
 // What a message, a tick and a reconnect do is read from the modules' contributions.
 const handlers = collectLiveHandlers(MODULES)
@@ -45,7 +45,7 @@ export function useWebSocket() {
     if (isUnmounted) return
     if (!setupDone) {
       setupDone = true
-      hooks.setup.forEach((fn) => { try { fn() } catch (e) { console.error('live setup failed', e) } })
+      runSetup(hooks.setup)
     }
     // The reconnect timer calls connect() without options and must not clear a pending catch-up.
     if (catchUp) catchUpOnOpen = true
