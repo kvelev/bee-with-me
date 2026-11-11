@@ -60,7 +60,7 @@ flowchart LR
     T603 & T604 & T620 & T621 & T630 & T631 --> T690
 ```
 
-Starting points with no dependency: T600, T601, and T545 followed by T630; T620 as soon as T600 is merged. Waiting for the owner's answer O4 or for V0: T602, T603, T604 and everything behind them (T610 is not held: it is pure). Waiting for the bench: T611, T612, T613. Optional end: T632. T690 does not wait for T611 to T613 or for T632; it reports their state.
+Starting points with no dependency: T600, T601, and T545 followed by T630; T620 as soon as T600 is merged. Waiting for the owner's answer O4 or for V0: T602, T603, T604 and everything behind them; T610 is pure but needs the `gateway` package of T602, so with O4 = no it waits too. Waiting for the bench: T611, T612, T613. Optional end: T632. T690 does not wait for T611 to T613 or for T632; it reports their state.
 
 ## 2. Chains (one session at a time per chain)
 
@@ -68,7 +68,7 @@ Starting points with no dependency: T600, T601, and T545 followed by T630; T620 
 |-------|-------------|-------|
 | reader | `backend/hardware_reader/reader.py`, after T602 `backend/modules/gateway/infrastructure/reader.py` | T547 (wave 2, in progress), T602 (move), T604 (return values, one keyword), T613 (transaction, SOS without a fix) |
 | ACK | `hid_reader.py` (`_process_frame`), `backend/tests/modules/gateway/frozen_hashes.py` | T601 (creates the pin), T602 (move, literals untouched), T611, T612 |
-| gateway tests | `backend/tests/modules/gateway/test_hid_process_frame.py`, `gateway_fakes.py`, `delegates_helper.py` | T604 (`delegates_helper`), T611, T612, T613 (one `xfail` marker each; `gateway_fakes` in T613) |
+| gateway tests | `backend/tests/modules/gateway/test_hid_process_frame.py`, `gateway_fakes.py`, `delegates_helper.py` | T604 (`delegates_helper`: the `call` parameter), T611, T612, T613 (one `xfail` marker each; `gateway_fakes` and `delegates_helper`, the transaction mock, in T613) |
 | gateway module | `backend/modules/gateway/module.py`, `api.py`, `tests/modules/gateway/test_gateway_module.py` | T602 (creates), T603 (`module.py`, the manifest test), T604 (`api.py`) |
 | backend assembly | `backend/main.py`, `backend/modules/registry.py`, `backend/tests/architecture/importlinter.toml`, `approved_additions.py`, `allowlist.json` | T602, T603 (TOML: `gateway.tasks`), T620 (TOML: `tracking.tasks`; another block of `lifespan`; one JSON row), T621 (JSON rows, approvals), T690 |
 | tracking and sos API | `backend/modules/tracking/api.py`, `infrastructure/repository.py`, `backend/modules/sos/api.py`, `infrastructure/repository.py` | T547 (wave 2), T620 (adds one function), T621 (removes two) |
@@ -165,7 +165,7 @@ For each: what it blocks and the default this wave takes when nobody answers.
 | P3 | Does `EventID` restart after a device reboot? A restarted counter inside the 15 second window would be dropped as a duplicate and acknowledged. | nothing now (today's behaviour) | unchanged; recorded as a risk |
 | P4 | The thin payload question of wave 2 (does anything outside the browser read names or phones from `/ws`) is still open; T547 ships with `LIVE_PERSONAL_FIELDS` true until it is answered. | switching the setting off | stays on |
 | P5 | The Cyrillic `А` in `GNSSStatus` (PROTOCOL.md, "known gap"): does any firmware send it? | nothing in this wave | not fixed; needs a decode change and hardware |
-| P6 | Can a real device send a field outside the ranges the database stores (`MsgId` above 32767, `Course` above 32767, a latitude MGRS cannot convert)? | nothing; such a frame is `REJECTED` after T611 and tears the reader down once today | no range check is added to the parser in this wave |
+| P6 | Can a real device send a field outside the ranges the database stores (`MsgId` above 32767, `Course` above 32767) or a latitude the MGRS conversion refuses (above 90, `nan`)? | nothing; a database-range frame is `REJECTED` after T611, a latitude the parser cannot convert is dropped with a WARNING and no ACK (T611's guard around `parse_frame`); today both tear the reader down | no range check is added to the parser in this wave (T601 pins it) |
 
 **To the architecture owner** (text proposals, not edited by this wave)
 
