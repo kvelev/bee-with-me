@@ -36,6 +36,7 @@ const core = {
     hqMove:        'Move HQ',
     hqClear:       'Clear HQ',
     hqSaveFailed:  'Could not save HQ. Try again.',
+    hqLayerFailed: 'The HQ layer could not be loaded. Reload the page.',
     hqClearConfirm: 'Clear HQ? The HQ fire alarm cannot work without HQ.',
     hqClearYes:    'Yes, clear HQ',
     hqClearCancel: 'Cancel',
