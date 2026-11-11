@@ -83,3 +83,33 @@ def test_the_settings_module_declares_no_public_route():
     from backend.modules import MODULES
     settings = next(m for m in MODULES if m.name == 'settings')
     assert settings.public_routes == ()
+
+
+# ── B96: a Mount or a plain route is a route too ──────────────────────────────────────────────────────────────
+
+@pytest.mark.Trait("Bug", "B96")
+def test_a_mount_added_around_the_loader_is_reported(tmp_path):
+    from starlette.staticfiles import StaticFiles
+    router = APIRouter()
+    router.mount('/files', StaticFiles(directory=tmp_path))
+    manifests = [ModuleManifest(name='alpha', router=router)]
+    app = FastAPI()
+    app.include_router(router)
+    app.mount('/files', StaticFiles(directory=tmp_path))
+    problems = rules.check_module_route_auth(app.routes, manifests, get_current_user)
+    text = '\n'.join(problems)
+    assert '/files' in text and 'Mount' in text
+
+
+@pytest.mark.Trait("Bug", "B96")
+def test_effective_routes_lists_a_static_mount(tmp_path):
+    from starlette.staticfiles import StaticFiles
+    direct = APIRouter()
+    direct.mount('/files', StaticFiles(directory=tmp_path))
+    sub = APIRouter()
+    sub.mount('/files', StaticFiles(directory=tmp_path))
+    nested = APIRouter()
+    nested.include_router(sub, prefix='/api/x')
+    for router, path in ((direct, '/files'), (nested, '/api/x/files')):
+        found = rules.effective_routes(router.routes)
+        assert any(r.path == path and r.methods == frozenset({'MOUNT'}) for r in found), (path, found)
