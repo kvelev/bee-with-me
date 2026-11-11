@@ -104,6 +104,12 @@ export function contributionProblems(modules, legacy = {}) {
     }
   }
 
+  for (const p of lists.panels) {
+    if (!PANEL_HOSTS.includes(p.host)) {
+      problems.push(`panels: "${p.id}" has no valid host (${PANEL_HOSTS.join(', ')}) and would be shown nowhere`)
+    }
+  }
+
   const byPriority = new Map()
   for (const b of lists.banners) {
     if (!byPriority.has(b.priority)) byPriority.set(b.priority, [])

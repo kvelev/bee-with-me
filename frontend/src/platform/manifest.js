@@ -45,6 +45,7 @@ const stateHookProblems = (t) => {
   if (t.isOn === undefined && t.set === undefined) return []
   if (t.isOn === undefined || t.set === undefined) return ['toggle.isOn and toggle.set must be given together']
   return [
+    ...(t.key === undefined ? ['toggle.key is required when toggle.isOn and toggle.set are given'] : []),
     ...(typeof t.isOn === 'function' ? [] : ['toggle.isOn must be a function']),
     ...(typeof t.set === 'function' ? [] : ['toggle.set must be a function']),
   ]

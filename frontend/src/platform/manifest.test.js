@@ -49,5 +49,6 @@ describe('panels and the toggle state hook', () => {
     expect(validateManifest(base({ ...t, set: () => {} })).join('\n')).toContain('toggle.isOn and toggle.set must be given together')
     expect(validateManifest(base({ ...t, isOn: 1, set: () => {} })).join('\n')).toContain('toggle.isOn must be a function')
     expect(validateManifest(base({ ...t, key: 5 })).join('\n')).toContain('toggle.key must be a non-empty string')
+    expect(validateManifest(base({ ...t, isOn: () => true, set: () => {} })).join('\n')).toContain('toggle.key is required when')
   })
 })

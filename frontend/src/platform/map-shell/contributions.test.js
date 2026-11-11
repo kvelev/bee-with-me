@@ -293,6 +293,14 @@ describe('panels', () => {
     expect(contributionProblems([a])).toEqual([])
   })
 
+  it('contributionProblems names a panel that has no valid host [T504]', () => {
+    const m = mod('m', { panels: [P('lost'), P('odd', 'nowhere'), P('ok', 'map')] })
+    const msg = contributionProblems([m]).join('\n')
+    expect(msg).toContain('panels: "lost" has no valid host')
+    expect(msg).toContain('panels: "odd" has no valid host')
+    expect(msg).not.toContain('"ok"')
+  })
+
   it('the toggle state hook is passed on by the collector [T504]', () => {
     const isOn = () => true
     const set = () => {}

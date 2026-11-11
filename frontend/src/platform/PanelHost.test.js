@@ -72,4 +72,23 @@ describe('PanelHost', () => {
     expect(host.querySelector('.retry')).not.toBeNull()
     expect(host.querySelector('.plain')).toBeNull()      // never retried without a retryKey
   })
+
+  it('a retryKey that throws does not stop the panel from being retried later [T504]', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const ctx = reactive({ n: 0, fail: true, broken: true })
+    const flaky = { props: ['context'], render() { if (this.context.fail) throw new Error('flaky'); return h('div', { class: 'p' }) } }
+    const host = document.createElement('div')
+    mount(PanelHost, {
+      attachTo: host,
+      props: { panels: [{ id: 'p', component: flaky, retryKey: (c) => { if (c.broken) throw new Error('key'); return c.n } }], context: ctx },
+    })
+    await flushPromises()
+    expect(host.querySelector('.p')).toBeNull()
+    ctx.fail = false
+    ctx.broken = false
+    await flushPromises()
+    ctx.n = 1
+    await flushPromises()
+    expect(host.querySelector('.p')).not.toBeNull()
+  })
 })
