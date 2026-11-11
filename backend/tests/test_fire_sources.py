@@ -34,7 +34,7 @@ async def test_request_is_fixed_and_identifies_the_app():
 
 
 async def test_module_feeds_use_the_agreed_layers():
-    assert s.HOTSPOTS.type_name == 'ms:viirs.hs.week'
+    assert s.HOTSPOTS.type_name == 'ms:viirs.hs.week.points'
     assert s.BURNT_AREAS.type_name == 'ms:nrt.ba.poly.week'
 
 
