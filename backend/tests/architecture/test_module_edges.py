@@ -76,3 +76,44 @@ def test_module_edge_rows_are_not_overdue():
         assert set(row) == {'from', 'to', 'until'}, row
         assert 1 <= row['until'] <= 5, row
         assert row['until'] > data['completed_step'], f'overdue, remove the edge: {row}'
+
+# Production files that belong to no module on purpose: the assembly. Anything else without an owner is a mistake.
+OWNERLESS_IMPORTERS = frozenset({'backend.main'})
+
+
+def _ownerless_importers(imports) -> set[str]:
+    """Production importers of a module (`backend.modules.<x>`, kernel children aside) that have no owner."""
+    prefix = 'backend.modules.'
+    found = set()
+    for importer, imported in imports:
+        if not imported.startswith(prefix) or imported[len(prefix):].split('.')[0] in rules.KERNEL_CHILDREN:
+            continue
+        if importer.startswith('backend.tests.') or importer == 'backend.tests':
+            continue
+        if not rules._owners_of_dotted(importer):
+            found.add(importer)
+    return found
+
+
+@pytest.mark.Trait("Task", "T590")
+def test_an_importer_without_an_owner_is_only_the_assembly():
+    """The direction rule lets an ownerless importer through; that is meant for main.py and for nothing else."""
+    assert _ownerless_importers([
+        ('backend.brand_new', 'backend.modules.fire.api'),          # unmapped file: no owner
+        ('backend.main', 'backend.modules.fire.api'),
+        ('backend.brand_new', 'backend.modules.registry'),          # kernel child, not a module
+        ('backend.tests.test_x', 'backend.modules.fire.api'),       # tests are outside the rule
+        ('backend.routers.users', 'backend.modules.people.api'),    # has an owner
+    ]) == {'backend.brand_new', 'backend.main'}
+    extra = sorted(_ownerless_importers(_real_imports()) - OWNERLESS_IMPORTERS)
+    assert not extra, f'give these files an owner in module_map.MODULE_OF_FILE (ownerless code passes the edge rule): {extra}'
+
+
+@pytest.mark.Trait("Task", "T590")
+def test_kernel_children_are_core_files_not_packages():
+    """`KERNEL_CHILDREN` switches the edge rule off for a name: only a single kernel file owned by `core` may be there."""
+    from backend.tests.architecture import module_map
+    for child in rules.KERNEL_CHILDREN:
+        assert (REPO / 'backend' / 'modules' / f'{child}.py').is_file(), f'{child} must be the file modules/{child}.py'
+        assert not (REPO / 'backend' / 'modules' / child).exists(), f'{child} is a package: it is a module, not a kernel file'
+        assert module_map.owners_of(f'modules/{child}.py') == ('core',), child
