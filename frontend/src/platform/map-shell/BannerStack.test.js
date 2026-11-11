@@ -22,6 +22,25 @@ const TWO_BANNERS = [
 
 afterEach(() => { vi.restoreAllMocks() })
 
+describe('BannerStack log [B108]', () => {
+  it('a failing banner logs the message and status, never the error object [B108]', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const axiosLike = Object.assign(new Error('Request failed'), { config: { headers: { Authorization: 'Bearer SECRET-TOKEN-B108' } }, response: { status: 500 } })
+    const bad = { render() { throw axiosLike } }
+    const w = mount(BannerStack, { props: { banners: [{ id: 'x', priority: 1, component: bad }] } })
+    await w.vm.$nextTick()
+    expect(err).toHaveBeenCalled()
+    const args = err.mock.calls.flat()
+    expect(args.some((a) => a !== null && typeof a === 'object')).toBe(false)
+    const text = args.join(' ')
+    expect(text).not.toContain('SECRET-TOKEN-B108')
+    expect(text).toContain('banner x failed')
+    expect(text).toContain('Request failed')
+    expect(text).toContain('HTTP 500')
+    w.unmount()
+  })
+})
+
 describe('BannerStack', () => {
   it('renders banners in the given order without a wrapper [T421]', () => {
     const host = document.createElement('div')

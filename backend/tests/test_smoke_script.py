@@ -449,6 +449,74 @@ def test_test_endpoint_and_ws_message_shape_match_the_checks():
     assert "'type': channel" in ws and "'location_update'" in ws
 
 
+# --------------------------------------------------------------------------- T590: LIVE_PERSONAL_FIELDS switch
+
+@pytest.mark.Trait("Task", "T590")
+def test_the_switch_is_not_passed_by_default_and_changes_nothing_else():
+    default, _ = make()
+    assert 'LIVE_PERSONAL_FIELDS' not in _flat(default.backend_run_cmd())
+    for value, text in ((False, 'false'), (True, 'true')):
+        s, _ = make(live_personal_fields=value)
+        cmd = s.backend_run_cmd()
+        assert f'-e LIVE_PERSONAL_FIELDS={text} ' in _flat(cmd) + ' '
+        rest = [a for i, a in enumerate(cmd)
+                if not a.startswith('LIVE_PERSONAL_FIELDS=') and not (a == '-e' and cmd[i + 1].startswith('LIVE_PERSONAL_FIELDS='))]
+        assert rest == default.backend_run_cmd()
+
+
+@pytest.mark.Trait("Task", "T590")
+def test_the_switch_does_not_change_the_steps():
+    names = []
+    for value in (None, False, True):
+        s, _ = make(FakeEngine(fail={'version': (1, 'cannot connect')}), live_personal_fields=value)
+        s.run()
+        names.append([r.name for r in s.report.results])
+    assert names[0] == names[1] == names[2] and len(names[0]) == 15
+
+
+@pytest.mark.Trait("Task", "T590")
+def test_step_e_checks_the_message_against_the_switch_and_reports_no_value():
+    thin = {'type': 'location_update', 'device_id': 7, 'latitude': 42.7}
+    full = {**thin, 'full_name': 'Ivan Petrov', 'phone': '+359888123456'}
+    assert smoke.personal_fields_note(full, None) == '' and smoke.personal_fields_note(thin, None) == ''
+    assert 'thin message, 2 keys, LIVE_PERSONAL_FIELDS=false' in smoke.personal_fields_note(thin, False)
+    note = smoke.personal_fields_note(full, True)
+    assert 'full message, 4 keys, LIVE_PERSONAL_FIELDS=true' in note
+    assert 'Ivan' not in note and '+359' not in note
+    with pytest.raises(smoke.StepFail, match='carries the personal keys') as err:
+        smoke.personal_fields_note(full, False)
+    assert 'Ivan' not in str(err.value) and '+359' not in str(err.value)
+    with pytest.raises(smoke.StepFail, match='lacks the personal keys'):
+        smoke.personal_fields_note(thin, True)
+    # the key the check looks for is a key of the personal part, and of nothing else
+    payload_src = (ROOT / 'backend/modules/tracking/domain/payload.py').read_text(encoding='utf-8')
+    fix, personal = payload_src.split('class PersonalDetails')
+    assert 'full_name:' in personal and 'full_name:' not in fix.split('class PositionFix')[1]
+
+
+@pytest.mark.Trait("Task", "T590")
+@pytest.mark.parametrize('argv, expected', [([], None), (['--live-personal-fields', 'false'], False),
+                                             (['--live-personal-fields', 'true'], True)])
+def test_main_hands_the_switch_to_the_run(monkeypatch, capsys, argv, expected):
+    seen = {}
+
+    class FakeSmoke:
+        def __init__(self, engine, **kw):
+            seen.update(kw)
+
+        def run(self):
+            return 0
+
+    monkeypatch.setattr(smoke, 'Smoke', FakeSmoke)
+    monkeypatch.setattr(smoke, 'pick_engine', lambda env: 'podman')
+    monkeypatch.setattr(smoke, 'git_label', lambda: 'abc1234')
+    assert smoke.main(argv) == 0
+    assert seen['live_personal_fields'] is expected
+    header = capsys.readouterr().out
+    assert ('LIVE_PERSONAL_FIELDS' in header) == (expected is not None)
+    with pytest.raises(SystemExit):
+        smoke.main(['--live-personal-fields', 'maybe'])
+
 # --------------------------------------------------------------------------- T203
 
 @pytest.mark.Trait("Task", "T203")

@@ -38,7 +38,7 @@ describe('PanelHost', () => {
     expect([...host.firstElementChild.children].map((e) => e.className)).toEqual(['a', 'c'])
     const mine = err.mock.calls.filter((c) => String(c[0]).startsWith('panel bad failed'))
     expect(mine).toHaveLength(1)
-    expect(mine[0][1]).toBeInstanceOf(Error)
+    expect(mine[0][1]).toBe('boom')   // the message text, never the error object [B108]
     w.unmount()
   })
 
@@ -90,5 +90,35 @@ describe('PanelHost', () => {
     ctx.n = 1
     await flushPromises()
     expect(host.querySelector('.p')).not.toBeNull()
+  })
+
+  describe('logs carry the message and status, never the error object [B108]', () => {
+    const axiosLike = () => Object.assign(new Error('Request failed'), { config: { headers: { Authorization: 'Bearer SECRET-TOKEN-B108' } }, response: { status: 500 } })
+    const expectSafe = (err) => {
+      expect(err).toHaveBeenCalled()
+      const args = err.mock.calls.flat()
+      expect(args.some((a) => a !== null && typeof a === 'object')).toBe(false)
+      const text = args.join(' ')
+      expect(text).not.toContain('SECRET-TOKEN-B108')
+      expect(text).toContain('Request failed')
+      expect(text).toContain('HTTP 500')
+    }
+
+    it('a panel that fails to render [B108]', async () => {
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const bad = { props: ['context'], render() { throw axiosLike() } }
+      mount(PanelHost, { props: { panels: [{ id: 'bad', component: bad }], context: {} } })
+      await flushPromises()
+      expectSafe(err)
+      expect(err.mock.calls[0][0]).toContain('panel bad failed')
+    })
+
+    it('a retryKey that throws [B108]', async () => {
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+      mount(PanelHost, { props: { panels: [{ id: 'k', component: stub('k'), retryKey: () => { throw axiosLike() } }], context: {} } })
+      await flushPromises()
+      expectSafe(err)
+      expect(err.mock.calls[0][0]).toContain('panel k retryKey failed')
+    })
   })
 })

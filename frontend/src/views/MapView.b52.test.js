@@ -69,7 +69,7 @@ async function mountMap(role = 'admin') {
   loc.positions = { [IVAN.device_id]: IVAN, [MARIA.device_id]: MARIA }
   const w = mount(MapView, {
     attachTo: document.body,
-    global: { plugins: [pinia, i18n], stubs: { SOSToast: true } },
+    global: { plugins: [pinia, i18n] },
   })
   await flushPromises()
   return w

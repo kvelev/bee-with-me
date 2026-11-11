@@ -5,6 +5,7 @@
 //
 // Contributions (layers, handlers) arrive as arguments; the shell imports no module and no feature.
 import OlMap from 'ol/Map'
+import { describeError } from '../describeError.js'
 
 const LONG_PRESS_MS = 600
 const LONG_PRESS_SLOP_PX = 10
@@ -39,7 +40,7 @@ export function createMapShell({ view, controls = [], overlays = [], createLongP
     const now = Date.now()
     if (now - (lastLoggedAt.get(id) ?? -Infinity) < LOG_EVERY_MS) return
     lastLoggedAt.set(id, now)
-    console.error(`map ${what} handler ${id} failed`, error)
+    console.error(`map ${what} handler ${id} failed`, describeError(error))
   }
 
   function addLayer({ id, zIndex, layer }) {
@@ -60,7 +61,7 @@ export function createMapShell({ view, controls = [], overlays = [], createLongP
       if (typeof result?.dispose === 'function') disposers.push(result.dispose)
       return result?.api ?? {}
     } catch (error) {
-      console.error(`map contribution ${name} failed to install`, error)
+      console.error(`map contribution ${name} failed to install`, describeError(error))
       return {}
     }
   }
@@ -163,7 +164,7 @@ export function createMapShell({ view, controls = [], overlays = [], createLongP
     for (const [type, fn] of viewportListeners) viewport.addEventListener(type, fn)
 
     for (const fn of mountedCallbacks) {
-      try { fn() } catch (error) { console.error('map onMounted callback failed', error) }
+      try { fn() } catch (error) { console.error('map onMounted callback failed', describeError(error)) }
     }
   }
 
@@ -177,7 +178,7 @@ export function createMapShell({ view, controls = [], overlays = [], createLongP
 
   function dispose() {
     for (const fn of disposers.splice(0)) {
-      try { fn() } catch (error) { console.error('map contribution dispose failed', error) }
+      try { fn() } catch (error) { console.error('map contribution dispose failed', describeError(error)) }
     }
     if (map) {
       const viewport = map.getViewport()

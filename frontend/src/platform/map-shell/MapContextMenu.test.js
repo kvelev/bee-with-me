@@ -152,6 +152,28 @@ describe('MapContextMenu', () => {
     expect(logged?.[1]).toBe('async-bad')
   })
 
+  it('a failing item logs the message and status, never the error object [B108]', async () => {
+    const axiosLike = () => Object.assign(new Error('Request failed'), { config: { headers: { Authorization: 'Bearer SECRET-TOKEN-B108' } }, response: { status: 500 } })
+    const sync = item({ id: 'sync', testId: 'sync', onSelect: vi.fn(() => { throw axiosLike() }) })
+    const async_ = item({ id: 'async', testId: 'async', onSelect: vi.fn(() => Promise.reject(axiosLike())) })
+    const w = mountMenu([sync, async_])
+    for (const id of ['sync', 'async']) {
+      errSpy.mockClear()
+      await open(w)
+      await w.get(`[data-testid="${id}"]`).trigger('click')
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(errSpy).toHaveBeenCalled()
+      const args = errSpy.mock.calls.flat()
+      expect(args.some((a) => a !== null && typeof a === 'object')).toBe(false)
+      const text = args.join(' ')
+      expect(text).not.toContain('SECRET-TOKEN-B108')
+      expect(text).toContain(id)
+      expect(text).toContain('Request failed')
+      expect(text).toContain('HTTP 500')
+    }
+  })
+
   it('close() is idempotent and safe on a closed menu [T425]', async () => {
     const remove = vi.spyOn(document, 'removeEventListener')
     const w = mountMenu()

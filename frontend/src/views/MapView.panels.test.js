@@ -65,7 +65,7 @@ async function mountMap(role = 'admin') {
   const loc = useLocationsStore()
   loc.fetchLive = vi.fn(); loc.fetchSOS = vi.fn(); loc.fetchTrail = vi.fn()
   loc.positions = {}
-  const w = mount(MapView, { attachTo: document.body, global: { plugins: [pinia, i18n], stubs: { SOSToast: true } } })
+  const w = mount(MapView, { attachTo: document.body, global: { plugins: [pinia, i18n] } })
   await flushPromises()
   return w
 }
