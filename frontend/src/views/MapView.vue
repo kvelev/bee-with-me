@@ -904,6 +904,9 @@ function toggleHQMode() {
     repeaterMode.value = false
     setRepeaterPlacementMode(false)
   }
+  // Switching the others off resets the map cursor, so re-assert HQ last (idempotent)
+  // to keep the crosshair while HQ placement is on.
+  setHQPlacementMode(true)
 }
 function clearHQ() {
   hqClearAsk.value = false

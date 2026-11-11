@@ -10,10 +10,14 @@ vi.mock('../api', () => ({
 }))
 vi.mock('../composables/useWebSocket', () => ({ useWebSocket: () => ({ connect: vi.fn() }) }))
 // `result` is what the facade's setHQPlacementMode answers: false (failed layer) or undefined (old mock).
-const hq = vi.hoisted(() => ({ result: undefined }))
+const hq = vi.hoisted(() => ({ result: undefined, calls: [] }))
 vi.mock('../composables/useMap', () => ({
   BASEMAPS: [],
-  useMap: () => new Proxy({ map: () => null, setHQPlacementMode: () => hq.result }, {
+  useMap: () => new Proxy({
+    map: () => null,
+    setHQPlacementMode: (on) => { hq.calls.push(['hq', on]); return hq.result },
+    setMeasureMode: (on) => { hq.calls.push(['measure', on]) },
+  }, {
     get: (t, k) => (k in t ? t[k] : vi.fn()),
   }),
 }))
@@ -48,6 +52,7 @@ const hqButton = (w) => w.findAll('button').find(b => b.text() === en.map.hqMove
 describe('MapView HQ placement signal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    hq.calls.length = 0
     i18n.global.locale.value = 'en'
     getSettings.mockResolvedValue({ ...SETTINGS })
     getGroupsWithMembers.mockResolvedValue({ items: [] })
@@ -73,5 +78,26 @@ describe('MapView HQ placement signal', () => {
     expect(w.text()).not.toContain(en.map.hqLayerFailed)
     await hqButton(w).trigger('click')
     expect(hqButton(w).classes()).not.toContain('active')
+  })
+
+  it('a failed HQ layer leaves measure mode running [T580]', async () => {
+    hq.result = false
+    const w = await mountMap()
+    await w.findAll('button').find(b => b.text() === en.map.measure).trigger('click')
+    hq.calls.length = 0
+    await hqButton(w).trigger('click')
+    expect(hq.calls).not.toContainEqual(['measure', false])
+    expect(w.text()).toContain(en.map.hqLayerFailed)
+  })
+
+  it('switching from measure to HQ ends with HQ placement on, so the crosshair stays [T580]', async () => {
+    hq.result = undefined
+    const w = await mountMap()
+    await w.findAll('button').find(b => b.text() === en.map.measure).trigger('click')
+    hq.calls.length = 0
+    await hqButton(w).trigger('click')
+    const last = hq.calls[hq.calls.length - 1]
+    expect(last).toEqual(['hq', true])
+    expect(hq.calls).toContainEqual(['measure', false])
   })
 })
