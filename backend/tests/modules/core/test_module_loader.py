@@ -296,3 +296,26 @@ def test_api_routes_next_to_a_public_mount_keep_auth(tmp_path):
     app, manifest = _app_with(router, public_routes=(('MOUNT', '/files'),))
     include_module_routers(app, [manifest], auth=_deny)
     assert TestClient(app).get('/api/x/data').status_code == 401
+
+
+@pytest.mark.Trait("Bug", "B96")
+@pytest.mark.parametrize('nested', [False, True], ids=['top-level', 'nested-include'])
+def test_a_route_type_without_a_path_is_refused(nested):
+    from starlette.routing import Host, Route, Router
+
+    async def handler(request):
+        return None
+
+    host = Host('example.test', app=Router([Route('/h', handler)]))
+    router = APIRouter()
+    if nested:
+        sub = APIRouter()
+        sub.routes.append(host)
+        router.include_router(sub, prefix='/p')
+    else:
+        router.routes.append(host)
+    app, manifest = _app_with(router)
+    before = list(app.routes)
+    with pytest.raises(ValueError, match='cannot carry the auth dependency'):
+        include_module_routers(app, [manifest], auth=_deny)
+    assert list(app.routes) == before

@@ -117,7 +117,8 @@ def _unguardable_problems(m: ModuleManifest) -> list[str]:
             continue
         if depth == 0 and keys and keys <= public:
             continue
-        for path in sorted({path for _, path in keys}):
+        # fail closed: a type that yields no keys (a `Host`, a custom route) is refused too, never skipped
+        for path in sorted({path for _, path in keys}) or [f'<{kind.__name__} without a path>']:
             problems.append(f'{m.name}: {path} is a {kind.__name__}, which cannot carry the auth dependency: '
                             'serve it from an endpoint or declare it in public_routes')
     return problems
@@ -171,6 +172,10 @@ def include_module_routers(app: FastAPI, modules: Iterable[ModuleManifest], *, a
                 app.mount(route.path, route.app, name=route.name)
             elif is_public and not isinstance(route, (APIRoute, APIWebSocketRoute)):
                 app.router.routes.append(route)
+            elif not is_public and not (isinstance(route, (APIRoute, APIWebSocketRoute))
+                                        or hasattr(route, 'effective_candidates')):
+                # unreachable after check_modules; kept so a gap in the checker cannot reach the mount step
+                raise ValueError(f'{m.name}: {type(route).__name__} cannot carry the auth dependency')
             else:
                 app.include_router(APIRouter(routes=[route]), dependencies=None if is_public else [Depends(auth)])
 
