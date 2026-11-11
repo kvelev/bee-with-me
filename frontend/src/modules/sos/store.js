@@ -3,6 +3,8 @@ import { ref, computed } from 'vue'
 import { getOpenSOS, resolveSOS as apiResolve } from '../../api'
 import { useTrackingStore } from '../tracking/index.js'
 
+const NAME_KEYS = ['full_name', 'rank', 'device_name', 'dev_sn']
+
 export const useSosStore = defineStore('sos', () => {
   const sosAlerts        = ref([])
   const sosNotifications = ref([])   // [{id, device_id, name, timestamp}]
@@ -22,7 +24,9 @@ export const useSosStore = defineStore('sos', () => {
     const effectiveSOS = data.sos_active && !resolvedSOS.has(data.device_id)
 
     if (effectiveSOS && !existing.sos_active) {
-      const row = { ...existing, ...data }   // a thin message has no name: take it from the row we hold
+      // a thin message has no name, and an explicit null is no name either: take it from the row we hold
+      const row = { ...existing, ...data }
+      for (const key of NAME_KEYS) if (data[key] == null && existing[key] != null) row[key] = existing[key]
       sosNotifications.value.push({
         id:        Date.now() + Math.random(),
         device_id: data.device_id,
@@ -33,14 +37,16 @@ export const useSosStore = defineStore('sos', () => {
     return { ...data, sos_active: effectiveSOS }
   })
 
-  // device ids whose alert was pushed while a fetch was in flight: the answer predates them, so it must not drop them
-  const pushedDuringFetch = new Set()
+  // Ordering of pushed alerts against reads. A counter, not a shared set that reads clear: every read keeps
+  // an alert pushed after that read started, however many reads overlap. `pushSeq[deviceId]` = tick of the last push.
+  let seq = 0
+  const pushSeq = {}
 
   async function fetchSOS() {
-    pushedDuringFetch.clear()
+    const startedAt = ++seq
     const rows = await getOpenSOS()
     if (!Array.isArray(rows)) return
-    const kept = sosAlerts.value.filter(a => pushedDuringFetch.has(a.device_id) && !rows.some(r => r.device_id === a.device_id))
+    const kept = sosAlerts.value.filter(a => (pushSeq[a.device_id] ?? 0) > startedAt && !rows.some(r => r.device_id === a.device_id))
     sosAlerts.value = [...rows, ...kept]
   }
 
@@ -51,6 +57,7 @@ export const useSosStore = defineStore('sos', () => {
   function forgetDevice(deviceId) {
     sosAlerts.value = sosAlerts.value.filter(a => a.device_id !== deviceId)
     resolvedSOS.delete(deviceId)
+    delete pushSeq[deviceId]
   }
 
   // Single-flight completion read: one /sos request at a time, at most one queued behind it. A failure is
@@ -76,10 +83,10 @@ export const useSosStore = defineStore('sos', () => {
     // A field that is present wins.
     const pos = tracking.positions[pushed.device_id] ?? {}
     const alert = { ...pushed }
-    for (const key of ['full_name', 'rank', 'device_name', 'dev_sn']) {
+    for (const key of NAME_KEYS) {
       if (alert[key] == null && pos[key] != null) alert[key] = pos[key]
     }
-    pushedDuringFetch.add(alert.device_id)
+    pushSeq[alert.device_id] = ++seq
     showAlert(alert)
     requestSOS()
   }
@@ -93,7 +100,10 @@ export const useSosStore = defineStore('sos', () => {
     // Merge rather than skip: an entry seeded from an earlier push may be missing the
     // fields the banner's Resolve button needs. Losing the alert id here is what left an
     // SOS with no way to clear it from the UI.
-    sosAlerts.value[idx] = { ...sosAlerts.value[idx], ...alert }
+    // A null name field does not blank a name we already hold.
+    const incoming = { ...alert }
+    for (const key of NAME_KEYS) if (incoming[key] == null) delete incoming[key]
+    sosAlerts.value[idx] = { ...sosAlerts.value[idx], ...incoming }
   }
 
   async function resolveSOS(alertId, notes) {

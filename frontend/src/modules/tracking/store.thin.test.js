@@ -128,4 +128,27 @@ describe('tracking store with thin messages', () => {
     expect(sos.sosNotifications).toHaveLength(1)
     expect(sos.sosNotifications[0].name).toBe('Ivan Petrov')
   })
+
+  it('B2: a later thin message does not bring the old name back over the answer [T546]', async () => {
+    const d = deferred()
+    getLivePositions.mockReturnValueOnce(d.promise).mockResolvedValue([])
+    const store = useTrackingStore()
+    store.positions.dB = liveRow({ device_id: 'dB', user_id: 'u1', full_name: 'Old Name', rank: 'Private', photo_url: '/old.jpg' })
+    store.applyLocationUpdate(thin({ user_id: 'u2' }))      // M1 starts F1
+    store.applyLocationUpdate(thin({ user_id: 'u2', latitude: 43.3 }))   // M2 while F1 is in flight
+    d.resolve([liveRow({ device_id: 'dB', user_id: 'u2', full_name: 'Maria', rank: 'Major', photo_url: '/m.jpg', latitude: 41.0 })])
+    await flush()
+    expect(store.positions.dB).toMatchObject({ full_name: 'Maria', rank: 'Major', photo_url: '/m.jpg', latitude: 43.3 })
+  })
+
+  it('B2: a name a full message carried while the request was in flight still wins [T546]', async () => {
+    const d = deferred()
+    getLivePositions.mockReturnValueOnce(d.promise)
+    const store = useTrackingStore()
+    const pending = store.fetchLive()
+    store.applyLocationUpdate({ ...thin({ device_id: 'dA', user_id: 'u1' }), full_name: 'Renamed' })
+    d.resolve([liveRow({ device_id: 'dA', full_name: 'Ivan Petrov', rank: 'Captain' })])
+    await pending
+    expect(store.positions.dA).toMatchObject({ full_name: 'Renamed', rank: 'Captain' })
+  })
 })

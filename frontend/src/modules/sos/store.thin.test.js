@@ -72,4 +72,45 @@ describe('sos store with thin messages', () => {
     await flush()
     expect(getOpenSOS).toHaveBeenCalledTimes(2)
   })
+
+  it('B1: an alert pushed while a direct fetchSOS is in flight survives it [T546]', async () => {
+    const a = deferred(), b = deferred()
+    getOpenSOS.mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise)
+    const { sos } = seeded()
+    const tick = sos.fetchSOS()                  // F_a, as the tick does
+    sos.applySOSAlert(thinAlert())               // push; requestSOS starts F_b
+    await flush()
+    b.resolve([{ id: 'a1', device_id: 'd1', full_name: 'Ivan Petrov' }])   // F_b answers
+    await flush()
+    a.resolve([])                                // F_a answers without the alert
+    await tick
+    await flush()
+    expect(sos.sosAlerts.map(x => x.device_id)).toEqual(['d1'])
+  })
+
+  it('B1: a direct fetchSOS racing a second direct fetchSOS keeps a pushed alert [T546]', async () => {
+    const a = deferred(), b = deferred()
+    getOpenSOS.mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise).mockResolvedValue([{ id: 'a1', device_id: 'd1' }])
+    const { sos } = seeded()
+    const f1 = sos.fetchSOS()
+    const f2 = sos.fetchSOS()
+    sos.applySOSAlert(thinAlert())
+    await flush()
+    b.resolve([])
+    a.resolve([])
+    await Promise.allSettled([f1, f2])
+    await flush()
+    expect(sos.sosAlerts.map(x => x.device_id)).toContain('d1')
+  })
+
+  it('a null full_name in a message does not blank the name of the toast or the alert [T546]', async () => {
+    getOpenSOS.mockResolvedValue([])
+    const { tracking, sos } = seeded()
+    tracking.positions.d1.sos_active = false
+    tracking.applyLocationUpdate({ type: 'location_update', device_id: 'd1', user_id: 'u1', full_name: null, sos_active: true, latitude: 42, longitude: 23 })
+    expect(sos.sosNotifications[0].name).toBe('Ivan Petrov')
+    sos.applySOSAlert(thinAlert({ full_name: 'Ivan Petrov' }))
+    sos.applySOSAlert(thinAlert({ full_name: null }))
+    expect(sos.sosAlerts[0].full_name).toBe('Ivan Petrov')
+  })
 })

@@ -35,6 +35,13 @@ function saveSnapshot(positions) {
   } catch { /* private window, quota, or storage disabled — the map still works */ }
 }
 
+// The position/status fields of a thin location_update (plan section 1.4). A live-newer row wins these over an
+// older /live answer; everything else (name, rank, photo, phone, groups) is identity and comes from the answer.
+const THIN_KEYS = [
+  'device_id', 'user_id', 'mgrs', 'latitude', 'longitude', 'altitude_m', 'speed_knots', 'course_deg',
+  'battery_voltage', 'gnss_satellites', 'gnss_valid', 'sos_active', 'repeater_mode', 'recorded_at', 'received_at',
+]
+
 /** Positions, trails and the connection/freshness state. It does not know the `sos` module: other modules
  *  reach into a message through `addUpdateHook` and into a marker through `patchPosition`. */
 export const useTrackingStore = defineStore('tracking', () => {
@@ -81,6 +88,8 @@ export const useTrackingStore = defineStore('tracking', () => {
   // millisecond still have an order. `liveSeq[deviceId]` = the tick of the last applied live message.
   let seq = 0
   const liveSeq = {}
+  // identity fields a full message carried (beyond the thin keys), per device, with the tick it arrived
+  const carried = {}
 
   /** Replace the picture with the /live answer, except that a device whose live message arrived
    *  after this request started keeps its row: the answer is older than that message. The answer's
@@ -91,8 +100,16 @@ export const useTrackingStore = defineStore('tracking', () => {
     const isNewer = id => (liveSeq[id] ?? 0) > startedAt
     const next = {}
     for (const r of rows) {
-      const kept = isNewer(r.device_id) ? positions.value[r.device_id] : null
-      next[r.device_id] = normaliseGroups(kept ? { ...r, ...kept } : r)
+      const row = isNewer(r.device_id) ? positions.value[r.device_id] : null
+      let merged = r
+      if (row) {
+        merged = { ...r }
+        const own = carried[r.device_id]
+        for (const key of Object.keys(row)) {
+          if (THIN_KEYS.includes(key) || (own && own.seq > startedAt && own.keys.has(key))) merged[key] = row[key]
+        }
+      }
+      next[r.device_id] = normaliseGroups(merged)
     }
     for (const [id, row] of Object.entries(positions.value)) {
       if (!(id in next) && isNewer(id)) next[id] = row
@@ -155,6 +172,11 @@ export const useTrackingStore = defineStore('tracking', () => {
 
     positions.value[data.device_id] = normaliseGroups({ ...existing, ...data })
     liveSeq[data.device_id] = ++seq
+    const extra = Object.keys(data).filter(k => k !== 'type' && !THIN_KEYS.includes(k))
+    if (extra.length) {
+      const prev = carried[data.device_id]
+      carried[data.device_id] = { seq, keys: new Set([...(prev?.keys ?? []), ...extra]) }
+    }
     markSynced()
     saveSnapshot(positions.value)
 
