@@ -27,7 +27,7 @@ from ..domain.proximity import TARGET_POSITION_MAX_AGE_MIN, evaluate
 
 logger = logging.getLogger(__name__)
 
-ALARM_LOCK_KEY = 7_342_102
+ALARM_LOCK_KEY = repo.ALARM_LOCK_KEY
 TICK_S = 60
 REPEAT_IDS_PER_MESSAGE = 100
 

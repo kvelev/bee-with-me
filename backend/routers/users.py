@@ -16,8 +16,8 @@ from pydantic import BaseModel
 from ..auth import get_current_user, hash_password, require_role
 from ..database import get_conn
 from ..json_columns import decode_json_columns
-from ..fire import repository as fire_repository
-from ..fire.service import notify_alerts_updated
+from ..modules.fire import api as fire_repository
+from ..modules.fire.api import notify_alerts_updated
 
 logger = logging.getLogger(__name__)
 

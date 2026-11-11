@@ -12,17 +12,7 @@ from __future__ import annotations
 
 APPROVED: dict[str, dict[str, str]] = {
     'backend/tests/architecture/importlinter.toml': {
-        # Step 1 (T402): debt that already existed and became visible when settings moved into a module.
-        # Net change of the allowlist in step 1: 3 lines deleted, 4 added.
-        'fire internals are private: backend.modules.settings.http -> backend.fire.repository':
-            'clearing HQ ends its open alerts in the same transaction as the UPDATE: settings calls '
-            'fire.repository.resolve_hq_alerts until the HQCleared event of step 4',
-        'fire internals are private: backend.modules.settings.http -> backend.fire.service':
-            'after the commit settings tells the browsers which alerts ended (notify_alerts_updated) '
-            'until the HQCleared event of step 4',
-        'fire internals are private: backend.modules.settings.infrastructure.publisher -> backend.fire.service':
-            'settings asks the alarm service to re-evaluate after a save; before step 1 main.py wired it by '
-            'assignment, so no import existed; replaced by the outbox of step 4',
+        # Step 1 (T402): the alias path of the settings router.
         'module boundary: settings: backend.routers.settings -> backend.modules.settings.http':
             'the old import path backend.routers.settings is an alias of the module http, kept so '
             'the existing patches and imports work until step 5',
@@ -50,5 +40,15 @@ APPROVED: dict[str, dict[str, str]] = {
         'module boundary: fire: backend.routers.fire -> backend.modules.fire.http':
             'old import path kept as an alias until step 5; 24 test files import it',
     },
-    'backend/tests/architecture/allowlist.json': {},
+    'backend/tests/architecture/allowlist.json': {
+        # Step 2 (T503): fire gets a public face (fire.api); these callers use it until the events and the outbox of step 4.
+        'module_edges: {"from": "backend.modules.settings.http", "to": "backend.modules.fire.api", "until": 4}':
+            'clearing HQ ends its open alerts in the same transaction as the UPDATE, and after the commit settings tells the browsers which alerts ended: it calls fire.api until the HQCleared event of step 4',
+        'module_edges: {"from": "backend.modules.settings.infrastructure.publisher", "to": "backend.modules.fire.api", "until": 4}':
+            'settings asks the alarm service to re-evaluate after a save through fire.api.request_evaluation, until the outbox of step 4 delivers SettingsChanged',
+        'module_edges: {"from": "backend.routers.users", "to": "backend.modules.fire.api", "until": 4}':
+            'deactivating a user ends the open alerts of that user and broadcasts them through fire.api until the events of step 4',
+        'module_edges: {"from": "backend.routers.devices", "to": "backend.modules.fire.api", "until": 4}':
+            'disabling or deleting a device ends its open alerts, takes the alarm lock and broadcasts through fire.api until the events of step 4',
+    },
 }

@@ -15,6 +15,9 @@ from ..domain.proximity import AlarmSettings, Hotspot, NewAlert, OpenAlert, Targ
 
 logger = logging.getLogger(__name__)
 
+# Held by the alarm tick (try-lock) and by a permanent device delete (blocking); service.py re-exports the name.
+ALARM_LOCK_KEY = 7_342_102
+
 _UPSERT_HOTSPOT = """
     INSERT INTO fire_hotspots (source, effis_id, acquired_at, latitude, longitude, h3_r8, effis_class)
     VALUES ($1::fire_data_source, $2, $3, $4, $5, $6, $7)
@@ -286,6 +289,25 @@ async def resolve_hq_alerts(conn: asyncpg.Connection, resolved_by) -> list[str]:
         RETURNING id::text AS id
     """, None if resolved_by is None else str(resolved_by))
     return [r['id'] for r in rows]
+
+
+async def lock_and_resolve_device_alerts(conn: asyncpg.Connection, device_id, actor_id) -> list[asyncpg.Record]:
+    """Permanent device delete, fire part: serialise with the alarm tick, then end the device's open alerts.
+
+    Runs on the caller's connection inside the caller's transaction (it opens none and catches nothing:
+    LockNotAvailableError reaches the caller). Serialise with the alarm tick (it holds the same lock while
+    evaluating): a tick inserting an alert for this device must not interleave with the resolve + delete, or the FK
+    SET NULL leaves an open alert without a device. Blocking on purpose (the tick itself only try-locks) but bounded:
+    after 10 s the caller's delete rolls back instead of queueing behind a stuck tick. An xact lock may be taken
+    mid-transaction; it is held to commit. Resolved rows keep the history (device_id -> NULL through the FK).
+    """
+    await conn.execute("SET LOCAL lock_timeout = '10s'")
+    await conn.execute('SELECT pg_advisory_xact_lock($1)', ALARM_LOCK_KEY)
+    return await conn.fetch(
+        "UPDATE fire_alerts SET resolved_at = NOW(), resolve_reason = 'disabled', "
+        "resolved_by = $2::uuid WHERE device_id = $1 AND resolved_at IS NULL RETURNING id::text",
+        device_id, actor_id,
+    )
 
 
 async def get_alert_out(conn: asyncpg.Connection, alert_id: str) -> FireAlertOut | None:

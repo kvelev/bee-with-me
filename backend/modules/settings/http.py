@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...auth import get_current_user, require_role
 from ...core.database import get_conn
-from ...fire import repository as fire_repository
-from ...fire.service import notify_alerts_updated
+from ..fire import api as fire_repository
+from ..fire.api import notify_alerts_updated
 from .api import SettingsChanged
 from .domain.models import HQIn, HQPatch, SettingsOut, SettingsUpdate
 from .infrastructure import publisher, repository
