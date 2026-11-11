@@ -1,6 +1,12 @@
 import { onUnmounted } from 'vue'
 import { useLocationsStore } from '../stores/locations'
-import { useFireStore } from '../stores/fire'
+import { MODULES } from '../modules/index.js'
+import { collectLiveHandlers, collectLiveHooks, dispatchLive, runHooks } from '../platform/live/dispatch.js'
+import { LEGACY_LIVE } from './legacyLive'
+
+// What a message, a tick and a reconnect do is read from the modules' contributions plus the legacy list.
+const handlers = collectLiveHandlers(MODULES, LEGACY_LIVE.handlers)
+const hooks = collectLiveHooks(MODULES, LEGACY_LIVE.hooks)
 
 // Belt-and-braces reconciliation. The WebSocket can look healthy and still be delivering
 // nothing (a half-open socket after a sleep/wake, a dead LISTEN connection on the server),
@@ -18,23 +24,17 @@ let hasConnectedBefore = false
 let catchUpOnOpen = false
 // Set by an explicit disconnect() (logout, unmount); only the next connect() clears it.
 let stopped = false
+// The modules' `setup` hooks run once, on the first connect() of the page.
+let setupDone = false
 
 export function useWebSocket() {
   const store = useLocationsStore()
-  const fireStore = useFireStore()
   // Per instance (one per view): set when this view unmounts. A connect() that arrives later (a mount
   // fetch that finished after logout) must neither open a socket nor clear the module-level `stopped`.
   let isUnmounted = false
 
-  async function resync() {
-    try {
-      await Promise.all([store.fetchLive(), store.fetchSOS(), store.fetchTrail()])
-    } catch { /* offline or backend restarting — the next tick tries again */ }
-    // Fire layers are not re-pulled here (the backend polls EFFIS every 30 min), but a shown
-    // feed whose last fetch failed is retried on every tick so it recovers by itself.
-    fireStore.retryFailed().catch(() => { /* fetchFailed drives the pill */ })
-    // Open fire alarms ARE re-pulled on every tick: a missed push must not hide an alarm (BP-02).
-    fireStore.fetchOpenAlerts().catch(() => { /* alertsFailed drives the banner notice */ })
+  function resync() {
+    return runHooks(hooks.onTick)
   }
 
   function detach(sock) {
@@ -44,6 +44,10 @@ export function useWebSocket() {
 
   function connect({ catchUp = false } = {}) {
     if (isUnmounted) return
+    if (!setupDone) {
+      setupDone = true
+      hooks.setup.forEach((fn) => { try { fn() } catch (e) { console.error('live setup failed', e) } })
+    }
     // The reconnect timer calls connect() without options and must not clear a pending catch-up.
     if (catchUp) catchUpOnOpen = true
     stopped = false
@@ -62,11 +66,9 @@ export function useWebSocket() {
         // Reconnected after a drop (sleep/wake, network blip, backend restart) — any
         // pushes missed during the gap are gone, so pull a fresh snapshot instead of
         // trusting stale/partial state.
-        resync()   // includes the open fire alarms
-        // Fire layers refetch here, on `fire_data_updated` and on layer toggle, but not on the
-        // 45 s resync tick: the backend polls EFFIS every 30 min, and the tick would re-pull
-        // every hotspot and burnt-area polygon 40 times per poll.
-        fireStore.refreshVisible().catch(() => { /* fetchFailed drives the pill */ })
+        resync()
+        // Hooks that run only on a reconnect (fire layers: see legacyLive.js).
+        runHooks(hooks.onReconnect)
       }
       hasConnectedBefore = true
       // Defensive: hasConnectedBefore already covers every later open; this just keeps the flag honest.
@@ -74,15 +76,7 @@ export function useWebSocket() {
     }
 
     sock.onmessage = (event) => {
-      const msg = JSON.parse(event.data)
-      if (msg.type === 'location_update') store.applyLocationUpdate(msg)
-      if (msg.type === 'sos_alert')       store.applySOSAlert(msg)
-      if (msg.type === 'serial_status')   store.applySerialStatus(msg)
-      if (msg.type === 'fire_data_updated') fireStore.applyFireDataUpdated(msg).catch(() => {})
-      if (msg.type === 'fire_zones_updated') fireStore.applyFireZonesUpdated().catch(() => {})
-      if (msg.type === 'fire_alert')         fireStore.applyFireAlert(msg)
-      if (msg.type === 'fire_alert_repeat')  fireStore.applyFireAlertRepeat(msg).catch(() => {})
-      if (msg.type === 'fire_alert_updated') fireStore.applyFireAlertUpdated(msg)
+      dispatchLive(handlers, JSON.parse(event.data))
     }
 
     sock.onclose = () => {
