@@ -16,7 +16,7 @@ from .config import settings
 from .version import APP_VERSION
 from .database import close_pool, get_pool, init_pool
 from .db.migrate import BackupRequiredError, MigrationError, UpdateRequiredError, has_user_tables, migrate, status
-from .routers import auth, devices, export, groups, locations, users, ws, test, hardware_reader, tiles
+from .routers import auth, devices, export, groups, users, ws, test, hardware_reader, tiles
 from .ws import manager
 from .core.modules import include_module_routers, start_module_tasks, stop_module_tasks
 from .modules import MODULES
@@ -254,7 +254,6 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(groups.router)
 app.include_router(devices.router)
-app.include_router(locations.router)
 app.include_router(export.router)
 include_module_routers(app, MODULES, auth=get_current_user)
 app.include_router(ws.router)

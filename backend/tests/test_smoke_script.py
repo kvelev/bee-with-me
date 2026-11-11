@@ -566,3 +566,21 @@ def test_fire_step_fails_on_500(monkeypatch):
     assert not s.step('h. GET /api/fire/status = 200', s.s_fire)
     last = s.report.results[-1]
     assert last.status == 'FAIL' and '/api/fire/status' in last.detail
+
+
+# --------------------------------------------------------------------------- T540
+
+@pytest.mark.Trait("Task", "T540")
+def test_sos_step_passes_on_200_with_a_list(monkeypatch):
+    s, seen = _settings_step(monkeypatch, 200, b'[]')
+    assert s.step('j. GET /api/locations/sos = 200', s.s_sos)
+    assert seen == [('GET', 'http://127.0.0.1:1/api/locations/sos', 'tok')]
+    assert s.report.results[-1].status == 'PASS'
+
+
+@pytest.mark.Trait("Task", "T540")
+def test_sos_step_fails_on_500(monkeypatch):
+    s, _ = _settings_step(monkeypatch, 500, b'')
+    assert not s.step('j. GET /api/locations/sos = 200', s.s_sos)
+    last = s.report.results[-1]
+    assert last.status == 'FAIL' and '/api/locations/sos' in last.detail
