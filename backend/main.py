@@ -16,7 +16,7 @@ from .config import settings
 from .version import APP_VERSION
 from .database import close_pool, get_pool, init_pool
 from .db.migrate import BackupRequiredError, MigrationError, UpdateRequiredError, has_user_tables, migrate, status
-from .routers import auth, devices, export, fire, groups, locations, users, ws, test, hardware_reader, tiles, weather
+from .routers import auth, devices, export, fire, groups, locations, users, ws, test, hardware_reader, tiles
 from .ws import manager
 from .core.modules import include_module_routers, start_module_tasks, stop_module_tasks
 from .modules import MODULES
@@ -276,7 +276,6 @@ if settings.enable_test_endpoints:
     logger.warning('Test/simulation endpoints ENABLED — /api/test/simulate writes fabricated positions')
 app.include_router(hardware_reader.router)
 app.include_router(tiles.router)
-app.include_router(weather.router)
 
 
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)

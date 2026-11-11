@@ -480,6 +480,14 @@ class Smoke:
             raise StepFail('GET /api/settings: no settings row (key hq_radius_m missing)')
         return 'settings row readable'
 
+    def s_weather(self):
+        # 503 is the answer of an environment without OWM_API_KEY (the smoke stack has none); 502 = upstream unreachable
+        status, _ = http_request('GET', f"{self.ctx['api']}/api/weather/current?lat=42.7&lon=23.3",
+                                 token=self.ctx['token'])
+        if status not in (200, 502, 503):
+            raise StepFail(f'GET /api/weather/current: expected HTTP 200, 502 or 503, got {status}')
+        return f'weather proxy answered {status} behind the login'
+
     def s_websocket(self):
         api, token, port = self.ctx['api'], self.ctx['token'], self.ctx['api_port']
         sn = 900000 + secrets.randbelow(90000)
@@ -532,6 +540,7 @@ class Smoke:
             self.step('d. live / users / devices = 200', self.s_reads, needs=('c. admin login + token refresh',))
             self.step('e. simulated frame reaches /ws', self.s_websocket, needs=('c. admin login + token refresh',))
             self.step('g. GET /api/settings = 200', self.s_settings, needs=('c. admin login + token refresh',))
+            self.step('i. GET /api/weather/current is served', self.s_weather, needs=('c. admin login + token refresh',))
             self.step('f. frontend image serves the SPA', self.s_frontend, needs=('build frontend image',))
         finally:
             started = time.monotonic()
