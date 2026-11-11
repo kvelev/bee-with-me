@@ -8,6 +8,17 @@ const base = (toggle) => ({
   mapLayers: [{ id: 'l', zIndex: 3, toggle }],
 })
 
+describe('live field', () => {
+  const withLive = (live) => ({ ...base(undefined), live })
+  it('validateManifest accepts a live field and names a malformed one [T543]', () => {
+    expect(validateManifest(withLive({ setup: () => {}, onTick: () => {}, onReconnect: () => {} }))).toEqual([])
+    expect(validateManifest(withLive(undefined))).toEqual([])
+    expect(validateManifest(withLive({ onTick: 1 })).join('\n')).toContain('live.onTick: must be a function')
+    expect(validateManifest(withLive({ later: () => {} })).join('\n')).toContain('live.later: unknown hook')
+    expect(validateManifest(withLive([])).join('\n')).toContain('live: must be an object')
+  })
+})
+
 describe('toggle.adminOnly', () => {
   it('accepts true, false and absent [T421]', () => {
     expect(validateManifest(base({ labelKey: 'k', order: 1, adminOnly: true }))).toEqual([])
