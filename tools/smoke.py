@@ -480,6 +480,14 @@ class Smoke:
             raise StepFail('GET /api/settings: no settings row (key hq_radius_m missing)')
         return 'settings row readable'
 
+    def s_fire(self):
+        status, body = http_request('GET', f"{self.ctx['api']}/api/fire/status", token=self.ctx['token'])
+        expect_status(status, 200, 'GET /api/fire/status')
+        data = json.loads(body)
+        if not isinstance(data, dict) or 'feeds' not in data:
+            raise StepFail('GET /api/fire/status: no feeds key in the answer')
+        return 'fire status readable behind the login'
+
     def s_weather(self):
         # 503 is the answer of an environment without OWM_API_KEY (the smoke stack has none); 502 = upstream unreachable
         status, _ = http_request('GET', f"{self.ctx['api']}/api/weather/current?lat=42.7&lon=23.3",
@@ -540,6 +548,7 @@ class Smoke:
             self.step('d. live / users / devices = 200', self.s_reads, needs=('c. admin login + token refresh',))
             self.step('e. simulated frame reaches /ws', self.s_websocket, needs=('c. admin login + token refresh',))
             self.step('g. GET /api/settings = 200', self.s_settings, needs=('c. admin login + token refresh',))
+            self.step('h. GET /api/fire/status = 200', self.s_fire, needs=('c. admin login + token refresh',))
             self.step('i. GET /api/weather/current is served', self.s_weather, needs=('c. admin login + token refresh',))
             self.step('f. frontend image serves the SPA', self.s_frontend, needs=('build frontend image',))
         finally:

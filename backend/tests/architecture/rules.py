@@ -256,7 +256,7 @@ def _ignore_import_problems(label: str, contract: dict, name: str, private: set[
         importer, arrow, imported = (part.strip() for part in str(entry).partition('->'))
         if not arrow or '*' in entry:
             problems.append(f'"{label}": ignore_imports entry {entry!r} must be "<importer> -> <imported>" without wildcards')
-        elif imported not in private:
+        elif not any(imported == child or imported.startswith(child + '.') for child in private):
             problems.append(f'"{label}": ignore_imports entry {entry!r} may only open an import into a private child of '
                             f'backend.modules.{name} ({sorted(private)})')
         elif not any(importer == src or importer.startswith(src + '.') for src in sources):
