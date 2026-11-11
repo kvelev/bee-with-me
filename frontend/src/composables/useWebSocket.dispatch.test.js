@@ -10,7 +10,7 @@ const fire = {
   applyFireAlertRepeat: vi.fn(async () => {}), applyFireAlertUpdated: vi.fn(),
 }
 vi.mock('../stores/locations', () => ({ useLocationsStore: () => loc }))
-vi.mock('../stores/fire', () => ({ useFireStore: () => fire }))
+vi.mock('../modules/fire/store.js', () => ({ useFireStore: () => fire }))
 vi.mock('vue', async (orig) => ({ ...(await orig()), onUnmounted: vi.fn() }))
 
 import { useWebSocket } from './useWebSocket'
