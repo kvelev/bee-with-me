@@ -223,6 +223,7 @@ forbidden_modules = [
     "backend.modules.tracking.http",
     "backend.modules.tracking.infrastructure",
     "backend.modules.tracking.module",
+    "backend.modules.tracking.tasks",
 ]
 allow_indirect_imports = true
 ignore_imports = [

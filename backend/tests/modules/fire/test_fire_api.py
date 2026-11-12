@@ -11,6 +11,7 @@ from pathlib import Path
 import asyncpg
 import pytest
 
+from backend.core import periodic
 from backend.modules.fire import api
 from backend.modules.fire.infrastructure import poller, repository, service
 from backend.modules.fire.module import manifest
@@ -122,7 +123,7 @@ def test_a_busy_alarm_lock_still_answers_503(client, mock_conn):
 
 @pytest.mark.Trait("Task", "T503")
 def test_fire_tasks_are_in_the_manifest():
-    assert [t.__name__ for t in manifest.tasks] == ['poll_feeds', 'alarm_loop']
+    assert [t.__name__ for t in manifest.tasks] == ['poll_feeds', 'alarm_loop', 'cleanup_fire_data']
     assert rules.check_manifest_wiring([manifest], REPO / 'backend') == []
 
 
@@ -145,6 +146,10 @@ async def _park():
     await asyncio.Event().wait()
 
 
+async def _park_any(*args, **kwargs):
+    await asyncio.Event().wait()
+
+
 def _quiet_startup(monkeypatch, main, calls):
     async def _noop():
         return None
@@ -155,7 +160,7 @@ def _quiet_startup(monkeypatch, main, calls):
     monkeypatch.setattr(main, 'init_pool', _noop)
     monkeypatch.setattr(main, '_run_migrations', _noop)
     monkeypatch.setattr(main, '_ensure_default_admin', _noop)
-    monkeypatch.setattr(main, '_cleanup_old_locations', _park)
+    monkeypatch.setattr(periodic, 'run_periodic', _park_any)
     monkeypatch.setattr(main.manager, 'listen_notifications', _park)
     monkeypatch.setattr(main, 'close_pool', _close)
     import backend.hardware_reader.hid_reader as hid
@@ -225,7 +230,7 @@ def test_main_names_no_fire_internals():
             assert node.id not in ('fire_poller', 'fire_alarm')
         if isinstance(node, ast.alias):
             assert (node.asname or node.name) not in ('fire_poller', 'fire_alarm')
-    assert from_fire_api == 1
+    assert from_fire_api == 0
 
 
 @pytest.mark.Trait("Task", "T503")

@@ -66,7 +66,8 @@ async def test_old_resolved_alert_is_anonymised_and_others_untouched(migrated_co
 @pytest.mark.Trait("Bug", "B48")
 @pytest.mark.asyncio
 async def test_cleanup_logs_count_only_and_anonymise_error_does_not_skip_location_prune(monkeypatch, caplog):
-    from backend import main
+    from backend.modules.fire import tasks as fire_tasks
+    from backend.modules.tracking import tasks as tracking_tasks
 
     calls = []
 
@@ -86,13 +87,6 @@ async def test_cleanup_logs_count_only_and_anonymise_error_does_not_skip_locatio
         def acquire(self):
             return _Acquire()
 
-    sleeps = []
-
-    async def fake_sleep(_s):
-        sleeps.append(_s)
-        if len(sleeps) > 1:
-            raise asyncio.CancelledError
-
     async def boom(_conn, _days):
         raise RuntimeError('anonymise exploded')
 
@@ -100,13 +94,14 @@ async def test_cleanup_logs_count_only_and_anonymise_error_does_not_skip_locatio
         calls.append('fire')
         return {'fire_hotspots': 0, 'fire_burnt_areas': 0}
 
-    monkeypatch.setattr(main, 'get_pool', lambda: _Pool())
-    monkeypatch.setattr(main, 'anonymise_alerts', boom)
-    monkeypatch.setattr(main, 'anonymise_hotspots', _no_hotspots)
-    monkeypatch.setattr(main, 'prune_fire_data', fire_prune)
-    monkeypatch.setattr(main.asyncio, 'sleep', fake_sleep)
-    with caplog.at_level('INFO'), pytest.raises(asyncio.CancelledError):
-        await main._cleanup_old_locations()
+    monkeypatch.setattr(tracking_tasks, 'get_pool', lambda: _Pool())
+    monkeypatch.setattr(fire_tasks, 'get_pool', lambda: _Pool())
+    monkeypatch.setattr(fire_tasks.repository, 'anonymise_alerts', boom)
+    monkeypatch.setattr(fire_tasks.repository, 'anonymise_hotspots', _no_hotspots)
+    monkeypatch.setattr(fire_tasks.repository, 'prune_fire_data', fire_prune)
+    with caplog.at_level('INFO'):
+        await tracking_tasks.cleanup_positions_once()
+        await fire_tasks.cleanup_fire_data_once()
     messages = [r.getMessage() for r in caplog.records]
     assert calls == ['location', 'fire']
     assert any(m == 'Fire alert anonymisation failed: anonymise exploded' for m in messages)
@@ -116,7 +111,8 @@ async def test_cleanup_logs_count_only_and_anonymise_error_does_not_skip_locatio
 @pytest.mark.Trait("Bug", "B48")
 @pytest.mark.asyncio
 async def test_cleanup_logs_the_anonymised_count(monkeypatch, caplog):
-    from backend import main
+    from backend.modules.fire import tasks as fire_tasks
+    from backend.modules.tracking import tasks as tracking_tasks
 
     class _Conn:
         async def fetchval(self, *a, **k):
@@ -142,27 +138,22 @@ async def test_cleanup_logs_the_anonymised_count(monkeypatch, caplog):
     async def fire_prune(_conn):
         return {'fire_hotspots': 0, 'fire_burnt_areas': 0}
 
-    sleeps = []
-
-    async def fake_sleep(_s):
-        sleeps.append(_s)
-        if len(sleeps) > 1:
-            raise asyncio.CancelledError
-
-    monkeypatch.setattr(main, 'get_pool', lambda: _Pool())
-    monkeypatch.setattr(main, 'anonymise_alerts', fake_anon)
-    monkeypatch.setattr(main, 'anonymise_hotspots', _no_hotspots)
-    monkeypatch.setattr(main, 'prune_fire_data', fire_prune)
-    monkeypatch.setattr(main.asyncio, 'sleep', fake_sleep)
-    with caplog.at_level('INFO'), pytest.raises(asyncio.CancelledError):
-        await main._cleanup_old_locations()
-    assert seen == [main.settings.location_retention_days]
+    monkeypatch.setattr(tracking_tasks, 'get_pool', lambda: _Pool())
+    monkeypatch.setattr(fire_tasks, 'get_pool', lambda: _Pool())
+    monkeypatch.setattr(fire_tasks.repository, 'anonymise_alerts', fake_anon)
+    monkeypatch.setattr(fire_tasks.repository, 'anonymise_hotspots', _no_hotspots)
+    monkeypatch.setattr(fire_tasks.repository, 'prune_fire_data', fire_prune)
+    with caplog.at_level('INFO'):
+        await tracking_tasks.cleanup_positions_once()
+        await fire_tasks.cleanup_fire_data_once()
+    assert seen == [tracking_tasks.settings.location_retention_days]
     assert any(r.getMessage() == 'Fire alert anonymisation: anonymised 4 resolved alerts' for r in caplog.records)
 
 
 def _b55_run(monkeypatch, caplog, *, alerts, hotspots):
     """Run one cleanup pass with the two anonymisation steps replaced; returns (log messages, calls)."""
-    from backend import main
+    from backend.modules.fire import tasks as fire_tasks
+    from backend.modules.tracking import tasks as tracking_tasks
 
     calls = []
 
@@ -182,26 +173,20 @@ def _b55_run(monkeypatch, caplog, *, alerts, hotspots):
         def acquire(self):
             return _Acquire()
 
-    sleeps = []
-
-    async def fake_sleep(_s):
-        sleeps.append(_s)
-        if len(sleeps) > 1:
-            raise asyncio.CancelledError
-
     async def fire_prune(_conn):
         calls.append('fire')
         return {'fire_hotspots': 0, 'fire_burnt_areas': 0, 'fire_suppression_zones': 0}
 
-    monkeypatch.setattr(main, 'get_pool', lambda: _Pool())
-    monkeypatch.setattr(main, 'anonymise_alerts', alerts)
-    monkeypatch.setattr(main, 'anonymise_hotspots', hotspots)
-    monkeypatch.setattr(main, 'prune_fire_data', fire_prune)
-    monkeypatch.setattr(main.asyncio, 'sleep', fake_sleep)
+    monkeypatch.setattr(tracking_tasks, 'get_pool', lambda: _Pool())
+    monkeypatch.setattr(fire_tasks, 'get_pool', lambda: _Pool())
+    monkeypatch.setattr(fire_tasks.repository, 'anonymise_alerts', alerts)
+    monkeypatch.setattr(fire_tasks.repository, 'anonymise_hotspots', hotspots)
+    monkeypatch.setattr(fire_tasks.repository, 'prune_fire_data', fire_prune)
 
     async def go():
-        with caplog.at_level('INFO'), pytest.raises(asyncio.CancelledError):
-            await main._cleanup_old_locations()
+        with caplog.at_level('INFO'):
+            await tracking_tasks.cleanup_positions_once()
+            await fire_tasks.cleanup_fire_data_once()
 
     return go, calls
 

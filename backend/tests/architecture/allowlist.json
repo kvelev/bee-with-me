@@ -3,12 +3,6 @@
   "sql_writes": [
     {
       "file": "main.py",
-      "table": "location_events",
-      "verb": "DELETE",
-      "until": 5
-    },
-    {
-      "file": "main.py",
       "table": "users",
       "verb": "INSERT",
       "until": 5

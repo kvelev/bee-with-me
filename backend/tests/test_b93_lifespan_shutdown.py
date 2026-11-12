@@ -28,7 +28,6 @@ def _quiet_startup(monkeypatch, module_task, calls):
     monkeypatch.setattr(main, 'init_pool', _noop)
     monkeypatch.setattr(main, '_run_migrations', _noop)
     monkeypatch.setattr(main, '_ensure_default_admin', _noop)
-    monkeypatch.setattr(main, '_cleanup_old_locations', _park)
     monkeypatch.setattr(main.manager, 'listen_notifications', _park)
     monkeypatch.setattr(main, 'MODULES', (ModuleManifest(name='probe', tasks=(module_task,)),))
     monkeypatch.setattr(main, 'close_pool', _close)
