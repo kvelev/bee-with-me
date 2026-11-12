@@ -7,7 +7,9 @@ import { getSerialStatus } from '../../api'
 export const useGatewayStore = defineStore('gateway', () => {
   const status = ref(null)
 
+  // An answer without a boolean `connected` (an empty `{}`, a null) is not a status: the pill keeps what it shows (B142).
   function applyStatus(data) {
+    if (!data || typeof data !== 'object' || typeof data.connected !== 'boolean') return
     const { type, ...s } = data
     status.value = s
   }

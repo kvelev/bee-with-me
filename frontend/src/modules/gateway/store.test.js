@@ -48,4 +48,15 @@ describe('gateway store', () => {
     await store.fetchStatus()
     expect(store.status).toEqual({ connected: false, port: 'COM3' })
   })
+
+  it('an empty answer or a message without connected leaves the status [B142]', async () => {
+    const store = useGatewayStore()
+    getSerialStatus.mockResolvedValue({})
+    await store.fetchStatus()
+    expect(store.status).toBeNull()
+    store.applyStatus({ connected: true, port: 'COM3', frames_received: 2 })
+    await store.fetchStatus()
+    store.applyStatus({ type: 'serial_status' })
+    expect(store.status).toEqual({ connected: true, port: 'COM3', frames_received: 2 })
+  })
 })
