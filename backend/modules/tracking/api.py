@@ -14,6 +14,7 @@ __all__ = [
     'is_person_active', 'insert_simulated_position', 'person_of', 'groups_of', 'publish_position',
     'last_fix', 'previous_sos_flag', 'insert_position', 'insert_heartbeat',
     'forget_person', 'delete_device_positions', 'delete_device_heartbeats', 'delete_positions_of_devices',
+    'delete_positions_older_than',
 ]
 
 
@@ -72,3 +73,7 @@ async def delete_device_heartbeats(conn, device_id):
 
 async def delete_positions_of_devices(conn, device_ids):
     return await repository.delete_positions_of_devices(conn, device_ids)
+
+
+async def delete_positions_older_than(conn, days):
+    return await repository.delete_positions_older_than(conn, days)

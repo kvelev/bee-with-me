@@ -195,7 +195,8 @@ async def test_cancelled_error_from_source_propagates(pool, migrated_conn, scrat
 
 @pytest.mark.Trait("Bug", "B26")
 async def test_fire_prune_failure_has_own_message_and_location_prune_ran(monkeypatch, caplog):
-    from backend import main
+    from backend.modules.fire import tasks as fire_tasks
+    from backend.modules.tracking import tasks as tracking_tasks
 
     calls = []
 
@@ -215,26 +216,20 @@ async def test_fire_prune_failure_has_own_message_and_location_prune_ran(monkeyp
         def acquire(self):
             return _Acquire()
 
-    sleeps = []
-
-    async def fake_sleep(_s):
-        sleeps.append(_s)
-        if len(sleeps) > 1:
-            raise asyncio.CancelledError
-
     async def boom(_conn):
         raise RuntimeError('fire prune exploded')
 
-    monkeypatch.setattr(main, 'get_pool', lambda: _Pool())
+    monkeypatch.setattr(tracking_tasks, 'get_pool', lambda: _Pool())
+    monkeypatch.setattr(fire_tasks, 'get_pool', lambda: _Pool())
     async def no_anonymise(_conn, _days):
         return 0
 
-    monkeypatch.setattr(main, 'anonymise_alerts', no_anonymise)
-    monkeypatch.setattr(main, 'anonymise_hotspots', _no_hotspots)
-    monkeypatch.setattr(main, 'prune_fire_data', boom)
-    monkeypatch.setattr(main.asyncio, 'sleep', fake_sleep)
-    with caplog.at_level('INFO'), pytest.raises(asyncio.CancelledError):
-        await main._cleanup_old_locations()
+    monkeypatch.setattr(fire_tasks.repository, 'anonymise_alerts', no_anonymise)
+    monkeypatch.setattr(fire_tasks.repository, 'anonymise_hotspots', _no_hotspots)
+    monkeypatch.setattr(fire_tasks.repository, 'prune_fire_data', boom)
+    with caplog.at_level('INFO'):
+        await tracking_tasks.cleanup_positions_once()
+        await fire_tasks.cleanup_fire_data_once()
     messages = [r.getMessage() for r in caplog.records]
     assert calls == ['location']
     assert any(m.startswith('Location cleanup: removed 3 events') for m in messages)

@@ -21,7 +21,6 @@ from .ws import manager
 from .core.modules import include_module_routers, recheck_module_routers, start_module_tasks, stop_module_tasks
 from .modules import MODULES
 from .core.request_id import RequestIdLogFilter, RequestIdMiddleware, make_log_formatter
-from .modules.fire.api import anonymise_alerts, anonymise_hotspots, prune_fire_data
 
 _log_handler = logging.StreamHandler()
 _log_handler.setFormatter(make_log_formatter())
@@ -38,46 +37,6 @@ def _log_task_failure(task: asyncio.Task, name: str) -> None:
     exc = task.exception()
     if exc is not None:
         logger.error('%s task crashed: %s', name, exc, exc_info=exc)
-
-
-async def _cleanup_old_locations() -> None:
-    first_pass = True
-    while True:
-        # Run once shortly after boot, then daily. A field laptop is powered down between
-        # operations, so a task that sleeps 24h before its first pass never runs at all.
-        await asyncio.sleep(30 if first_pass else 86_400)
-        first_pass = False
-        try:
-            async with get_pool().acquire() as conn:
-                deleted = await conn.fetchval(
-                    "WITH d AS (DELETE FROM location_events"
-                    " WHERE recorded_at < NOW() - ($1 || ' days')::interval RETURNING 1)"
-                    " SELECT COUNT(*) FROM d",
-                    str(settings.location_retention_days),
-                )
-                logger.info('Location cleanup: removed %d events older than %d days',
-                            deleted or 0, settings.location_retention_days)
-        except Exception as exc:
-            logger.warning('Location cleanup failed: %s', exc)
-        try:
-            async with get_pool().acquire() as conn:
-                anonymised = await anonymise_alerts(conn, settings.location_retention_days)
-                logger.info('Fire alert anonymisation: anonymised %d resolved alerts', anonymised)
-        except Exception as exc:
-            logger.warning('Fire alert anonymisation failed: %s', exc)
-        try:
-            async with get_pool().acquire() as conn:
-                anonymised = await anonymise_hotspots(conn, settings.location_retention_days)
-                logger.info('Fire hotspot anonymisation: anonymised %d hotspots', anonymised or 0)
-        except Exception as exc:
-            logger.warning('Fire hotspot anonymisation failed: %s', exc)
-        try:
-            async with get_pool().acquire() as conn:
-                pruned = await prune_fire_data(conn)
-                logger.info('Fire data cleanup: removed %d hotspots, %d burnt areas, %d disabled zones',
-                            pruned['fire_hotspots'], pruned['fire_burnt_areas'], pruned['fire_suppression_zones'])
-        except Exception as exc:
-            logger.warning('Fire data prune failed: %s', exc)
 
 
 def _warn_insecure_defaults() -> None:
@@ -173,8 +132,7 @@ async def lifespan(app: FastAPI):
     await _run_migrations()
     await _ensure_default_admin()
 
-    notify_task  = asyncio.create_task(manager.listen_notifications())
-    cleanup_task = asyncio.create_task(_cleanup_old_locations())
+    notify_task = asyncio.create_task(manager.listen_notifications())
     module_tasks = start_module_tasks(MODULES, _log_task_failure)
 
     # Serial (LoRaWAN) reader — runs only when a real port is available
@@ -201,7 +159,6 @@ async def lifespan(app: FastAPI):
 
     try:
         notify_task.cancel()
-        cleanup_task.cancel()
         if serial_task:
             serial_task.cancel()
         if hid_task:

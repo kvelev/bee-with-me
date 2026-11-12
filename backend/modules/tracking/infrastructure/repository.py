@@ -205,3 +205,14 @@ async def insert_heartbeat(conn: asyncpg.Connection, device_id, msg_id, battery_
         'INSERT INTO repeater_events (device_id, msg_id, battery_voltage) VALUES ($1, $2, $3)',
         device_id, msg_id, battery_voltage,
     )
+
+
+async def delete_positions_older_than(conn: asyncpg.Connection, days: int) -> int:
+    """Retention (DP-03): delete the positions older than `days`; returns how many went."""
+    deleted = await conn.fetchval(
+        "WITH d AS (DELETE FROM location_events"
+        " WHERE recorded_at < NOW() - ($1 || ' days')::interval RETURNING 1)"
+        " SELECT COUNT(*) FROM d",
+        str(days),
+    )
+    return deleted or 0
