@@ -3,7 +3,7 @@
   <div v-if="store.status" class="serial-status" :class="store.status.connected ? 'serial-ok' : 'serial-off'">
     <span class="serial-dot" />
     <span v-if="store.status.connected">
-      {{ t('map.serialConnected') }} · {{ store.status.port }} · {{ store.status.frames_received }} frames
+      {{ t('map.serialConnected') }}<template v-if="store.status.port"> · {{ store.status.port }}</template> · {{ t('gateway.frames', { n: store.status.frames_received }) }}
     </span>
     <span v-else>{{ t('map.serialDisconnected') }} · {{ store.status.port }}</span>
   </div>
