@@ -89,6 +89,7 @@ describe('MapView: popup closes with its layer', () => {
     const w = await mountMap()
     useFireStore().layers = { burnt: false, hotspots: true, zones: false }
     await openPopup('hotspot')
+    await vi.waitFor(() => expect(w.find('[data-action="create-zone"]').exists()).toBe(true))
     expect(w.find('[data-action="create-zone"]').exists()).toBe(true)
     await w.get('[data-layer="hotspots"]').trigger('click')
     await flushPromises()
@@ -101,6 +102,7 @@ describe('MapView: popup closes with its layer', () => {
     const w = await mountMap()
     useFireStore().layers = { burnt: true, hotspots: true, zones: false }
     await openPopup('hotspot')
+    await vi.waitFor(() => expect(w.find('[data-action="create-zone"]').exists()).toBe(true))
     await w.get('[data-layer="burnt"]').trigger('click')
     await flushPromises()
     expect(w.find('[data-action="create-zone"]').exists()).toBe(true)
