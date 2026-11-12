@@ -45,7 +45,8 @@ export default {
     { id: 'fire-map', host: 'map', order: 20, component: FireMapPanel },
     { id: 'fire-zones-note', host: 'map-toolbar', order: 10, component: FireZonesNote },
     // The field-report and zone dialogs (state in useFireUi); they open from the popup, the menu and the tracker row.
-    // retryKey: a dialog whose chunk failed to load is tried again the next time one is opened.
+    // retryKey: the panel boundary opens again the next time a dialog opens. A form chunk that failed to load is NOT
+    // fetched again (Vue keeps the rejected loader promise): that needs a page reload.
     { id: 'fire-dialogs', host: 'map', order: 30, component: FireDialogs, retryKey: () => useFireUi().dialog },
     // The suppression-zones section of the Settings page.
     { id: 'fire-zones-settings', host: 'settings', order: 10, component: FireZonesSettings },
