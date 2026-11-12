@@ -69,11 +69,11 @@
             </div>
           </div>
         </div>
-        <div v-if="selectedDeviceId === pos.device_id && actionsFor(pos).length" class="tracker-actions">
+        <div v-if="selectedDeviceId === pos.device_id && selectedActions.length" class="tracker-actions">
           <button
-            v-for="action in actionsFor(pos)" :key="action.id"
+            v-for="action in selectedActions" :key="action.id"
             type="button" class="tracker-report" :data-testid="action.testId"
-            @click="action.onSelect(subjectOf(pos))"
+            @click="runAction(action, pos)"
           >
             {{ t(action.labelKey) }}
           </button>
@@ -107,11 +107,11 @@
             {{ group.leader.battery_voltage?.toFixed(1) ?? '—' }}V
           </div>
         </div>
-        <div v-if="group.leader && selectedDeviceId === group.leader.device_id && actionsFor(group.leader).length" class="tracker-actions">
+        <div v-if="group.leader && selectedDeviceId === group.leader.device_id && selectedActions.length" class="tracker-actions">
           <button
-            v-for="action in actionsFor(group.leader)" :key="action.id"
+            v-for="action in selectedActions" :key="action.id"
             type="button" class="tracker-report" :data-testid="action.testId"
-            @click="action.onSelect(subjectOf(group.leader))"
+            @click="runAction(action, group.leader)"
           >
             {{ t(action.labelKey) }}
           </button>
@@ -127,10 +127,11 @@
 // The tracker list and the individuals/teams switch. The map view owns the tick and the reset (see ui.js); this panel
 // only reads the shared state. What it needs of the map comes through `context`: `facade` (map, refreshMarkers),
 // `mapKit` (fromLonLat), `hasSOS` (a ref) and `rowActions` (the actions the modules offer for a selected row).
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useI18n } from 'vue-i18n'
 import { ageMs, contactAt, formatAge, freshnessOf } from '../lib/freshness.js'
+import { describeError } from '../../../platform/describeError.js'
 import { useTrackingStore } from '../store.js'
 import { useTrackerUi } from '../ui.js'
 
@@ -172,10 +173,48 @@ function subjectOf(pos) {
   }
 }
 
-function actionsFor(pos) {
-  const subject = subjectOf(pos)
-  return (props.context?.rowActions ?? []).filter((a) => typeof a.isAvailable !== 'function' || a.isAvailable(subject))
+// The panel sits in a PanelBoundary that hides the whole panel on any captured error, handlers included. One module's
+// action must not take the tracker list away from the operator: errors of an action are logged here, once per line.
+function logActionError(action, error) {
+  console.error(`action ${action.id} failed`, describeError(error))
 }
+
+const availabilityLogged = new Set()
+function isActionAvailable(action, subject) {
+  if (typeof action.isAvailable !== 'function') return true
+  try {
+    return !!action.isAvailable(subject)
+  } catch (error) {
+    if (!availabilityLogged.has(action.id)) {   // evaluated on every tick: log it once
+      availabilityLogged.add(action.id)
+      logActionError(action, error)
+    }
+    return false
+  }
+}
+
+function runAction(action, pos) {
+  try {
+    const result = action.onSelect(subjectOf(pos))
+    if (result && typeof result.then === 'function') result.then(undefined, (error) => logActionError(action, error))
+  } catch (error) {
+    logActionError(action, error)
+  }
+}
+
+// Actions are offered for the selected row only, so they are worked out once per render, not per template use.
+// nowTick is read on purpose: the availability rule may depend on the age of the position.
+const selectedActions = computed(() => {
+  void nowTick.value
+  const id = selectedDeviceId.value
+  if (!id) return []
+  const pos = viewMode.value === 'individuals'
+    ? displayList.value.find((p) => p.device_id === id)
+    : groupsWithLeaders.value.map((g) => g.leader).find((l) => l?.device_id === id)
+  if (!pos) return []
+  const subject = subjectOf(pos)
+  return (props.context?.rowActions ?? []).filter((a) => isActionAvailable(a, subject))
+})
 
 // A marker click selects the row; bring it into view.
 watch(selectedDeviceId, async (id) => {

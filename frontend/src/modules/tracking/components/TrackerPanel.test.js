@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia, storeToRefs } from 'pinia'
 import { computed, ref } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
+import PanelHost from '../../../platform/PanelHost.vue'
 import { i18n } from '../../../i18n/index.js'
 import { useTrackingStore } from '../store.js'
 import { useTrackerUi } from '../ui.js'
@@ -119,5 +120,68 @@ describe('TrackerPanel', () => {
     expect(w.find('.silence-notice').exists()).toBe(true)
     expect(w.find('.silence-notice').classes()).not.toContain('sos-pulse')
     w.unmount()
+  })
+
+  describe('row actions of the modules', () => {
+    const inHost = (context) => mount(PanelHost, {
+      props: { panels: [{ id: 'tracker', component: TrackerPanel }], context },
+      global: { plugins: [pinia, i18n] },
+    })
+    const action = (over) => ({ id: 'bad', target: 'tracker-row', order: 1, labelKey: 'fire.report.atPosition', testId: 'act', onSelect() {}, ...over })
+
+    it('an action that throws does not hide the tracker list, it is logged once with its id [B130]', async () => {
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+      setPositions([pos('a'), pos('b')])
+      const w = inHost(ctx({ rowActions: [action({ onSelect() { throw new Error('boom') } })] }))
+      await w.get('.tracker-row[data-device-id="a"]').trigger('click')
+      await w.get('[data-testid="act"]').trigger('click')
+      await flushPromises()
+      expect(w.findAll('.tracker-row')).toHaveLength(2)
+      const mine = err.mock.calls.filter((c) => c[0] === 'action bad failed')
+      expect(mine).toHaveLength(1)
+      expect(mine[0][1]).toBe('boom')
+      expect(err.mock.calls.some((c) => String(c[0]).startsWith('panel '))).toBe(false)
+      w.unmount(); err.mockRestore()
+    })
+
+    it('an action that rejects does not hide the tracker list [B130]', async () => {
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+      setPositions([pos('a'), pos('b')])
+      const w = inHost(ctx({ rowActions: [action({ onSelect: () => Promise.reject(new Error('nope')) })] }))
+      await w.get('.tracker-row[data-device-id="a"]').trigger('click')
+      await w.get('[data-testid="act"]').trigger('click')
+      await flushPromises()
+      expect(w.findAll('.tracker-row')).toHaveLength(2)
+      expect(err.mock.calls.filter((c) => c[0] === 'action bad failed' && c[1] === 'nope')).toHaveLength(1)
+      expect(err.mock.calls.some((c) => String(c[0]).startsWith('panel '))).toBe(false)
+      w.unmount(); err.mockRestore()
+    })
+
+    it('an isAvailable that throws makes the action unavailable and keeps the panel [B130]', async () => {
+      const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+      setPositions([pos('a'), pos('b')])
+      const w = inHost(ctx({ rowActions: [action({ isAvailable() { throw new Error('bad rule') } })] }))
+      await w.get('.tracker-row[data-device-id="a"]').trigger('click')
+      await flushPromises()
+      expect(w.findAll('.tracker-row')).toHaveLength(2)
+      expect(w.find('[data-testid="act"]').exists()).toBe(false)
+      expect(err.mock.calls.some((c) => c[0] === 'action bad failed')).toBe(true)
+      expect(err.mock.calls.some((c) => String(c[0]).startsWith('panel '))).toBe(false)
+      w.unmount(); err.mockRestore()
+    })
+
+    it('isAvailable runs once per action for one render of the selected row [B131]', async () => {
+      setPositions([pos('a'), pos('b')])
+      const isAvailable = vi.fn(() => true)
+      const w = show(ctx({ rowActions: [action({ isAvailable })] }))
+      await w.get('.tracker-row[data-device-id="a"]').trigger('click')
+      await flushPromises()
+      isAvailable.mockClear()
+      ui.nowTick += 1000          // one more render of the selected row
+      await flushPromises()
+      expect(w.find('[data-testid="act"]').exists()).toBe(true)
+      expect(isAvailable).toHaveBeenCalledTimes(1)
+      w.unmount()
+    })
   })
 })
