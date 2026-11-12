@@ -2,8 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const loc = {
   setConnected: vi.fn(), fetchLive: vi.fn(async () => {}), fetchTrail: vi.fn(async () => {}),
-  applyLocationUpdate: vi.fn(), applySerialStatus: vi.fn(),
+  applyLocationUpdate: vi.fn(),
 }
+const gateway = { applyStatus: vi.fn(), fetchStatus: vi.fn(async () => {}) }
 const sos = { fetchSOS: vi.fn(async () => {}), applySOSAlert: vi.fn() }
 const fire = {
   retryFailed: vi.fn(async () => {}), refreshVisible: vi.fn(async () => {}), fetchOpenAlerts: vi.fn(async () => {}),
@@ -11,6 +12,7 @@ const fire = {
   applyFireAlertRepeat: vi.fn(async () => {}), applyFireAlertUpdated: vi.fn(),
 }
 vi.mock('../modules/tracking/store.js', () => ({ useTrackingStore: () => loc }))
+vi.mock('../modules/gateway/store.js', () => ({ useGatewayStore: () => gateway }))
 vi.mock('../modules/sos/store.js', () => ({ useSosStore: () => sos }))
 vi.mock('../modules/fire/store.js', () => ({ useFireStore: () => fire }))
 vi.mock('vue', async (orig) => ({ ...(await orig()), onUnmounted: vi.fn() }))
@@ -20,7 +22,7 @@ import { useWebSocket } from './useWebSocket'
 const ALL = [
   ['location_update', loc, 'applyLocationUpdate'],
   ['sos_alert', sos, 'applySOSAlert'],
-  ['serial_status', loc, 'applySerialStatus'],
+  ['serial_status', gateway, 'applyStatus'],
   ['fire_data_updated', fire, 'applyFireDataUpdated'],
   ['fire_zones_updated', fire, 'applyFireZonesUpdated'],
   ['fire_alert', fire, 'applyFireAlert'],

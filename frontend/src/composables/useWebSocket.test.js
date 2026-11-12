@@ -4,6 +4,8 @@ const loc  = { setConnected: vi.fn(), fetchLive: vi.fn(async () => {}), fetchTra
 const sos  = { fetchSOS: vi.fn(async () => {}), applySOSAlert: vi.fn() }
 const fire = { retryFailed: vi.fn(async () => {}), refreshVisible: vi.fn(async () => {}), applyFireDataUpdated: vi.fn(async () => {}),
   applyFireZonesUpdated: vi.fn(async () => {}), fetchOpenAlerts: vi.fn(async () => {}), applyFireAlert: vi.fn(), applyFireAlertRepeat: vi.fn(async () => {}), applyFireAlertUpdated: vi.fn() }
+const gateway = { applyStatus: vi.fn(), fetchStatus: vi.fn(async () => {}) }
+vi.mock('../modules/gateway/store.js', () => ({ useGatewayStore: () => gateway }))
 vi.mock('../modules/tracking/store.js', () => ({ useTrackingStore: () => loc }))
 vi.mock('../modules/sos/store.js', () => ({ useSosStore: () => sos }))
 vi.mock('../modules/fire/store.js', () => ({ useFireStore: () => fire }))

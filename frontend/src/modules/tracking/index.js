@@ -16,7 +16,6 @@ export default {
   banners: [],
   liveHandlers: {
     location_update: (msg) => useTrackingStore().applyLocationUpdate(msg),
-    serial_status: (msg) => useTrackingStore().applySerialStatus(msg),
   },
   live: {
     // One entry: a failure of one fetch ends the batch, the next tick tries again.

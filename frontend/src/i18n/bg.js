@@ -29,8 +29,6 @@ const core = {
     silenceLost:   '{n} над 30 мин',
     feedLost:      'Връзката на живо е прекъсната — данни към {time}, свързване…',
     searchRank:         'Търсене по звание…',
-    serialConnected:    'Gateway свързан',
-    serialDisconnected: 'Gateway изключен',
     mgrsGrid:      'MGRS Мрежа',
     trail:         'Маршрут',
     trailNumbers:  'Проследяване',

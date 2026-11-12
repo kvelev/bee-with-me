@@ -16,15 +16,6 @@
       <span v-if="latLonOn">{{ cursorCoords.lat.toFixed(5) }}, {{ cursorCoords.lon.toFixed(5) }}</span>
     </div>
 
-    <!-- Serial device status (bottom-left, above basemap controls) -->
-    <div v-if="store.serialStatus" class="serial-status" :class="store.serialStatus.connected ? 'serial-ok' : 'serial-off'">
-      <span class="serial-dot" />
-      <span v-if="store.serialStatus.connected">
-        {{ t('map.serialConnected') }} · {{ store.serialStatus.port }} · {{ store.serialStatus.frames_received }} frames
-      </span>
-      <span v-else>{{ t('map.serialDisconnected') }} · {{ store.serialStatus.port }}</span>
-    </div>
-
     <!-- Basemap + grid + trail controls (bottom-left) -->
     <div class="basemap-switcher">
       <button
@@ -235,7 +226,7 @@ import { useAuthStore } from '../stores/auth'
 import { useSettingsStore } from '../stores/settings'
 import { useWebSocket } from '../composables/useWebSocket'
 import { useMap, BASEMAPS } from '../composables/useMap'
-import { getDevices, getGroupsWithMembers, getSerialStatus, setDeviceLocation } from '../api'
+import { getDevices, getGroupsWithMembers, setDeviceLocation } from '../api'
 import { ageMs, contactAt, formatAge, freshnessOf, byUrgency } from '../lib/freshness'
 import { unByKey } from 'ol/Observable'
 import MapPopupHost from '../platform/map-shell/MapPopupHost.vue'
@@ -516,9 +507,6 @@ onMounted(async () => {
     groupsMap.value = Object.fromEntries(groups.map(g => [g.id, g]))
   } catch { /* backend not up yet: tooltips show no group list */ }
   if (unmounted) return
-  // Seed serial status; WS pushes updates after this
-  try { store.applySerialStatus(await getSerialStatus()) } catch { /* port not configured */ }
-  if (unmounted) return
 
   window.addEventListener('offline-map-changed', reloadOfflineBasemap)
   
@@ -660,20 +648,6 @@ function batClass(v) {
 .map-layout { flex: 1; display: flex; position: relative; overflow: hidden; }
 .map-container { flex: 1; height: 100%; }
 
-
-.serial-status {
-  position: absolute; top: 12px; right: 12px; z-index: 50;
-  display: flex; align-items: center; gap: 6px;
-  background: var(--bg-panel); border: 1px solid var(--border);
-  border-radius: 4px; padding: 4px 10px; font-size: 11px; color: var(--text-muted);
-}
-.serial-ok  { border-color: var(--success); color: var(--success); }
-.serial-off { border-color: var(--danger);  color: var(--danger); }
-.serial-dot {
-  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
-  background: currentColor;
-}
-.serial-ok .serial-dot { animation: sos-pulse-border none; box-shadow: 0 0 4px currentColor; }
 
 .basemap-switcher {
   position: absolute; bottom: 38px; left: 12px; z-index: 50;

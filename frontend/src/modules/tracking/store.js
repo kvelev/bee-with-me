@@ -50,7 +50,6 @@ export const useTrackingStore = defineStore('tracking', () => {
   // Keyed by device_id for O(1) updates from WebSocket
   const positions    = ref(snapshot?.positions ?? {})
   const trails       = ref({})
-  const serialStatus = ref(null)
 
   // Connection/freshness bookkeeping for the "showing cached data" banner
   const wsConnected  = ref(false)
@@ -215,16 +214,11 @@ export const useTrackingStore = defineStore('tracking', () => {
     ]
   }
 
-  function applySerialStatus(data) {
-    const { type, ...s } = data
-    serialStatus.value = s
-  }
-
   return {
-    positions, trails, serialStatus, positionList,
+    positions, trails, positionList,
     wsConnected, lastSyncAt, fromSnapshot, silentList, lostList,
     fetchLive, fetchTrail, setConnected,
-    applyLocationUpdate, applySerialStatus,
+    applyLocationUpdate,
     removePosition, resetTrail, addUpdateHook, patchPosition,
   }
 })

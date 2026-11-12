@@ -19,7 +19,7 @@ describe('tracking module manifest', () => {
     expect(tracking.name).toBe('tracking')
     expect(tracking.depends).toEqual([])
     expect(checkModules(MODULES)).toEqual([])
-    expect(Object.keys(tracking.liveHandlers).sort()).toEqual(['location_update', 'serial_status'])
+    expect(Object.keys(tracking.liveHandlers).sort()).toEqual(['location_update'])
     expect(Object.keys(sos.liveHandlers)).toEqual(['sos_alert'])
   })
 
