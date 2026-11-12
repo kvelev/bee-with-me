@@ -94,7 +94,6 @@ describe('MapView: B66 start before the backend is up', () => {
     expect(ws.connect).toHaveBeenCalledWith({ catchUp: true })
     // the later mount steps all still ran
     expect(api.getGroupsWithMembers).toHaveBeenCalledTimes(1)
-    expect(api.getSerialStatus).toHaveBeenCalledTimes(1)
     expect(hooks.moveend).toBe(1)
     expect(api.getSettings).toHaveBeenCalled()
     expect(tickStarted()).toBe(true)
@@ -153,11 +152,10 @@ describe('MapView: B66 start before the backend is up', () => {
     w.unmount()
   })
 
-  it('a failing groups fetch does not stop serial status, moveend, settings or the tick [B66]', async () => {
+  it('a failing groups fetch does not stop moveend, settings or the tick [B66]', async () => {
     api.getGroupsWithMembers.mockRejectedValue(down())
     const w = await mountMap()
     expect(ws.connect).toHaveBeenCalledTimes(1)
-    expect(api.getSerialStatus).toHaveBeenCalledTimes(1)
     expect(hooks.moveend).toBe(1)
     expect(api.getSettings).toHaveBeenCalled()
     expect(tickStarted()).toBe(true)

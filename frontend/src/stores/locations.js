@@ -1,4 +1,5 @@
 import { defineStore, storeToRefs } from 'pinia'
+import { useGatewayStore } from '../modules/gateway/index.js'
 import { useSosStore } from '../modules/sos/index.js'
 import { useTrackingStore } from '../modules/tracking/index.js'
 
@@ -8,9 +9,11 @@ import { useTrackingStore } from '../modules/tracking/index.js'
 export const useLocationsStore = defineStore('locations', () => {
   const tracking = useTrackingStore()
   const sos = useSosStore()
+  const gateway = useGatewayStore()
   const {
-    positions, trails, serialStatus, positionList, wsConnected, lastSyncAt, fromSnapshot, silentList, lostList,
+    positions, trails, positionList, wsConnected, lastSyncAt, fromSnapshot, silentList, lostList,
   } = storeToRefs(tracking)
+  const { status: serialStatus } = storeToRefs(gateway)
   const { sosAlerts, sosNotifications, hasSOS } = storeToRefs(sos)
 
   function removePosition(deviceId) {
@@ -24,7 +27,7 @@ export const useLocationsStore = defineStore('locations', () => {
     fetchLive: tracking.fetchLive, fetchSOS: sos.fetchSOS, fetchTrail: tracking.fetchTrail,
     setConnected: tracking.setConnected,
     applyLocationUpdate: tracking.applyLocationUpdate, applySOSAlert: sos.applySOSAlert,
-    applySerialStatus: tracking.applySerialStatus, resolveSOS: sos.resolveSOS,
+    applySerialStatus: gateway.applyStatus, resolveSOS: sos.resolveSOS,
     dismissSOSNotification: sos.dismissSOSNotification,
     removePosition, resetTrail: tracking.resetTrail,
   }

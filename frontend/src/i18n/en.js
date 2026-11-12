@@ -28,8 +28,6 @@ const core = {
     silenceLost:   '{n} over 30 min',
     feedLost:      'Live feed lost — showing data as of {time}, reconnecting…',
     searchRank:         'Search by rank…',
-    serialConnected:    'Gateway connected',
-    serialDisconnected: 'Gateway disconnected',
     mgrsGrid:      'MGRS Grid',
     latLon:        'Lat/Lon',
     trail:         'Trail',
