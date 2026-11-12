@@ -105,4 +105,23 @@ describe('installErrorHandlers', () => {
     expect(consoleError.mock.calls.some((c) => String(c[0]).startsWith('panel bad failed'))).toBe(true)
     w.unmount()
   })
+
+  it('an uncaught error event of the window is logged as a string and its default is prevented [B147]', () => {
+    const log = vi.fn()
+    const target = new EventTarget()
+    const off = installErrorHandlers({ config: {} }, { target, log })
+    const err = Object.assign(new Error('script broke'), { config: { headers: { Authorization: 'Bearer secret' } } })
+    const ev = Object.assign(new Event('error'), { error: err, message: 'Uncaught Error: script broke', preventDefault: vi.fn() })
+    target.dispatchEvent(ev)
+    expect(log).toHaveBeenCalledTimes(1)
+    expect(log.mock.calls[0][0]).toBe('[app] uncaught error: script broke')
+    expect(log.mock.calls[0][0]).not.toContain('secret')
+    expect(ev.preventDefault).toHaveBeenCalledTimes(1)
+    // an error event without an error object (a cross-origin script) is described by its message
+    target.dispatchEvent(Object.assign(new Event('error'), { error: null, message: 'Script error.', preventDefault: vi.fn() }))
+    expect(log.mock.calls[1][0]).toBe('[app] uncaught error: Script error.')
+    off()
+    target.dispatchEvent(Object.assign(new Event('error'), { error: err, preventDefault: vi.fn() }))
+    expect(log).toHaveBeenCalledTimes(2)
+  })
 })

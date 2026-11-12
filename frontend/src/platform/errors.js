@@ -26,7 +26,21 @@ export function installErrorHandlers(app, { target = window, log = console.error
       // nothing to do: the line above is already logged
     }
   }
+  // An error thrown outside Vue (a timer, an OpenLayers callback). A cross-origin script has no error object, only a
+  // message (B147). Resource load errors do not bubble to the window, so this listener never sees them.
+  const onError = (event) => {
+    log(safeLine(() => `[app] uncaught error: ${describeError(event.error ?? event.message)}`))
+    try {
+      event.preventDefault()
+    } catch {
+      // nothing to do: the line above is already logged
+    }
+  }
   target.addEventListener('unhandledrejection', onRejection)
+  target.addEventListener('error', onError)
 
-  return () => target.removeEventListener('unhandledrejection', onRejection)
+  return () => {
+    target.removeEventListener('unhandledrejection', onRejection)
+    target.removeEventListener('error', onError)
+  }
 }
