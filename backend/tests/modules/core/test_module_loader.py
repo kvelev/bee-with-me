@@ -635,3 +635,30 @@ def test_a_route_replaced_in_place_with_the_same_key_is_refused_at_start():
     with pytest.raises(ValueError, match='module routers changed after loading') as err:
         recheck_module_routers(app)
     assert 'changed GET /api/x/first' in str(err.value)
+
+
+@pytest.mark.Trait("Task", "B153")
+def test_a_nested_websocket_route_passes_the_recheck_and_a_replaced_one_is_refused():
+    from fastapi.routing import APIWebSocketRoute
+
+    from backend.core.modules import recheck_module_routers
+    sub = APIRouter()
+
+    @sub.websocket('/ws')
+    async def _ws(websocket):
+        await websocket.close()
+
+    router = APIRouter()
+    router.include_router(sub, prefix='/api/x')
+    app = _loaded(router)
+    # FastAPI builds the served WebSocket wrapper again on every walk: the identity is the declared route
+    assert recheck_module_routers(app) is None
+    assert recheck_module_routers(app) is None
+
+    async def _other(websocket):
+        await websocket.close()
+
+    sub.routes[0] = APIWebSocketRoute('/ws', _other)
+    with pytest.raises(ValueError, match='module routers changed after loading') as err:
+        recheck_module_routers(app)
+    assert 'changed WEBSOCKET /api/x/ws' in str(err.value)

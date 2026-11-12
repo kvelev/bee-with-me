@@ -111,7 +111,8 @@ def _leaf_routes(routes: Iterable, depth: int = 0):
             continue
         real = getattr(route, 'starlette_route', None)
         if real is not None:                       # an effective context wrapping a non-API route
-            yield depth, type(real), _route_keys(real), real
+            # FastAPI builds `starlette_route` again on every walk: the identity is the route the module declared (B153)
+            yield depth, type(real), _route_keys(real), getattr(route, 'original_route', real)
         else:
             original = getattr(route, 'original_route', route)
             yield depth, type(original), _route_keys(route), original
