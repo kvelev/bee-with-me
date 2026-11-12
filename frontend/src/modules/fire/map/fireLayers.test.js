@@ -245,8 +245,8 @@ describe('the fire map entry belongs to the fire module', () => {
     expect(facadeSource).not.toMatch(/fireLayerList/)
   })
 
-  it('MAP_MODULES lists fire and settings [T506]', () => {
-    expect(MAP_MODULES.map((e) => e.name)).toEqual(['fire', 'settings'])
+  it('MAP_MODULES lists fire, settings and tracking [T506]', () => {
+    expect(MAP_MODULES.map((e) => e.name)).toEqual(['fire', 'settings', 'tracking'])
     expect(MAP_MODULES[0]).toBe(fireMap)
   })
 
