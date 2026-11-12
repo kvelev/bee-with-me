@@ -9,6 +9,17 @@ afterEach(() => { vi.restoreAllMocks() })
 
 const rejection = (reason) => ({ reason, preventDefault: vi.fn() })
 
+// The call must be a statement of its own line, before the mount, outside any comment.
+function installsBeforeMount(source) {
+  const text = source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .map((line) => line.replace(/\/\/.*$/, ''))
+  const install = text.findIndex((line) => /^\s*installErrorHandlers\(app\)\s*;?\s*$/.test(line))
+  const mount = text.findIndex((line) => /^\s*app\.mount\('#app'\)\s*;?\s*$/.test(line))
+  return install > -1 && mount > -1 && install < mount
+}
+
 describe('installErrorHandlers', () => {
   it('a render error of a component outside any boundary is logged as one string [T634]', async () => {
     const log = vi.fn()
@@ -86,10 +97,16 @@ describe('installErrorHandlers', () => {
   })
 
   it('main.js installs the handlers before it mounts [T634]', () => {
-    const text = mainSource
-    const install = text.indexOf('installErrorHandlers(app)')
-    expect(install).toBeGreaterThan(-1)
-    expect(install).toBeLessThan(text.indexOf("app.mount('#app')"))
+    expect(installsBeforeMount(mainSource)).toBe(true)
+  })
+
+  it('a call that is only in a comment does not count as installed [B148]', () => {
+    const mount = "app.mount('#app')\n"
+    expect(installsBeforeMount(`// installErrorHandlers(app)\n${mount}`)).toBe(false)
+    expect(installsBeforeMount(`/* installErrorHandlers(app) */\n${mount}`)).toBe(false)
+    expect(installsBeforeMount(`const x = 1 // later: installErrorHandlers(app)\n${mount}`)).toBe(false)
+    expect(installsBeforeMount(`${mount}installErrorHandlers(app)\n`)).toBe(false)
+    expect(installsBeforeMount(`installErrorHandlers(app)\n${mount}`)).toBe(true)
   })
 
   it('an error inside a panel boundary does not reach the global handler [T634]', async () => {
