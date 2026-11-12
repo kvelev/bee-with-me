@@ -9,6 +9,11 @@
       {{ t('map.feedLost', { time: lastSyncLabel }) }}
     </div>
 
+    <!-- Tracker markers cannot be drawn: say so instead of showing an empty map. Sits under the stale-feed banner. -->
+    <div v-if="trackerLayerFailed" role="alert" class="tracker-layer-note" :class="{ 'below-banner': !store.wsConnected }">
+      {{ t('map.trackerLayerFailed') }}
+    </div>
+
     <!-- Cursor coordinate readout -->
     <div v-if="cursorCoords && (mgrsGridOn || latLonOn)" class="mgrs-readout">
       <span v-if="mgrsGridOn">{{ cursorCoords.mgrs }}</span>
@@ -355,7 +360,9 @@ function switchBasemap(id) {
   activeBasemap.value = id
   setBasemap(id)
 }
-watch(displayList, (list) => refreshMarkers(list), { deep: true })
+// Only a strict false means the tracker layer failed to install (other facades answer undefined).
+const trackerLayerFailed = ref(false)
+watch(displayList, (list) => { trackerLayerFailed.value = refreshMarkers(list) === false }, { deep: true, immediate: true })
 
 function toggleMGRS() {
   mgrsGridOn.value = !mgrsGridOn.value
@@ -482,6 +489,24 @@ const mapPanels = collectPanels(MODULES, 'map')
   font-weight: 600;
   box-shadow: 0 3px 14px rgba(0,0,0,.4);
 }
+.tracker-layer-note {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  max-width: calc(100% - 32px);
+  padding: 7px 15px;
+  border-radius: 20px;
+  background: var(--bg-panel);
+  border: 1px solid var(--warning);
+  color: var(--warning);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: center;
+  box-shadow: 0 3px 14px rgba(0,0,0,.4);
+}
+.tracker-layer-note.below-banner { top: 52px; }
 .stale-feed-dot {
   width: 8px; height: 8px; border-radius: 50%;
   background: #eab308; flex-shrink: 0;
