@@ -21,13 +21,14 @@
 <script setup>
 // The field-report and suppression-zone dialogs as a fire map panel (host `map`). The open dialog lives in
 // useFireUi (`{ kind: 'report' | 'zone', target }`), so any contribution can open one.
-import { ref, watch } from 'vue'
+import { defineAsyncComponent, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import FieldReportForm from './FieldReportForm.vue'
-import SuppressionZoneForm from './SuppressionZoneForm.vue'
 import { fireErrorKey } from '../lib/fireErrors.js'
 import { useFireStore } from '../store.js'
 import { useFireUi } from '../ui.js'
+
+const FieldReportForm = defineAsyncComponent(() => import('./FieldReportForm.vue'))
+const SuppressionZoneForm = defineAsyncComponent(() => import('./SuppressionZoneForm.vue'))
 
 const props = defineProps({
   context: { type: Object, required: true },

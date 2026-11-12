@@ -1,9 +1,9 @@
 // Fire module manifest: plain data only, no OpenLayers (rule `manifest-reaches-no-openlayers`).
 // The alarm banner is imported statically on purpose: the alarm must not wait for a chunk.
+import { defineAsyncComponent } from 'vue'
 import { BANNER_PRIORITY } from '../../platform/map-shell/zorder.js'
 import FireAlarmBanner from './components/FireAlarmBanner.vue'
 import FireDialogs from './components/FireDialogs.vue'
-import FireMapPopup from './components/FireMapPopup.vue'
 import FireMapPanel from './components/FireMapPanel.vue'
 import FireZonesNote from './components/FireZonesNote.vue'
 import FireZonesSettings from './components/FireZonesSettings.vue'
@@ -45,12 +45,14 @@ export default {
     { id: 'fire-map', host: 'map', order: 20, component: FireMapPanel },
     { id: 'fire-zones-note', host: 'map-toolbar', order: 10, component: FireZonesNote },
     // The field-report and zone dialogs (state in useFireUi); they open from the popup, the menu and the tracker row.
-    { id: 'fire-dialogs', host: 'map', order: 30, component: FireDialogs },
+    // retryKey: the panel boundary opens again the next time a dialog opens. A form chunk that failed to load is NOT
+    // fetched again (Vue keeps the rejected loader promise): that needs a page reload.
+    { id: 'fire-dialogs', host: 'map', order: 30, component: FireDialogs, retryKey: () => useFireUi().dialog },
     // The suppression-zones section of the Settings page.
     { id: 'fire-zones-settings', host: 'settings', order: 10, component: FireZonesSettings },
   ],
   // The popup of a hotspot or burnt-area feature, and the map context-menu item that reports a fire at the pointer.
-  popups: [{ id: 'fire', component: FireMapPopup, kinds: ['hotspot', 'burnt_area'] }],
+  popups: [{ id: 'fire', component: defineAsyncComponent(() => import('./components/FireMapPopup.vue')), kinds: ['hotspot', 'burnt_area'] }],
   contextMenu: [{
     id: 'fire-report-here', order: 10, labelKey: 'fire.report.here', testId: 'report-fire-here',
     onSelect: ({ lonLat }) => useFireUi().openDialog({ kind: 'report', target: { latitude: lonLat[1], longitude: lonLat[0] } }),

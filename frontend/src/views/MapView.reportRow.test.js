@@ -43,6 +43,9 @@ import { useLocationsStore } from '../stores/locations'
 import { i18n } from '../i18n/index.js'
 import en from '../i18n/en.js'
 
+// The form is an async chunk: load it once up front so one flush is enough under fake timers.
+await import('../modules/fire/components/FieldReportForm.vue')
+
 const SETTINGS = {
   hq_latitude: null, hq_longitude: null, is_hq_alarm_enabled: false, is_rescuer_alarm_enabled: true,
   hq_radius_m: 10000, rescuer_radius_m: 3000, alarm_max_age_hours: 24, repeat_minutes: 5, updated_at: 't0',
@@ -91,6 +94,7 @@ describe('MapView: the report button of a tracker row follows the 24 h rule', ()
     await flushPromises()
     await w.get('.tracker-row[data-device-id="dev-1"]').trigger('click')
     await w.get('[data-testid="report-fire-row"]').trigger('click')
+    await flushPromises()
     return w
   }
   const reportable = (w) => w.find('[data-testid="fr-error"]').exists() === false && w.find('[data-testid="fr-mgrs"]').exists()
@@ -130,6 +134,7 @@ describe('MapView: the report button of a tracker row follows the 24 h rule', ()
     await w.get('.tracker-row[data-device-id="dev-1"]').trigger('click')
     vi.setSystemTime(T0 + 2 * 60_000)
     await w.get('[data-testid="report-fire-row"]').trigger('click')
+    await flushPromises()
     expect(w.get('[data-testid="fr-error"]').text()).toBe(en.fire.errors.noRecentPosition)
     w.unmount()
   })
