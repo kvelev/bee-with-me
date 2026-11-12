@@ -52,3 +52,21 @@ describe('panels and the toggle state hook', () => {
     expect(validateManifest(base({ ...t, isOn: () => true, set: () => {} })).join('\n')).toContain('toggle.key is required when')
   })
 })
+
+describe('actions field', () => {
+  const withAction = (action) => ({ ...base(undefined), actions: [action] })
+  const ok = { id: 'a', target: 'tracker-row', order: 1, labelKey: 'k', onSelect: () => {} }
+
+  it('validateManifest accepts actions and names a malformed one [T631]', () => {
+    expect(validateManifest(withAction(ok))).toEqual([])
+    expect(validateManifest(withAction({ ...ok, testId: 't', isAvailable: () => true }))).toEqual([])
+    expect(validateManifest({ ...base(undefined), actions: undefined })).toEqual([])
+    expect(validateManifest(withAction({ ...ok, target: '' })).join('\n')).toContain('target must be')
+    expect(validateManifest(withAction({ ...ok, order: 'x' })).join('\n')).toContain('order must be a finite number')
+    expect(validateManifest(withAction({ ...ok, labelKey: '' })).join('\n')).toContain('labelKey must be an i18n key')
+    expect(validateManifest(withAction({ ...ok, onSelect: 1 })).join('\n')).toContain('onSelect must be a function')
+    expect(validateManifest(withAction({ ...ok, isAvailable: 1 })).join('\n')).toContain('isAvailable must be a function')
+    expect(validateManifest(withAction({ ...ok, testId: 5 })).join('\n')).toContain('testId must be a non-empty string')
+    expect(validateManifest({ ...base(undefined), actions: {} }).join('\n')).toContain('actions')
+  })
+})
