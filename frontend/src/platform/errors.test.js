@@ -9,6 +9,17 @@ afterEach(() => { vi.restoreAllMocks() })
 
 const rejection = (reason) => ({ reason, preventDefault: vi.fn() })
 
+// The call must be a statement of its own line, before the mount, outside any comment.
+function installsBeforeMount(source) {
+  const text = source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .map((line) => line.replace(/\/\/.*$/, ''))
+  const install = text.findIndex((line) => /^\s*installErrorHandlers\(app\)\s*;?\s*$/.test(line))
+  const mount = text.findIndex((line) => /^\s*app\.mount\('#app'\)\s*;?\s*$/.test(line))
+  return install > -1 && mount > -1 && install < mount
+}
+
 describe('installErrorHandlers', () => {
   it('a render error of a component outside any boundary is logged as one string [T634]', async () => {
     const log = vi.fn()
@@ -86,10 +97,16 @@ describe('installErrorHandlers', () => {
   })
 
   it('main.js installs the handlers before it mounts [T634]', () => {
-    const text = mainSource
-    const install = text.indexOf('installErrorHandlers(app)')
-    expect(install).toBeGreaterThan(-1)
-    expect(install).toBeLessThan(text.indexOf("app.mount('#app')"))
+    expect(installsBeforeMount(mainSource)).toBe(true)
+  })
+
+  it('a call that is only in a comment does not count as installed [B148]', () => {
+    const mount = "app.mount('#app')\n"
+    expect(installsBeforeMount(`// installErrorHandlers(app)\n${mount}`)).toBe(false)
+    expect(installsBeforeMount(`/* installErrorHandlers(app) */\n${mount}`)).toBe(false)
+    expect(installsBeforeMount(`const x = 1 // later: installErrorHandlers(app)\n${mount}`)).toBe(false)
+    expect(installsBeforeMount(`${mount}installErrorHandlers(app)\n`)).toBe(false)
+    expect(installsBeforeMount(`installErrorHandlers(app)\n${mount}`)).toBe(true)
   })
 
   it('an error inside a panel boundary does not reach the global handler [T634]', async () => {
@@ -104,5 +121,24 @@ describe('installErrorHandlers', () => {
     expect(log).not.toHaveBeenCalled()
     expect(consoleError.mock.calls.some((c) => String(c[0]).startsWith('panel bad failed'))).toBe(true)
     w.unmount()
+  })
+
+  it('an uncaught error event of the window is logged as a string and its default is prevented [B147]', () => {
+    const log = vi.fn()
+    const target = new EventTarget()
+    const off = installErrorHandlers({ config: {} }, { target, log })
+    const err = Object.assign(new Error('script broke'), { config: { headers: { Authorization: 'Bearer secret' } } })
+    const ev = Object.assign(new Event('error'), { error: err, message: 'Uncaught Error: script broke', preventDefault: vi.fn() })
+    target.dispatchEvent(ev)
+    expect(log).toHaveBeenCalledTimes(1)
+    expect(log.mock.calls[0][0]).toBe('[app] uncaught error: script broke')
+    expect(log.mock.calls[0][0]).not.toContain('secret')
+    expect(ev.preventDefault).toHaveBeenCalledTimes(1)
+    // an error event without an error object (a cross-origin script) is described by its message
+    target.dispatchEvent(Object.assign(new Event('error'), { error: null, message: 'Script error.', preventDefault: vi.fn() }))
+    expect(log.mock.calls[1][0]).toBe('[app] uncaught error: Script error.')
+    off()
+    target.dispatchEvent(Object.assign(new Event('error'), { error: err, preventDefault: vi.fn() }))
+    expect(log).toHaveBeenCalledTimes(2)
   })
 })

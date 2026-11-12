@@ -36,15 +36,3 @@ async def notify_alerts_updated(conn, alert_ids):
 
 async def lock_and_resolve_device_alerts(conn, device_id, actor_id):
     return await repository.lock_and_resolve_device_alerts(conn, device_id, actor_id)
-
-
-async def anonymise_alerts(*args, **kwargs):
-    return await repository.anonymise_alerts(*args, **kwargs)
-
-
-async def anonymise_hotspots(*args, **kwargs):
-    return await repository.anonymise_hotspots(*args, **kwargs)
-
-
-async def prune_fire_data(*args, **kwargs):
-    return await repository.prune_fire_data(*args, **kwargs)

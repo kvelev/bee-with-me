@@ -4,4 +4,7 @@ export default {
     serialConnected:    'Gateway connected',
     serialDisconnected: 'Gateway disconnected',
   },
+  gateway: {
+    frames: '{n} frames',
+  },
 }

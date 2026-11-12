@@ -48,4 +48,29 @@ describe('gateway store', () => {
     await store.fetchStatus()
     expect(store.status).toEqual({ connected: false, port: 'COM3' })
   })
+
+  it('an empty answer or a message without connected leaves the status [B142]', async () => {
+    const store = useGatewayStore()
+    getSerialStatus.mockResolvedValue({})
+    await store.fetchStatus()
+    expect(store.status).toBeNull()
+    store.applyStatus({ connected: true, port: 'COM3', frames_received: 2 })
+    await store.fetchStatus()
+    store.applyStatus({ type: 'serial_status' })
+    expect(store.status).toEqual({ connected: true, port: 'COM3', frames_received: 2 })
+  })
+
+  it('a fetch that answers after a push does not overwrite the pushed status [B144]', async () => {
+    let answer
+    getSerialStatus.mockReturnValue(new Promise((resolve) => { answer = resolve }))
+    const store = useGatewayStore()
+    const pending = store.fetchStatus()
+    store.applyStatus({ type: 'serial_status', connected: true, port: 'COM3', frames_received: 7 })
+    answer({ connected: false, port: 'COM3', frames_received: 3 })
+    await pending
+    expect(store.status).toEqual({ connected: true, port: 'COM3', frames_received: 7 })
+    getSerialStatus.mockResolvedValue({ connected: true, port: 'COM3', frames_received: 8 })
+    await store.fetchStatus()                                   // the next tick is applied again
+    expect(store.status.frames_received).toBe(8)
+  })
 })

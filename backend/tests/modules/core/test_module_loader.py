@@ -589,3 +589,76 @@ def test_a_refused_list_leaves_no_record():
     with pytest.raises(ValueError, match='invalid module list'):
         include_module_routers(app, [ModuleManifest(name='Bad', router=_router('/x'))], auth=_deny)
     assert not hasattr(app.state, 'loaded_modules')
+
+
+# ── B138, B139: follow-ups of T605 ──────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.Trait("Task", "B138")
+def test_a_fastapi_without_the_candidates_cache_attribute_is_refused_at_load(monkeypatch):
+    router, _sub = _nested()
+    included = next(r for r in router.routes if hasattr(r, 'effective_candidates'))
+    # an upgrade that renames the private cache attribute: the recheck could no longer drop the cache
+    monkeypatch.delattr(included, '_effective_candidates_version')          # set in __init__
+    monkeypatch.delattr(type(included), '_effective_candidates_version')    # and declared on the class
+    with pytest.raises(RuntimeError, match='_effective_candidates_version') as err:
+        _loaded(router)
+    assert 'FastAPI' in str(err.value)
+
+
+@pytest.mark.Trait("Task", "B139")
+def test_a_late_route_with_the_same_method_and_path_is_refused_at_start():
+    from backend.core.modules import recheck_module_routers
+    router, sub = _nested()
+    app = _loaded(router)
+
+    @sub.get('/first')
+    async def _shadow():
+        return {'late': True}
+
+    with pytest.raises(ValueError, match='module routers changed after loading') as err:
+        recheck_module_routers(app)
+    assert 'changed GET /api/x/first' in str(err.value)
+
+
+@pytest.mark.Trait("Task", "B139")
+def test_a_route_replaced_in_place_with_the_same_key_is_refused_at_start():
+    from fastapi.routing import APIRoute
+
+    from backend.core.modules import recheck_module_routers
+    router, sub = _nested()
+    app = _loaded(router)
+
+    async def _other():
+        return {}
+
+    sub.routes[0] = APIRoute('/first', _other, methods=['GET'])
+    with pytest.raises(ValueError, match='module routers changed after loading') as err:
+        recheck_module_routers(app)
+    assert 'changed GET /api/x/first' in str(err.value)
+
+
+@pytest.mark.Trait("Task", "B153")
+def test_a_nested_websocket_route_passes_the_recheck_and_a_replaced_one_is_refused():
+    from fastapi.routing import APIWebSocketRoute
+
+    from backend.core.modules import recheck_module_routers
+    sub = APIRouter()
+
+    @sub.websocket('/ws')
+    async def _ws(websocket):
+        await websocket.close()
+
+    router = APIRouter()
+    router.include_router(sub, prefix='/api/x')
+    app = _loaded(router)
+    # FastAPI builds the served WebSocket wrapper again on every walk: the identity is the declared route
+    assert recheck_module_routers(app) is None
+    assert recheck_module_routers(app) is None
+
+    async def _other(websocket):
+        await websocket.close()
+
+    sub.routes[0] = APIWebSocketRoute('/ws', _other)
+    with pytest.raises(ValueError, match='module routers changed after loading') as err:
+        recheck_module_routers(app)
+    assert 'changed WEBSOCKET /api/x/ws' in str(err.value)
