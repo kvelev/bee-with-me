@@ -12,6 +12,7 @@ import re
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 
+import fastapi
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.routing import APIRoute, APIWebSocketRoute
 from starlette.routing import Mount, WebSocketRoute
@@ -99,8 +100,13 @@ def _leaf_routes(routes: Iterable, depth: int = 0):
         if hasattr(route, 'effective_candidates'):
             # FastAPI caches the candidates by a version counter that `mount()` and direct edits of `routes` do not
             # raise, so a late Mount would stay invisible (T605): drop the cache and read the router as it is now.
-            if hasattr(route, '_effective_candidates_version'):
-                route._effective_candidates_version = None
+            # The attribute is private: if an upgrade renames it, refuse to start rather than check a stale cache (B138).
+            if not hasattr(route, '_effective_candidates_version'):
+                raise RuntimeError(
+                    f'FastAPI {fastapi.__version__}: {type(route).__name__} has no _effective_candidates_version, so '
+                    'the module loader cannot see routes added late to a nested router; update '
+                    'backend/core/modules.py (_leaf_routes) for this FastAPI version or pin the previous one')
+            route._effective_candidates_version = None
             yield from _leaf_routes(route.effective_candidates(), depth + 1)
             continue
         real = getattr(route, 'starlette_route', None)

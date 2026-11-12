@@ -589,3 +589,17 @@ def test_a_refused_list_leaves_no_record():
     with pytest.raises(ValueError, match='invalid module list'):
         include_module_routers(app, [ModuleManifest(name='Bad', router=_router('/x'))], auth=_deny)
     assert not hasattr(app.state, 'loaded_modules')
+
+
+# ── B138, B139: follow-ups of T605 ──────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.Trait("Task", "B138")
+def test_a_fastapi_without_the_candidates_cache_attribute_is_refused_at_load(monkeypatch):
+    router, _sub = _nested()
+    included = next(r for r in router.routes if hasattr(r, 'effective_candidates'))
+    # an upgrade that renames the private cache attribute: the recheck could no longer drop the cache
+    monkeypatch.delattr(included, '_effective_candidates_version')          # set in __init__
+    monkeypatch.delattr(type(included), '_effective_candidates_version')    # and declared on the class
+    with pytest.raises(RuntimeError, match='_effective_candidates_version') as err:
+        _loaded(router)
+    assert 'FastAPI' in str(err.value)
