@@ -1,5 +1,4 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue'
-import Overlay from 'ol/Overlay'
 import View from 'ol/View'
 import TileLayer from 'ol/layer/Tile'
 import OSM from 'ol/source/OSM'
@@ -13,24 +12,20 @@ import LineString from 'ol/geom/LineString'
 import { fromLonLat, toLonLat } from 'ol/proj'
 import { Circle, Fill, Stroke, Style, Text } from 'ol/style'
 import RegularShape from 'ol/style/RegularShape'
-import Icon from 'ol/style/Icon'
 import Graticule from 'ol/layer/Graticule'
 import ScaleLine from 'ol/control/ScaleLine'
 import { forward as toMGRS } from 'mgrs'
 import { useSettings } from './useSettings'
-import { normaliseGroups } from '../lib/groups'
-import { freshnessOf, LIVE, LOST } from '../lib/freshness'
-import { renderTrackerTooltip } from '../lib/trackerTooltip'
 import { createLongPress } from '../lib/longPress'
-import { hexToRgba } from '../lib/color'
-import { PHOTO_SIZE, markerZIndex, onPhotoLoaded, photoCanvas, photoImage, ringFor, safePhotoUrl } from '../lib/photoMarker'
 import { getWeatherTile } from '../api'
 import { createMapShell } from '../platform/map-shell/createMapShell'
 import { Z } from '../platform/map-shell/zorder'
 import { MODULES } from '../modules'
 import { MAP_MODULES } from '../modules/mapEntries'
+import { makeMarkerStyle, makePhotoMarkerStyle } from '../modules/tracking/map/styles'
 
-const DEFAULT_COLOR = '#3b82f6'
+// The marker styles live in the tracking map entry; they stay importable from here.
+export { makeMarkerStyle, makePhotoMarkerStyle }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371
@@ -144,109 +139,11 @@ function makeBasemapLayer(id) {
   })
 }
 
-export function makeMarkerStyle(color, isSOS, name, isTeam, freshness, noFix) {
-  const radius   = isSOS ? 10 : isTeam ? 10 : 7
-  const isStale  = freshness !== LIVE
-  const isLost   = freshness === LOST
-  // Lost contact fades further than merely stale, so "we haven't heard from them in half an
-  // hour" is distinguishable from "they're a few minutes overdue" at a glance.
-  const fillColor = isSOS ? '#ef4444'
-    : isLost  ? 'rgba(156,163,175,0.22)'
-    : isStale ? 'rgba(156,163,175,0.45)'
-    : color
-  const strokeCol = isStale ? 'rgba(255,255,255,0.35)' : '#fff'
-
-  const style = new Style({
-    zIndex: markerZIndex(isSOS, freshness),
-    image: new Circle({
-      radius,
-      fill:   new Fill({ color: fillColor }),
-      // Dashed ring = in radio contact but no satellite fix: the position shown is the last
-      // known one, not where they are now.
-      stroke: new Stroke({
-        color:    noFix ? '#facc15' : strokeCol,
-        width:    isTeam ? 3 : 2,
-        lineDash: noFix ? [3, 2] : undefined,
-      }),
-    }),
-    text: new Text({
-      text:    name || '',
-      offsetY: -(radius + 10),
-      fill:    new Fill({ color: '#fff' }),
-      stroke:  new Stroke({ color: '#000', width: 3 }),
-      font:    isTeam ? 'bold 14px system-ui' : 'bold 13px system-ui',
-    }),
-  })
-  return style
-}
-
-// Photo variant of the marker: same label, same states, the dot replaced by a round photo with
-// a state ring. Returns null (the caller keeps the dot) while the image is loading, after it
-// failed, or when the browser cannot draw it.
-export function makePhotoMarkerStyle(url, color, isSOS, name, freshness, noFix) {
-  const img = photoImage(url)
-  if (!img) return null
-  const dpr = Math.min(2, globalThis.devicePixelRatio || 1)
-  const canvas = photoCanvas(url, img, ringFor({ color, isSOS, freshness, noFix }), dpr)
-  if (!canvas) return null
-  return new Style({
-    image: new Icon({ img: canvas, imgSize: [canvas.width, canvas.height], scale: 1 / dpr }),
-    zIndex: markerZIndex(isSOS, freshness),
-    text: new Text({
-      text:    name || '',
-      offsetY: -(PHOTO_SIZE / 2 + 10),
-      fill:    new Fill({ color: '#fff' }),
-      stroke:  new Stroke({ color: '#000', width: 3 }),
-      font:    'bold 13px system-ui',
-    }),
-  })
-}
-
-function makeTrailStyle(color) {
-  return new Style({
-    stroke: new Stroke({
-      color:    hexToRgba(color, 0.65),
-      width:    2.5,
-      lineDash: [6, 3],
-    }),
-  })
-}
-
-function formatCheckpointTime(recordedAt) {
-  if (!recordedAt) return ''
-  const d = new Date(recordedAt)
-  if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-}
-
-function makeCheckpointStyle(color, index, isLast, showLabels, recordedAt) {
-  const label = showLabels
-    ? (formatCheckpointTime(recordedAt) || String(index + 1))
-    : ''
-  return new Style({
-    image: new Circle({
-      radius: isLast ? 6 : 4,
-      fill:   new Fill({ color: isLast ? color : hexToRgba(color, 0.6) }),
-      stroke: new Stroke({ color: '#fff', width: isLast ? 2 : 1 }),
-    }),
-    text: showLabels ? new Text({
-      text:         label,
-      font:         `bold ${isLast ? 10 : 9}px system-ui`,
-      fill:         new Fill({ color: '#fff' }),
-      stroke:       new Stroke({ color: '#000', width: 2 }),
-      offsetY:      isLast ? -14 : -12,
-      textBaseline: 'bottom',
-    }) : undefined,
-  })
-}
-
 export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, groupsMap, onHQPlaced, showPhotos = ref(true)) {
   let basemapLayer = makeBasemapLayer('osm')
-  let checkpointNumbersVisible = false
   let mgrsLabelMode = false
   let latLonGridVisible = false
   let measurePoints = []
-  let staleTimer    = null
   // Repeaters have no GNSS: an admin places each one by hand, like HQ.
   let repeaterPlacedCb = null
 
@@ -254,47 +151,14 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   // placement, measuring; first in the list wins) and the click / pointer / context-menu dispatch.
   // It is created here, at set-up, and mounted in onMounted, so every call below that arrives before
   // the map exists (setHQ, setHotspots, setZones, setRepeaters, a mode) keeps working.
-  const tooltipEl = document.createElement('div')
-  Object.assign(tooltipEl.style, {
-    position:        'absolute',
-    background:      'rgba(15,15,20,0.88)',
-    color:           '#fff',
-    padding:         '6px 10px',
-    borderRadius:    '6px',
-    fontSize:        '12px',
-    pointerEvents:   'none',
-    whiteSpace:      'nowrap',
-    boxShadow:       '0 2px 8px rgba(0,0,0,0.5)',
-    border:          '1px solid rgba(255,255,255,0.1)',
-    lineHeight:      '1.5',
-    display:         'none',
-  })
-  const tooltip = new Overlay({
-    element:     tooltipEl,
-    offset:      [14, 0],
-    positioning: 'center-left',
-    stopEvent:   false,
-  })
   const shell = createMapShell({
     view:     new View({ center: fromLonLat([25.0, 42.5]), zoom: 7 }),
     controls: [new ScaleLine({ units: 'metric', bar: false, minWidth: 100 })],
-    overlays: [tooltip],
+    overlays: [],
     createLongPress,
     modes:    ['hq-place', 'repeater-place', 'measure'],
     basemap:  basemapLayer,
   })
-
-  // Marker layer
-  const source      = new VectorSource()
-  const vectorLayer = new VectorLayer({ source })
-
-  // Trail line layer
-  const trailSource = new VectorSource()
-  const trailLayer  = new VectorLayer({ source: trailSource, visible: false })
-
-  // Checkpoint dot layer
-  const checkpointSource = new VectorSource()
-  const checkpointLayer  = new VectorLayer({ source: checkpointSource, visible: false })
 
   // Callbacks of the map's clicks; the fire layers (modules/fire/map/index.js) reach them through mapCtx.
   let fireClickCb = null
@@ -378,9 +242,10 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   // What a contribution (a module's map entry) needs from the facade. Each function reads the facade's
   // callback variable at call time, so a callback set or cleared later (onTrackerClick(null) on
   // unmount) is honoured.
-  const trackerHit = (pixel) => !!shell.map?.hasFeatureAtPixel(pixel, { layerFilter: l => l === vectorLayer, hitTolerance: 5 })
+  // The tracker layer is the tracking entry's; without it (its install failed) no tracker is ever under the pointer.
+  const moduleApis = {}
   const mapCtx = {
-    trackerHit,
+    trackerHit: (pixel) => moduleApis.tracking?.trackerHit?.(pixel) ?? false,
     reportTrackerClick: (id) => trackerClickCb?.(id),
     fireClickRegistered: () => !!fireClickCb,
     reportFireClick: (selection) => fireClickCb?.(selection),
@@ -390,10 +255,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   // The map's own layers, in the order they have always been on the map. Their z-index comes from
   // the shell's z-order table; the basemap (first) is the shell's own.
   shell.addLayer({ id: 'graticule',   zIndex: Z.graticule,   layer: graticule })
-  shell.addLayer({ id: 'trail',       zIndex: Z.trail,       layer: trailLayer })
-  shell.addLayer({ id: 'checkpoints', zIndex: Z.checkpoints, layer: checkpointLayer })
   shell.addLayer({ id: 'repeaters',   zIndex: Z.repeaters,   layer: repeaterLayer })
-  shell.addLayer({ id: 'trackers',    zIndex: Z.trackers,    layer: vectorLayer })
   shell.addLayer({ id: 'measure',     zIndex: Z.measure,     layer: measureLayer })
 
   let activeBasemapId = 'osm'
@@ -492,171 +354,8 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     forceGraticuleRedraw()
   }
 
-  // One malformed row must never blank every marker (B50): isolate each upsert.
-  function safeUpsert(pos) {
-    try { upsertFeature(pos) } catch { console.warn('Skipped a position that could not be drawn') }
-  }
-
-  // One place decides how a marker looks. Photo only for an individual (never the team dot in
-  // the groups view) with the setting on and a same-origin photo that has loaded; every other
-  // case, including a failed load, is the dot.
-  function styleFor(pos) {
-    const leaderGroup = pos.groups?.find(g => g.is_leader)
-    const color     = leaderGroup?.color ?? pos.groups?.[0]?.color ?? DEFAULT_COLOR
-    const freshness = freshnessOf(pos)
-    const noFix     = pos.gnss_valid === false
-    const isTeam    = !!pos.displayLabel
-    const label     = pos.displayLabel || pos.full_name || pos.device_name || String(pos.dev_sn ?? '')
-    if (!isTeam && showPhotos.value !== false) {
-      const url = safePhotoUrl(pos.photo_url)
-      const photo = url && makePhotoMarkerStyle(url, color, pos.sos_active, label, freshness, noFix)
-      if (photo) return photo
-    }
-    return makeMarkerStyle(color, pos.sos_active, label, isTeam, freshness, noFix)
-  }
-
-  // Photos finish loading in separate tasks, so a microtask would not merge them (N restyles of N
-  // markers on start). One restyle per animation frame (50 ms timer where there is no rAF) covers
-  // every photo that arrived meanwhile (B56).
-  let restyleHandle = null
-  let restyleViaRaf = false
-  function scheduleRestyle() {
-    if (restyleHandle != null) return
-    const run = () => { restyleHandle = null; restyleAll() }
-    restyleViaRaf = typeof requestAnimationFrame === 'function'
-    restyleHandle = restyleViaRaf ? requestAnimationFrame(run) : setTimeout(run, 50)
-  }
-  // Every open map hears about every finished photo, not only the one that started the load.
-  const offPhotoLoaded = onPhotoLoaded(scheduleRestyle)
-  function restyleAll() {
-    source.getFeatures().forEach(f => {
-      const pos = f.get('pos')
-      if (pos) f.setStyle(styleFor(pos))
-    })
-  }
-
-  function upsertFeature(rawPos) {
-    const pos = normaliseGroups(rawPos)
-    const id  = pos.device_id
-
-    let feature = source.getFeatureById(id)
-    if (!feature) {
-      feature = new Feature({ geometry: new Point([0, 0]) })
-      feature.setId(id)
-      source.addFeature(feature)
-    }
-    feature.getGeometry().setCoordinates(fromLonLat([pos.longitude, pos.latitude]))
-    feature.setStyle(styleFor(pos))
-    feature.setProperties({ pos }, true)
-  }
-
-  function removeStaleFeatures(currentIds) {
-    const set = new Set(currentIds)
-    source.getFeatures().forEach(f => {
-      if (!set.has(f.getId())) source.removeFeature(f)
-    })
-  }
-
-  function upsertTrail(deviceId, points) {
-    const fid = `trail-${deviceId}`
-    if (!points || points.length < 2) {
-      const f = trailSource.getFeatureById(fid)
-      if (f) trailSource.removeFeature(f)
-      return
-    }
-
-    const coords = points.map(p => fromLonLat([p.lon, p.lat]))
-    // Look up the device color from its marker
-    const markerFeature = source.getFeatureById(deviceId)
-    const color = markerFeature?.get('pos')?.groups?.[0]?.color ?? DEFAULT_COLOR
-
-    let feature = trailSource.getFeatureById(fid)
-    if (!feature) {
-      feature = new Feature({ geometry: new LineString(coords) })
-      feature.setId(fid)
-      trailSource.addFeature(feature)
-    } else {
-      feature.getGeometry().setCoordinates(coords)
-    }
-    feature.setStyle(makeTrailStyle(color))
-  }
-
-  function removeStaleTrails(currentIds) {
-    const set = new Set(currentIds.map(id => `trail-${id}`))
-    trailSource.getFeatures().forEach(f => {
-      if (!set.has(f.getId())) trailSource.removeFeature(f)
-    })
-  }
-
-  function upsertCheckpoints(deviceId, points) {
-    // Remove old checkpoints for this device
-    checkpointSource.getFeatures()
-      .filter(f => f.get('deviceId') === deviceId)
-      .forEach(f => checkpointSource.removeFeature(f))
-
-    if (!points || points.length === 0) return
-
-    const markerFeature = source.getFeatureById(deviceId)
-    const color = markerFeature?.get('pos')?.groups?.[0]?.color ?? DEFAULT_COLOR
-
-    points.forEach((p, i) => {
-      const isLast = i === points.length - 1
-      const f = new Feature({ geometry: new Point(fromLonLat([p.lon, p.lat])) })
-      // Label with the server clock, same as every other time the operator sees — a device
-      // with a skewed GNSS clock would otherwise stamp checkpoints with times that never were.
-      f.setStyle(makeCheckpointStyle(color, i, isLast, checkpointNumbersVisible, p.received_at ?? p.recorded_at))
-      f.set('deviceId', deviceId)
-      f.set('recordedAt', p.recorded_at)
-      f.set('cpIndex', i)
-      f.set('cpIsLast', isLast)
-      f.set('cpColor', color)
-      checkpointSource.addFeature(f)
-    })
-  }
-
-  function removeStaleCheckpoints(currentIds) {
-    const set = new Set(currentIds)
-    const toRemove = checkpointSource.getFeatures()
-      .filter(f => !set.has(f.get('deviceId')))
-    toRemove.forEach(f => checkpointSource.removeFeature(f))
-  }
-
-  function setTrailVisible(visible) {
-    trailLayer.setVisible(visible)
-    checkpointLayer.setVisible(visible)
-  }
-
-  function setCheckpointNumbers(visible) {
-    checkpointNumbersVisible = visible
-    checkpointSource.getFeatures().forEach(f => {
-      f.setStyle(makeCheckpointStyle(
-        f.get('cpColor'), f.get('cpIndex'), f.get('cpIsLast'), visible, f.get('recordedAt'),
-      ))
-    })
-  }
-
-  // Hover: tooltip of the tracker under the pointer, pointer cursor, coordinate read-out. Runs in every mode.
+  // Cursor coordinate read-out. Runs in every mode. (The tracker tooltip is the tracking entry's.)
   shell.onPointerMove((evt) => {
-    const map = shell.map
-    const feature = map.forEachFeatureAtPixel(evt.pixel, f => f, {
-      layerFilter: l => l === vectorLayer,
-      hitTolerance: 5,
-    })
-    if (feature) {
-      const stored = feature.get('pos')
-      const pos    = positionList.value?.find(p => p.device_id === feature.getId()) ?? stored
-      const leaderGroup = pos.displayLabel ? pos.groups?.find(g => g.is_leader) : null
-      const gDetail     = leaderGroup ? (groupsMap?.value ?? {})[leaderGroup.id] : null
-      renderTrackerTooltip(tooltipEl, pos, gDetail, { showPhotos: showPhotos.value !== false })
-      tooltipEl.style.display = 'block'
-      tooltip.setPosition(evt.coordinate)
-      map.getTargetElement().style.cursor = 'pointer'
-    } else {
-      tooltipEl.style.display = 'none'
-      tooltip.setPosition(undefined)
-      map.getTargetElement().style.cursor = ''
-    }
-
     // cursor coordinate readout
     if (onCursorMGRS) {
       try {
@@ -666,7 +365,7 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
         onCursorMGRS(null)
       }
     }
-  }, { always: true, order: 10 })
+  }, { always: true, order: 20 })
 
   // Repeater placement mode: the click reports where, nothing else happens. (HQ placement is the settings
   // module's: modules/settings/map/index.js.)
@@ -716,17 +415,6 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     return true
   }, { mode: 'measure' })
 
-  // A tracker click opens the tracker popup and closes any fire popup (the fire click handler, order 20,
-  // is in modules/fire/map/index.js; this one runs first and stops the click).
-  shell.onClick((evt) => {
-    if (!mapCtx.fireClickRegistered()) return false
-    if (!mapCtx.trackerHit(evt.pixel)) return false
-    mapCtx.reportFireClick(null)
-    const marker = shell.map.forEachFeatureAtPixel(evt.pixel, f => f, { layerFilter: l => l === vectorLayer, hitTolerance: 5 })
-    if (marker && marker.getId() != null) mapCtx.reportTrackerClick(String(marker.getId()))
-    return true
-  }, { order: 10 })
-
   // "Report fire here": right-click on a mouse, long-press on touch. Both hand over the clicked
   // coordinate (EPSG:3857) and its pixel inside the map element; the view decides what to offer.
   // The shell reports one gesture once and not while a mode is active.
@@ -734,7 +422,6 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
 
   // Modules' map entries: their layers sit after the map's own (the z-index decides what is drawn on top).
   // An entry whose install failed has an empty api; the names delegated below then do nothing.
-  const moduleApis = {}
   for (const entry of MAP_MODULES) {
     const declarations = MODULES.find(m => m.name === entry.name)?.mapLayers ?? []
     moduleApis[entry.name] = shell.install(entry, declarations, mapCtx)
@@ -744,41 +431,27 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
     resolveBgMountainsDefault()   // offline BG Mountains tiles only if this server has them (useSettings.js)
     shell.mount(mapRef.value)
 
-    // Re-evaluate stale state every minute without needing a new WS frame
-    staleTimer = setInterval(() => {
-      restyleAll()
-    }, 60_000)
-
   })
 
-  watch(positionList, (list) => {
-    list.forEach(safeUpsert)
-    removeStaleFeatures(list.map(p => p.device_id))
-  }, { deep: true })
+  // The tracking module's map entry draws the people. Its api is read at call time: when its install failed
+  // it is empty, nothing is drawn, and refreshMarkers says so (the view then shows a note, BP-03).
+  const trackingApi = () => moduleApis.tracking ?? {}
+  trackingApi().setGroups?.(groupsMap?.value)
+  trackingApi().setShowPhotos?.(showPhotos.value)   // the entry starts with the photos on; the setting may say otherwise
+  watch(() => groupsMap?.value, (g) => trackingApi().setGroups?.(g), { deep: true })
+
+  watch(positionList, (list) => { trackingApi().setPositions?.(list) }, { deep: true })
 
   // The setting changed: redraw every marker now.
-  watch(showPhotos, () => {
-    ;(positionList.value ?? []).forEach(safeUpsert)
-    restyleAll()
+  watch(showPhotos, (on) => {
+    trackingApi().setPositions?.(positionList.value ?? [])
+    trackingApi().setShowPhotos?.(on)
   })
 
-  watch(trails, (trailMap) => {
-    Object.entries(trailMap).forEach(([deviceId, points]) => {
-      upsertTrail(deviceId, points)
-      upsertCheckpoints(deviceId, points)
-    })
-    removeStaleTrails(Object.keys(trailMap))
-    removeStaleCheckpoints(Object.keys(trailMap))
-  }, { deep: true })
+  watch(trails, (trailMap) => { trackingApi().setTrails?.(trailMap) }, { deep: true })
 
   onUnmounted(() => {
-    offPhotoLoaded()
-    if (restyleHandle != null) {
-      restyleViaRaf ? cancelAnimationFrame(restyleHandle) : clearTimeout(restyleHandle)
-      restyleHandle = null
-    }
-    shell.dispose()
-    clearInterval(staleTimer)
+    shell.dispose()   // the tracking entry stops its timer and its photo-restyle listener here
   })
 
   function setMeasureMode(on) {
@@ -865,10 +538,13 @@ export function useMap(mapRef, positionList, trails, onCursorMGRS, onMeasure, gr
   function onTrackerClick(cb) { trackerClickCb = cb }
   function onMapContextMenu(cb) { contextMenuCb = cb }
 
+  // true when the tracking entry drew the list, false when it is missing (its install failed).
   function refreshMarkers(list) {
-    list.forEach(safeUpsert)
-    removeStaleFeatures(list.map(p => p.device_id))
+    return trackingApi().refreshMarkers?.(list) ?? false
   }
+
+  const setTrailVisible = (visible) => { trackingApi().setTrailVisible?.(visible) }
+  const setCheckpointNumbers = (visible) => { trackingApi().setCheckpointNumbers?.(visible) }
 
   return { map: () => shell.map, setBasemap, setMGRSGrid, setLatLonGrid, setTrailVisible, setCheckpointNumbers, setMeasureMode, setWeatherLayer, refreshMarkers, setHQ, setHQPlacementMode, setRepeaters, setRepeaterPlacementMode, onRepeaterPlaced, setBurntAreas, setHotspots, setFireLayerVisible, setFireLabels, onFireFeatureClick, setZones, onTrackerClick, onMapContextMenu }
 }
