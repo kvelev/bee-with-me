@@ -2,6 +2,7 @@
 
     python backend/tests/architecture/regen.py --print-violations   # what the contracts find with empty ignore lists
     python backend/tests/architecture/regen.py --remove-stale       # delete allowlist lines that no longer match
+    python backend/tests/architecture/regen.py --check              # dry run of --remove-stale: exit 1 if anything is stale
 
 `--remove-stale` cleans both allowlists: the `ignore_imports` lines of importlinter.toml and the `sql_writes` and
 `module_edges` rows of allowlist.json. It reads the tree this file is in, so in a worktree run the worktree's copy.
@@ -18,8 +19,14 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[3]
+if str(REPO) not in sys.path:   # run as a script, sys.path[0] is this folder
+    sys.path.insert(0, str(REPO))
+
+from backend.tests.architecture.approved_additions import APPROVED  # noqa: E402
 TOML = Path(__file__).with_name('importlinter.toml')
 ALLOWLIST = Path(__file__).with_name('allowlist.json')
+TOML_REL = 'backend/tests/architecture/importlinter.toml'
+ALLOWLIST_REL = 'backend/tests/architecture/allowlist.json'
 
 _LINE = re.compile(r'^\s*"([^"]+ -> [^"]+)"\s*,?')
 
@@ -68,11 +75,11 @@ def print_violations(config: Path = TOML) -> int:
     return 0
 
 
-def _stale_json_rows(allowlist: Path) -> list[str]:
-    """Delete the `sql_writes` and `module_edges` rows of allowlist.json that the tree no longer has; returns them.
+def _find_stale_json(allowlist: Path) -> tuple[list[str], str | None]:
+    """The `sql_writes` and `module_edges` rows of allowlist.json that the tree no longer has, and the file text without them.
 
     The same two sets as test_sql_ownership and test_module_edges compare with, so a row those tests call stale is
-    a row this deletes. The file is rewritten in its own layout (indent 2) only when a row went.
+    a row this finds. The text is in the file's own layout (indent 2); it is None when no row is stale. Writes nothing.
     """
     import grimp
 
@@ -98,17 +105,14 @@ def _stale_json_rows(allowlist: Path) -> list[str]:
             kept_edges.append(row)
         else:
             removed.append(f"[module_edges] {row['from']} -> {row['to']}")
-    if removed:
-        data['sql_writes'], data['module_edges'] = kept_writes, kept_edges
-        allowlist.write_text(json.dumps(data, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
-    return removed
+    if not removed:
+        return removed, None
+    data['sql_writes'], data['module_edges'] = kept_writes, kept_edges
+    return removed, json.dumps(data, indent=2, ensure_ascii=False) + '\n'
 
 
-def remove_stale(config: Path = TOML, allowlist: Path | None = None) -> int:
-    """Delete ignore_imports lines whose edge no longer exists, and with `allowlist` its stale rows too.
-
-    Returns 0 and prints what it removed.
-    """
+def _find_stale_toml(config: Path) -> tuple[list[str], str | None]:
+    """The `ignore_imports` lines whose edge no longer exists, and the file text without them (None when none). Writes nothing."""
     live = {cid: {f'{a} -> {b}' for a, b in edges} for cid, edges in violations(config).items()}
     kept: list[str] = []
     removed: list[str] = []
@@ -128,23 +132,85 @@ def remove_stale(config: Path = TOML, allowlist: Path | None = None) -> int:
                 removed.append(f'[{current_id}] {edge.group(1)}')
                 continue
         kept.append(line)
-    if removed:
-        config.write_text(''.join(kept), encoding='utf-8')
+    return removed, (''.join(kept) if removed else None)
+
+
+def _stale_json_rows(allowlist: Path) -> list[str]:
+    """Delete the stale rows of allowlist.json (see `_find_stale_json`); returns them. Rewrites the file only when a row went."""
+    removed, text = _find_stale_json(allowlist)
+    if text is not None:
+        allowlist.write_text(text, encoding='utf-8')
+    return removed
+
+
+def stale_approvals(approved: dict[str, dict[str, str]], present: dict[str, set[str]]) -> list[tuple[str, str]]:
+    """(file, entry) of every approval whose entry is not in its file. A file that is not in `present` is not judged."""
+    return [(rel, entry) for rel, entries_ in approved.items() if rel in present
+            for entry in entries_ if entry not in present[rel]]
+
+
+def _present(toml_text: str, json_text: str | None) -> dict[str, set[str]]:
+    from backend.tests.architecture.test_ratchet import entries
+
+    present = {TOML_REL: entries(toml_text, 'toml')}
+    if json_text is not None:
+        present[ALLOWLIST_REL] = entries(json_text, 'json')
+    return present
+
+
+def _report_approvals(approved, toml_text: str, json_text: str | None) -> int:
+    stale = stale_approvals(approved, _present(toml_text, json_text))
+    for rel, entry in stale:
+        print(f'approval to delete by hand: {rel}: {entry}')
+    return len(stale)
+
+
+def check(config: Path = TOML, allowlist: Path | None = None, *, approved=APPROVED) -> int:
+    """Dry run of `remove_stale`: print what it would delete and the approvals to delete by hand; write nothing.
+
+    Returns 1 when anything is stale or an approval is orphaned, else 0.
+    """
+    toml_removed, toml_text = _find_stale_toml(config)
+    json_removed, json_text = _find_stale_json(allowlist) if allowlist is not None else ([], None)
+    found = toml_removed + json_removed
+    for item in found:
+        print('stale:', item)
+    after_toml = toml_text if toml_text is not None else config.read_text(encoding='utf-8')
+    after_json = json_text if json_text is not None else (
+        allowlist.read_text(encoding='utf-8') if allowlist is not None else None)
+    orphaned = _report_approvals(approved, after_toml, after_json)
+    print(f'{len(found)} stale line(s) found, {orphaned} approval(s) to delete by hand')
+    return 1 if found or orphaned else 0
+
+
+def remove_stale(config: Path = TOML, allowlist: Path | None = None, *, approved=APPROVED) -> int:
+    """Delete ignore_imports lines whose edge no longer exists, and with `allowlist` its stale rows too.
+
+    Returns 0, prints what it removed and then the approvals (computed after the removal) that now name a missing
+    entry. It never edits approved_additions.py.
+    """
+    removed, text = _find_stale_toml(config)
+    if text is not None:
+        config.write_text(text, encoding='utf-8')
     if allowlist is not None:
         removed.extend(_stale_json_rows(allowlist))
     for item in removed:
         print('removed stale:', item)
     print(f'{len(removed)} stale line(s) removed')
+    _report_approvals(approved, config.read_text(encoding='utf-8'),
+                      allowlist.read_text(encoding='utf-8') if allowlist is not None else None)
     return 0
-
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument('--print-violations', action='store_true')
     group.add_argument('--remove-stale', action='store_true')
+    group.add_argument('--check', action='store_true', help='dry run: print what would be stale, write nothing, exit 1 if any')
     args = parser.parse_args(argv)
-    return print_violations() if args.print_violations else remove_stale(TOML, ALLOWLIST)
+    if args.print_violations:
+        return print_violations()
+    return check(TOML, ALLOWLIST) if args.check else remove_stale(TOML, ALLOWLIST)
 
 
 if __name__ == '__main__':
