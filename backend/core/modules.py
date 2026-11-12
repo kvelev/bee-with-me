@@ -97,6 +97,10 @@ def _leaf_routes(routes: Iterable, depth: int = 0):
     """
     for route in routes:
         if hasattr(route, 'effective_candidates'):
+            # FastAPI caches the candidates by a version counter that `mount()` and direct edits of `routes` do not
+            # raise, so a late Mount would stay invisible (T605): drop the cache and read the router as it is now.
+            if hasattr(route, '_effective_candidates_version'):
+                route._effective_candidates_version = None
             yield from _leaf_routes(route.effective_candidates(), depth + 1)
             continue
         real = getattr(route, 'starlette_route', None)
@@ -185,6 +189,38 @@ def include_module_routers(app: FastAPI, modules: Iterable[ModuleManifest], *, a
                 raise ValueError(f'{m.name}: {type(route).__name__} cannot carry the auth dependency')
             else:
                 app.include_router(APIRouter(routes=[route]), dependencies=None if is_public else [Depends(auth)])
+    # what was mounted, for `recheck_module_routers`: the list itself, not whatever `MODULES` is at start-up
+    app.state.loaded_modules = (tuple(modules), served_keys(modules))
+
+
+def served_keys(modules: Iterable[ModuleManifest]) -> frozenset[tuple[str, str]]:
+    """The (METHOD, path) keys of every leaf route of every module router, nested includes read as they are now."""
+    keys: set[tuple[str, str]] = set()
+    for m in modules:
+        if m.router is not None:
+            for _depth, _kind, route_keys in _leaf_routes(m.router.routes):
+                keys |= route_keys
+    return frozenset(keys)
+
+
+def recheck_module_routers(app: FastAPI) -> None:
+    """Refuse to start when the module routers are not what `include_module_routers` checked and mounted.
+
+    A nested include is read by FastAPI when a request arrives, so a route added to the sub-router after the
+    loader ran is served although nothing checked it (a `Mount` or a plain `Route` carries no auth dependency).
+    Called in `lifespan` before anything starts; it mounts nothing and changes nothing.
+    """
+    prefix = 'module routers changed after loading: '
+    record = getattr(app.state, 'loaded_modules', None)
+    if record is None:
+        raise ValueError(prefix + 'the loader never ran for this application')
+    modules, loaded = record
+    problems = check_modules(modules)
+    now = served_keys(modules)
+    problems.extend(f'added {method} {path}' for method, path in sorted(now - loaded))
+    problems.extend(f'missing {method} {path}' for method, path in sorted(loaded - now))
+    if problems:
+        raise ValueError(prefix + '; '.join(problems))
 
 
 def start_module_tasks(modules: Iterable[ModuleManifest],
