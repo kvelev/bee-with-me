@@ -32,5 +32,5 @@ const store = useGatewayStore()
   width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
   background: currentColor;
 }
-.serial-ok .serial-dot { animation: sos-pulse-border none; box-shadow: 0 0 4px currentColor; }
+.serial-ok .serial-dot { box-shadow: 0 0 4px currentColor; }
 </style>

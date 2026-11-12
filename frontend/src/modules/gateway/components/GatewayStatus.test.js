@@ -7,6 +7,7 @@ vi.mock('../../../api', () => ({ getSerialStatus: vi.fn() }))
 import { i18n } from '../../../i18n/index.js'
 import { useGatewayStore } from '../store.js'
 import GatewayStatus from './GatewayStatus.vue'
+import src from './GatewayStatus.vue?raw'
 import en from '../i18n/en.js'
 import bg from '../i18n/bg.js'
 
@@ -65,5 +66,9 @@ describe('GatewayStatus', () => {
       expect(w.text()).toContain('7 кадъра')
       w.unmount()
     })
+  })
+  it('the connected dot declares no animation with both a name and none [B143]', () => {
+    expect(src).not.toMatch(/animation\s*:[^;]*none[^;]*;/)
+    expect(src).not.toMatch(/animation\s*:\s*sos-pulse-border\s+none/)
   })
 })
