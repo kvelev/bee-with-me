@@ -15,7 +15,7 @@
     </div>
 
     <!-- Cursor coordinate readout -->
-    <div v-if="cursorCoords && (mgrsGridOn || latLonOn)" class="mgrs-readout">
+    <div v-if="cursorCoords && (mgrsGridOn || latLonOn)" class="mgrs-readout" :class="readoutShift">
       <span v-if="mgrsGridOn">{{ cursorCoords.mgrs }}</span>
       <span v-if="mgrsGridOn && latLonOn" class="readout-sep">|</span>
       <span v-if="latLonOn">{{ cursorCoords.lat.toFixed(5) }}, {{ cursorCoords.lon.toFixed(5) }}</span>
@@ -95,7 +95,7 @@
     <MapContextMenu ref="ctxMenu" :items="menuItems" />
 
     <!-- Measure readout -->
-    <div v-if="measureReadout" class="measure-readout">
+    <div v-if="measureReadout" class="measure-readout" :class="readoutShift">
       📏 {{ measureReadout.distKm.toFixed(2) }} km &nbsp;·&nbsp; {{ Math.round(measureReadout.bearing) }}°
     </div>
 
@@ -363,6 +363,9 @@ function switchBasemap(id) {
 // Only a strict false means the tracker layer failed to install (other facades answer undefined).
 const trackerLayerFailed = ref(false)
 watch(displayList, (list) => { trackerLayerFailed.value = refreshMarkers(list) === false }, { deep: true, immediate: true })
+// Top-centre stack, top to bottom: stale-feed banner, tracker-layer note, coordinate readout, measure readout.
+// The readouts clear the note (and the banner above it) while the note is shown.
+const readoutShift = computed(() => ({ 'below-note': trackerLayerFailed.value, 'below-banner': trackerLayerFailed.value && !store.wsConnected }))
 
 function toggleMGRS() {
   mgrsGridOn.value = !mgrsGridOn.value
@@ -535,6 +538,10 @@ const mapPanels = collectPanels(MODULES, 'map')
   border: 1px solid rgba(255,255,255,0.12); z-index: 50;
   letter-spacing: .04em;
 }
+.mgrs-readout.below-note { top: 52px; }
+.mgrs-readout.below-note.below-banner { top: 92px; }
+.measure-readout.below-note { top: 96px; }
+.measure-readout.below-note.below-banner { top: 136px; }
 
 :deep(.ol-attribution) { display: none; }
 
