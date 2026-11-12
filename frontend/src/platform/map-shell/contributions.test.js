@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { validateManifest } from '../manifest.js'
 import {
+  collectActions,
   collectBanners,
   collectContextMenu,
   collectLayerToggles,
@@ -309,5 +310,17 @@ describe('panels', () => {
     expect(t.key).toBe('kk')
     expect(t.isOn).toBe(isOn)
     expect(t.set).toBe(set)
+  })
+})
+
+describe('actions', () => {
+  it('actions are collected per target and sorted by order then id [T631]', () => {
+    const a = (id, target, order) => ({ id, target, order, labelKey: 'k', onSelect() {} })
+    const m1 = mod('m1', { actions: [a('z', 'tracker-row', 2), a('x', 'other', 1), a('b', 'tracker-row', 1)] })
+    const m2 = mod('m2', { actions: [a('a', 'tracker-row', 1)] })
+    expect(ids(collectActions([m1, m2], 'tracker-row'))).toEqual(['a', 'b', 'z'])
+    expect(ids(collectActions([m1], 'tracker-row', [a('l', 'tracker-row', 0)]))).toEqual(['l', 'b', 'z'])
+    expect(collectActions([mod('none')], 'tracker-row')).toEqual([])
+    expect(collectActions(undefined, 'tracker-row')).toEqual([])
   })
 })

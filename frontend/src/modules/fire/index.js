@@ -17,6 +17,22 @@ import { useFireUi } from './ui.js'
 export { useFireStore }
 export { useFireUi } from './ui.js'
 
+// "Report fire at this position" on a selected tracker row. The panel hands over the position at the click, so what the
+// form shows is what is sent. No position, or none received in the last 24 h (server clock), means nothing can be reported.
+const REPORT_MAX_AGE_MS = 24 * 3_600_000
+function reportAtPosition({ name, position: live, ageMs: age, receivedAt }) {
+  const lat = Number(live?.latitude)
+  const lon = Number(live?.longitude)
+  const usable = !!live && live.latitude != null && live.longitude != null
+    && Number.isFinite(lat) && Number.isFinite(lon) && age != null && age <= REPORT_MAX_AGE_MS
+  useFireUi().openDialog({
+    kind: 'report',
+    target: usable
+      ? { name, latitude: lat, longitude: lon, mgrs: live.mgrs ?? '', receivedAt, gnssValid: live.gnss_valid }
+      : { name, noPosition: true },
+  })
+}
+
 export default {
   name: 'fire',
   routes: [],
@@ -38,6 +54,11 @@ export default {
   contextMenu: [{
     id: 'fire-report-here', order: 10, labelKey: 'fire.report.here', testId: 'report-fire-here',
     onSelect: ({ lonLat }) => useFireUi().openDialog({ kind: 'report', target: { latitude: lonLat[1], longitude: lonLat[0] } }),
+  }],
+  // Offered under a selected row of the tracker panel.
+  actions: [{
+    id: 'fire-report-at-position', target: 'tracker-row', order: 10, labelKey: 'fire.report.atPosition',
+    testId: 'report-fire-row', onSelect: reportAtPosition,
   }],
   banners: [{ id: 'fire-alarm', priority: BANNER_PRIORITY.fireAlarm, component: FireAlarmBanner }],
   // Live socket contributions (read by platform/live/dispatch.js). The store is read inside each function so

@@ -94,126 +94,13 @@
       📏 {{ measureReadout.distKm.toFixed(2) }} km &nbsp;·&nbsp; {{ Math.round(measureReadout.bearing) }}°
     </div>
 
-    <!-- Mode toggle (bottom-right of map, above tracker panel) -->
-    <div class="mode-toggle">
-      <button
-        :class="['bm-btn', { active: viewMode === 'individuals' }]"
-        @click="setViewMode('individuals')"
-      >{{ t('map.modeIndividual') }}</button>
-      <button
-        :class="['bm-btn', { active: viewMode === 'groups' }]"
-        @click="setViewMode('groups')"
-      >{{ t('map.modeGroups') }}</button>
-    </div>
-
-    <!-- Tracker panel -->
-    <aside ref="trackerPanelEl" class="tracker-panel">
-      <div class="panel-header">
-        <span>{{ t('map.trackers') }} ({{ displayList.length }})</span>
-        <span v-if="store.hasSOS" class="badge badge-sos sos-pulse">SOS</span>
-      </div>
-
-      <!-- Devices we've stopped hearing from. Deliberately quiet: no pulse, no sound, no red —
-           this is a "look at this" notice, not the SOS alarm. -->
-      <div v-if="store.silentList.length" class="silence-notice">
-        <span class="silence-dot" />
-        <span class="silence-text">
-          {{ t('map.silenceNotice', { n: store.silentList.length }) }}
-          <template v-if="store.lostList.length">
-            · {{ t('map.silenceLost', { n: store.lostList.length }) }}
-          </template>
-        </span>
-      </div>
-      <div class="rank-search">
-        <input
-          v-model="rankFilter"
-          :placeholder="t('map.searchRank')"
-          class="rank-input"
-        />
-        <button v-if="rankFilter" class="rank-clear" @click="rankFilter = ''">✕</button>
-      </div>
-
-      <!-- Individual mode -->
-      <template v-if="viewMode === 'individuals'">
-        <template v-for="pos in displayList" :key="pos.device_id">
-        <div
-          class="tracker-row"
-          :class="[`fresh-${freshnessOf(pos, nowTick)}`, { 'tracker-sos': pos.sos_active, 'tracker-selected': selectedDeviceId === pos.device_id }]"
-          :data-device-id="pos.device_id"
-          tabindex="0"
-          role="button"
-          :aria-pressed="selectedDeviceId === pos.device_id"
-          @click="selectDevice(pos)"
-          @keydown.enter.self.prevent="selectDevice(pos)"
-          @keydown.space.self.prevent="selectDevice(pos)"
-        >
-          <div class="tracker-dot" :style="{ background: pos.groups?.[0]?.color ?? '#3b82f6' }" />
-          <div class="tracker-info">
-            <div class="tracker-name">{{ pos.full_name || pos.device_name || pos.dev_sn }}</div>
-            <div class="tracker-mgrs">
-              {{ pos.mgrs }}
-              <span v-if="pos.gnss_valid === false" class="no-fix-tag">{{ t('map.noFix') }}</span>
-            </div>
-          </div>
-          <div class="tracker-meta">
-            <div class="tracker-age" :class="`age-${freshnessOf(pos, nowTick)}`">
-              {{ formatAge(ageMs(pos, nowTick)) }}
-            </div>
-            <div class="tracker-bat" :class="batClass(pos.battery_voltage)">
-              {{ pos.battery_voltage?.toFixed(1) ?? '—' }}V
-            </div>
-          </div>
-        </div>
-        <div v-if="selectedDeviceId === pos.device_id" class="tracker-actions">
-          <button type="button" class="tracker-report" data-testid="report-fire-row" @click="reportFromRow(pos)">
-            {{ t('fire.report.atPosition') }}
-          </button>
-        </div>
-        </template>
-        <div v-if="!displayList.length" class="no-trackers">{{ t('map.noTrackers') }}</div>
-      </template>
-
-      <!-- Group mode -->
-      <template v-else>
-        <template v-for="group in groupsWithLeaders" :key="group.id">
-          <div class="group-section-header" :style="{ borderLeftColor: group.color }">
-            <span class="group-section-dot" :style="{ background: group.color }" />
-            {{ group.name }}
-          </div>
-          <div v-if="group.leader" class="tracker-row tracker-leader"
-               :class="{ 'tracker-selected': selectedDeviceId === group.leader.device_id }"
-               :data-device-id="group.leader.device_id" tabindex="0" role="button"
-               :aria-pressed="selectedDeviceId === group.leader.device_id"
-               @click="selectDevice(group.leader)"
-               @keydown.enter.self.prevent="selectDevice(group.leader)"
-               @keydown.space.self.prevent="selectDevice(group.leader)">
-            <div class="tracker-dot" :style="{ background: group.color }" />
-            <div class="tracker-info">
-              <div class="tracker-name">
-                ★ {{ group.leader.full_name || group.leader.device_name || group.leader.dev_sn }}
-              </div>
-              <div class="tracker-mgrs">{{ group.leader.mgrs }}</div>
-            </div>
-            <div class="tracker-bat" :class="batClass(group.leader.battery_voltage)">
-              {{ group.leader.battery_voltage?.toFixed(1) ?? '—' }}V
-            </div>
-          </div>
-          <div v-if="group.leader && selectedDeviceId === group.leader.device_id" class="tracker-actions">
-            <button type="button" class="tracker-report" data-testid="report-fire-row" @click="reportFromRow(group.leader)">
-              {{ t('fire.report.atPosition') }}
-            </button>
-          </div>
-          <div v-if="!group.leader" class="no-leader">{{ t('map.noLeader') }}</div>
-        </template>
-        <div v-if="!groupsWithLeaders.length" class="no-trackers">{{ t('map.noTrackers') }}</div>
-      </template>
-    </aside>
     <PanelHost :panels="mapPanels" :context="mapContext" />
   </div>
 </template>
 
 <script setup>
-import { ref, shallowRef, computed, watch, onMounted, onUnmounted, onActivated, onDeactivated, nextTick } from 'vue'
+import { ref, shallowRef, computed, watch, onMounted, onUnmounted, onActivated, onDeactivated } from 'vue'
+import { storeToRefs } from 'pinia'
 
 defineOptions({ name: 'MapView' })
 import { useI18n } from 'vue-i18n'
@@ -222,17 +109,17 @@ import Overlay from 'ol/Overlay'
 import { useLocationsStore } from '../stores/locations'
 import { useFireStore } from '../stores/fire'
 import { useFireUi } from '../modules/fire/index.js'
+import { useTrackerUi } from '../modules/tracking/index.js'
 import { useAuthStore } from '../stores/auth'
 import { useSettingsStore } from '../stores/settings'
 import { useWebSocket } from '../composables/useWebSocket'
 import { useMap, BASEMAPS } from '../composables/useMap'
 import { getDevices, getGroupsWithMembers, setDeviceLocation } from '../api'
-import { ageMs, contactAt, formatAge, freshnessOf, byUrgency } from '../lib/freshness'
 import { unByKey } from 'ol/Observable'
 import MapPopupHost from '../platform/map-shell/MapPopupHost.vue'
 import MapContextMenu from '../platform/map-shell/MapContextMenu.vue'
 import PanelHost from '../platform/PanelHost.vue'
-import { collectContextMenu, collectLayerToggles, collectPanels, collectPopups } from '../platform/map-shell/contributions.js'
+import { collectActions, collectContextMenu, collectLayerToggles, collectPanels, collectPopups } from '../platform/map-shell/contributions.js'
 import { MODULES } from '../modules'
 
 const { t } = useI18n()
@@ -250,55 +137,16 @@ const trailOn        = ref(false)
 const trailNumbersOn = ref(false)
 const cursorCoords   = ref(null)   // { mgrs, lat, lon }
 const latLonOn       = ref(false)
-const viewMode       = ref('individuals') // 'individuals' | 'groups'
-const rankFilter     = ref('')
-// id -> { id, name, color, members: [{id, full_name, rank, is_leader}] }
-const groupsMap      = ref({})
-
-// Drives every relative age in the panel. Without it the ages would only refresh when some
-// other device happens to report, so a panel full of silent trackers would freeze its own
-// clock — exactly when the ages matter most.
-const nowTick = ref(Date.now())
-let tickTimer = null
+// The tracker list, its mode, filter and selection are the tracking module's (useTrackerUi). The view owns the tick
+// and the reset, and hands the same displayList ref to the map that the tracker panel draws its rows from.
+const trackerUi = useTrackerUi()
+const { displayList, groupsMap, selectedDeviceId } = storeToRefs(trackerUi)
 
 const lastSyncLabel = computed(() => {
   if (!store.lastSyncAt) return '—'
   return new Date(store.lastSyncAt).toLocaleTimeString([], {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   })
-})
-
-const rankFiltered = computed(() => {
-  const q = rankFilter.value.trim().toLowerCase()
-  const list = !q
-    ? store.positionList
-    : store.positionList.filter(pos => pos.rank?.toLowerCase().includes(q))
-  // Worst-first: SOS, then longest out of contact. What needs attention surfaces itself
-  // rather than waiting to be scrolled to.
-  return [...list].sort((a, b) => byUrgency(a, b, nowTick.value))
-})
-
-// In teams mode show only leaders, labelled by team name
-const displayList = computed(() => {
-  if (viewMode.value === 'individuals') return rankFiltered.value
-  return rankFiltered.value
-    .filter(pos => pos.groups?.some(g => g.is_leader))
-    .map(pos => {
-      const leaderGroup = pos.groups.find(g => g.is_leader)
-      return { ...pos, displayLabel: leaderGroup?.name ?? pos.full_name }
-    })
-})
-
-// Build a list of groups with their leader's live position for the panel
-const groupsWithLeaders = computed(() => {
-  const groupMap = {}
-  for (const pos of rankFiltered.value) {
-    for (const g of (pos.groups ?? [])) {
-      if (!groupMap[g.id]) groupMap[g.id] = { id: g.id, name: g.name, color: g.color, leader: null }
-      if (g.is_leader) groupMap[g.id].leader = pos
-    }
-  }
-  return Object.values(groupMap).sort((a, b) => a.name.localeCompare(b.name))
 })
 
 // HQ lives in the database (settings store); only an admin can place or clear it.
@@ -371,47 +219,9 @@ const hostMap = shallowRef(null)   // set once the map exists; the popup host pu
 const toggleOn = (toggle, name) => (toggle.isOn ? !!toggle.isOn() : !!fireStore.layers[name])
 const onToggle = (toggle, name) => (toggle.set ? toggle.set(!toggleOn(toggle, name)) : useFireUi().setLayer(name, !toggleOn(toggle, name)))
 
-// ── Volunteer selection and "Report fire at this position" ───────────────────────────────────
-// Selecting a volunteer (panel row, or their marker on the map) reveals the action under their row.
-const selectedDeviceId = ref(null)
-
-function selectDevice(pos) {
-  selectedDeviceId.value = pos.device_id
-  focusDevice(pos)
-}
-
-// The position is frozen here, at the click: the volunteer keeps moving while the operator types,
-// and what the form shows is exactly what is sent. No position, or none from the last 24 h
-// (judged on received_at, the server clock), means nothing can be reported.
-const REPORT_MAX_AGE_MS = 24 * 3_600_000
-function reportFromRow(pos) {
-  const live = store.positions[pos.device_id] ?? null
-  const name = pos.full_name || pos.device_name || String(pos.dev_sn ?? '')
-  const age = live ? ageMs(live) : null
-  const lat = Number(live?.latitude), lon = Number(live?.longitude)
-  const usable = !!live && live.latitude != null && live.longitude != null
-    && Number.isFinite(lat) && Number.isFinite(lon) && age != null && age <= REPORT_MAX_AGE_MS
-  useFireUi().openDialog({
-    kind: 'report',
-    target: usable
-      ? { name, latitude: lat, longitude: lon, mgrs: live.mgrs ?? '', receivedAt: contactAt(live), gnssValid: live.gnss_valid }
-      : { name, noPosition: true },
-  })
-}
-
-// A marker click selects that volunteer's row and brings it into view; bare map deselects.
-const trackerPanelEl = ref(null)
-async function onMarkerClick(deviceId) {
-  selectedDeviceId.value = deviceId
-  if (!deviceId) return
-  await nextTick()
-  const row = [...(trackerPanelEl.value?.querySelectorAll('[data-device-id]') ?? [])].find(el => el.dataset.deviceId === deviceId)
-  row?.scrollIntoView?.({ block: 'nearest' })
-}
-// A volunteer who left the list cannot stay selected.
-watch(displayList, (list) => {
-  if (selectedDeviceId.value && !list.some(p => p.device_id === selectedDeviceId.value)) selectedDeviceId.value = null
-})
+// A marker click selects that volunteer's row (the tracker panel brings it into view); bare map deselects.
+// A volunteer who left the list cannot stay selected: the store clears that.
+const onMarkerClick = (deviceId) => trackerUi.select(deviceId)
 
 // ── Right-click / long-press: "Report fire here" ─────────────────────────────────────────────
 // The menu items come from the modules' contributions ("Report fire here" is the fire module's).
@@ -493,6 +303,7 @@ function reloadOfflineBasemap() {
 
 
 onMounted(async () => {
+  trackerUi.reset()   // the mode, the filter and the selection start fresh on every visit
   // The browser can open before uvicorn is up (start.ps1). A failed first snapshot must not stop the
   // rest of mount: without connect() there is no socket, no resync timer and no reconnect, so SOS
   // pushes and live positions would never arrive until a reload (BP-02).
@@ -517,7 +328,7 @@ onMounted(async () => {
   await loadRepeaters()
   if (unmounted) return
 
-  tickTimer = setInterval(() => { nowTick.value = Date.now() }, 10_000)
+  trackerUi.startTick()   // idempotent; the order of the list and the marker styles follow it
 })
 
 // Redraw only when the point moves, not on every settings save.
@@ -527,7 +338,7 @@ watch(() => hqLocation.value && `${hqLocation.value.lat},${hqLocation.value.lon}
 
 onUnmounted(() => {
   unmounted = true
-  clearInterval(tickTimer)
+  trackerUi.stopTick()
 
   window.removeEventListener('offline-map-changed', reloadOfflineBasemap)
 
@@ -545,11 +356,6 @@ function switchBasemap(id) {
   setBasemap(id)
 }
 watch(displayList, (list) => refreshMarkers(list), { deep: true })
-
-function setViewMode(mode) {
-  viewMode.value = mode
-  refreshMarkers(displayList.value)
-}
 
 function toggleMGRS() {
   mgrsGridOn.value = !mgrsGridOn.value
@@ -622,26 +428,13 @@ onDeactivated(() => { mapActive.value = false })
 const mapKit = { Overlay, fromLonLat, toLonLat, unByKey }
 const mapContext = {
   hostMap, facade, mapKit, isAdmin, activeBasemap, mapActive, selectedDeviceId,
+  hasSOS: computed(() => store.hasSOS),
+  rowActions: collectActions(MODULES, 'tracker-row'),
   closeContextMenu: () => ctxMenu.value?.close(),
 }
 const rootPanels = collectPanels(MODULES, 'map-root')
 const toolbarPanels = collectPanels(MODULES, 'map-toolbar')
 const mapPanels = collectPanels(MODULES, 'map')
-
-function focusDevice(pos) {
-  const m = map()
-  if (m) m.getView().animate({ center: fromLonLat([pos.longitude, pos.latitude]), zoom: 13, duration: 500 })
-}
-function formatTime(ts) {
-  if (!ts) return '—'
-  return new Date(ts).toLocaleTimeString()
-}
-function batClass(v) {
-  if (v == null) return ''
-  if (v >= 3.5) return 'bat-ok'
-  if (v >= 3.0) return 'bat-warn'
-  return 'bat-low'
-}
 </script>
 
 <style scoped>
@@ -652,10 +445,6 @@ function batClass(v) {
 .basemap-switcher {
   position: absolute; bottom: 38px; left: 12px; z-index: 50;
   display: flex; gap: 4px; flex-wrap: wrap; max-width: 420px;
-}
-.mode-toggle {
-  position: absolute; bottom: 38px; right: 12px; z-index: 50;
-  display: flex; gap: 2px;
 }
 .bm-btn {
   background: var(--bg-panel); border: 1px solid var(--border);
@@ -674,88 +463,6 @@ function batClass(v) {
 
 /* Not positioned: OpenLayers sizes its overlay container from this element. */
 .fire-popup-anchor { display: block; }
-
-.tracker-panel {
-  width: 260px; background: var(--bg-panel); border-left: 1px solid var(--border);
-  overflow-y: auto; display: flex; flex-direction: column;
-}
-.panel-header {
-  padding: 14px 16px; font-size: 13px; font-weight: 600;
-  border-bottom: 1px solid var(--border); display: flex;
-  align-items: center; justify-content: space-between; flex-shrink: 0;
-}
-.tracker-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border);
-  transition: background .1s;
-}
-.tracker-row:hover { background: var(--bg-card); }
-.tracker-sos    { border-left: 3px solid var(--danger); }
-.tracker-leader { background: rgba(255,200,0,0.04); }
-/* Freshness: the row dims as contact ages, so a silent tracker reads differently from a
-   live one even before you look at the age figure. */
-.tracker-row.fresh-stale .tracker-name,
-.tracker-row.fresh-stale .tracker-mgrs { opacity: .72; }
-.tracker-row.fresh-lost  .tracker-name,
-.tracker-row.fresh-lost  .tracker-mgrs { opacity: .45; }
-.tracker-row.fresh-stale { border-left: 3px solid rgba(234,179,8,.55); }
-.tracker-row.fresh-lost  { border-left: 3px solid rgba(156,163,175,.5); }
-.tracker-row.tracker-sos { border-left: 3px solid var(--danger); }
-
-/* Selected volunteer: Signal Blue hairline (outline, not a side stripe) on the raised ground, and the
-   report action underneath. */
-.tracker-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-.tracker-row.tracker-selected { background: var(--bg-card); outline: 1px solid var(--accent); outline-offset: -1px; }
-.tracker-actions { padding: 8px 14px 10px; background: var(--bg-card); border-bottom: 1px solid var(--border); }
-.tracker-report {
-  width: 100%; min-height: 34px; padding: 6px 10px; font-size: 12.5px; font-weight: 600; line-height: 1.3;
-  background: var(--bg-panel); color: var(--text); border: 1px solid var(--accent); border-radius: 6px;
-}
-.tracker-report:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-@media (hover: hover) and (pointer: fine) { .tracker-report:hover { background: var(--accent); color: #fff; opacity: 1; } }
-
-.tracker-meta { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.tracker-age {
-  font-size: 11px;
-  font-family: monospace;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-  min-width: 34px;
-  text-align: right;
-}
-.age-stale { color: #eab308; font-weight: 600; }
-.age-lost  { color: var(--danger); font-weight: 600; }
-
-.no-fix-tag {
-  font-family: system-ui;
-  font-size: 9.5px;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  color: #facc15;
-  border: 1px solid rgba(250,204,21,.5);
-  border-radius: 3px;
-  padding: 0 3px;
-  margin-left: 5px;
-  vertical-align: 1px;
-}
-
-/* Quiet by design — this is not the SOS alarm and must not read like one. */
-.silence-notice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  background: rgba(234,179,8,.09);
-  border-top: 1px solid rgba(234,179,8,.25);
-  border-bottom: 1px solid rgba(234,179,8,.25);
-  font-size: 12px;
-  color: #eab308;
-}
-.silence-dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: #eab308; flex-shrink: 0;
-}
-.silence-text { line-height: 1.35; }
 
 .stale-feed-banner {
   position: absolute;
@@ -784,29 +491,6 @@ function batClass(v) {
 @media (prefers-reduced-motion: reduce) {
   .stale-feed-dot { animation: none; }
 }
-
-.tracker-dot  { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.tracker-info { flex: 1; min-width: 0; }
-.tracker-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tracker-mgrs { font-size: 11px; color: var(--text-muted); font-family: monospace; }
-.tracker-bat  { font-size: 11px; flex-shrink: 0; }
-.bat-ok   { color: var(--success); }
-.bat-warn { color: var(--warning); }
-.bat-low  { color: var(--danger); }
-.no-trackers { padding: 20px; text-align: center; color: var(--text-muted); font-size: 13px; }
-.rank-search { padding: 8px 10px; border-bottom: 1px solid var(--border); display: flex; gap: 4px; flex-shrink: 0; }
-.rank-input  { flex: 1; font-size: 12px; padding: 5px 8px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text); }
-.rank-input::placeholder { color: var(--text-muted); }
-.rank-clear  { background: none; border: none; color: var(--text-muted); font-size: 13px; padding: 0 4px; cursor: pointer; }
-.rank-clear:hover { color: var(--text); }
-
-.group-section-header {
-  padding: 8px 14px 4px; font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .05em; color: var(--text-muted); border-left: 3px solid transparent;
-  display: flex; align-items: center; gap: 6px;
-}
-.group-section-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.no-leader { padding: 6px 14px 10px; font-size: 12px; color: var(--text-muted); font-style: italic; }
 
 .measure-readout {
   position: absolute; top: 56px; left: 50%; transform: translateX(-50%);
