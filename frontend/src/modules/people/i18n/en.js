@@ -11,6 +11,7 @@ export default {
     importSkipped: 'skipped',
     importError:   'Import failed',
     loadError:     'Could not load volunteers',
+    actionError:   'The action failed. Try again.',
     edit:       'Edit',
     deactivate: 'Deactivate',
     reactivate: 'Reactivate',

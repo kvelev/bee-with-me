@@ -1,5 +1,6 @@
 <script>
 import { defineComponent, h, ref, createCommentVNode, watch, onErrorCaptured } from 'vue'
+import { describeError } from './describeError.js'
 
 // Renderless boundary: one per panel. A panel that throws any error captured from it (while rendering, but also
 // from its own handlers and watchers) is logged once and renders nothing from then on; the neighbours stay. A panel with a retryKey function is tried again when retryKey(context) changes.
@@ -15,7 +16,7 @@ const PanelBoundary = defineComponent({
     onErrorCaptured((error) => {
       if (!failed.value) {
         failed.value = true
-        console.error(`panel ${props.panel.id} failed`, error)
+        console.error(`panel ${props.panel.id} failed`, describeError(error))
       }
       return false
     })
@@ -28,7 +29,7 @@ const PanelBoundary = defineComponent({
       } catch (error) {
         if (!keyLogged) {
           keyLogged = true
-          console.error(`panel ${props.panel.id} retryKey failed`, error)
+          console.error(`panel ${props.panel.id} retryKey failed`, describeError(error))
         }
         return undefined
       }

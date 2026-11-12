@@ -41,7 +41,7 @@ async function mountMap(role) {
   useAuthStore().user = { role }
   const loc = useLocationsStore()
   loc.fetchLive = vi.fn(); loc.fetchSOS = vi.fn(); loc.fetchTrail = vi.fn()
-  const w = mount(MapView, { global: { plugins: [pinia, i18n], stubs: { SOSToast: true, FirePopup: true } } })
+  const w = mount(MapView, { global: { plugins: [pinia, i18n], stubs: { FirePopup: true } } })
   await flushPromises()
   return w
 }

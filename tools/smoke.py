@@ -10,6 +10,7 @@ Usage:
     python tools/smoke.py                  # Podman first, Docker second (or CONTAINER_ENGINE=podman|docker)
     python tools/smoke.py --no-build       # reuse the smoke-local images from an earlier run
     python tools/smoke.py --engine docker
+    python tools/smoke.py --live-personal-fields false   # backend with LIVE_PERSONAL_FIELDS=false (thin /ws messages)
 
 Exit code: 0 all steps PASS, 1 at least one FAIL, 2 no usable container engine.
 
@@ -264,11 +265,14 @@ class Smoke:
     """Owns the containers, network and volumes of one run; `cleanup()` removes exactly those."""
 
     def __init__(self, engine: str, *, runner=default_runner, repo_root: Path = REPO_ROOT,
-                 no_build: bool = False, out=print, run_id: str | None = None):
+                 no_build: bool = False, out=print, run_id: str | None = None,
+                 live_personal_fields: bool | None = None):
         self.engine = engine
         self.runner = runner
         self.repo_root = Path(repo_root)
         self.no_build = no_build
+        # None = the variable is not passed (the backend's own default); True/False = LIVE_PERSONAL_FIELDS for the run
+        self.live_personal_fields = live_personal_fields
         self.out = out
         self.run_id = run_id or secrets.token_hex(3)
         self.prefix = f'bee-smoke-{self.run_id}'
@@ -360,6 +364,9 @@ class Smoke:
 
     def backend_run_cmd(self) -> list[str]:
         # Mirrors deploy/k8s/app/backend.yaml: ConfigMap values, read-only root, no capabilities, /tmp writable
+        switch = []
+        if self.live_personal_fields is not None:
+            switch = ['-e', f'LIVE_PERSONAL_FIELDS={str(self.live_personal_fields).lower()}']
         return ['run', '-d', '--name', self.backend_name, '--network', self.network,
                 '-p', '127.0.0.1::8000',
                 '--read-only', '--tmpfs', '/tmp:rw,size=256m', '--cap-drop', 'ALL',
@@ -367,6 +374,7 @@ class Smoke:
                 '-e', 'POSTGRES_HOST=postgres', '-e', 'POSTGRES_PORT=5432',
                 '-e', f'POSTGRES_DB={DB_NAME}', '-e', f'POSTGRES_USER={DB_USER}',
                 '-e', 'ALLOW_MIGRATE_WITHOUT_BACKUP=true', '-e', 'ENABLE_TEST_ENDPOINTS=true',
+                *switch,
                 '-e', 'POSTGRES_PASSWORD', '-e', 'SECRET_KEY', '-e', 'OFFLINE_MAPS_PASSWORD',
                 '-e', 'INITIAL_ADMIN_PASSWORD',
                 '-v', f'{self.volumes[1]}:/app/backend/uploads', '-v', f'{self.volumes[2]}:/app/tiles',
@@ -519,10 +527,10 @@ class Smoke:
             status, _ = http_request('POST', f'{api}/api/test/simulate', token=token,
                                      json_body={'device_id': device_id, 'lat': 42.6977, 'lon': 23.3219})
             expect_status(status, 200, 'POST /api/test/simulate')
-            wait_for_message(ws, lambda m: m.get('type') == 'location_update' and m.get('device_id') == device_id)
+            msg = wait_for_message(ws, lambda m: m.get('type') == 'location_update' and m.get('device_id') == device_id)
         finally:
             ws.close()
-        return 'location_update received on /ws'
+        return 'location_update received on /ws' + personal_fields_note(msg, self.live_personal_fields)
 
     def s_frontend(self):
         self.containers.append(self.frontend_name)
@@ -571,6 +579,20 @@ class Smoke:
         return self.report.exit_code
 
 
+def personal_fields_note(msg: dict, expected: bool | None) -> str:
+    """With the switch set for the run, the message must be the full one (true) or the thin one (false).
+
+    Only key names are looked at and reported, never a value. Without the switch nothing is checked.
+    """
+    if expected is None:
+        return ''
+    has_person = 'full_name' in msg
+    if has_person != expected:
+        raise StepFail(f'LIVE_PERSONAL_FIELDS={str(expected).lower()} but the location_update '
+                       f"{'carries' if has_person else 'lacks'} the personal keys")
+    return f" ({'full' if expected else 'thin'} message, {len(msg) - 1} keys, LIVE_PERSONAL_FIELDS={str(expected).lower()})"
+
+
 def check_html(body: bytes) -> str:
     text = body.decode('utf-8', 'replace')
     if '<div id="app"' not in text:
@@ -594,7 +616,11 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description='Smoke test of the develop images (see docs/SMOKE.md)')
     parser.add_argument('--engine', choices=('podman', 'docker'), help='override CONTAINER_ENGINE')
     parser.add_argument('--no-build', action='store_true', help=f'reuse the {IMAGE_TAG} images of an earlier run')
+    parser.add_argument('--live-personal-fields', choices=('true', 'false'),
+                        help='start the backend with LIVE_PERSONAL_FIELDS set to this and check the /ws message '
+                             'in step e (default: the variable is not passed)')
     args = parser.parse_args(argv)
+    switch = None if args.live_personal_fields is None else args.live_personal_fields == 'true'
     env = dict(os.environ)
     if args.engine:
         env['CONTAINER_ENGINE'] = args.engine
@@ -603,8 +629,9 @@ def main(argv=None) -> int:
     except StepFail as exc:
         print(f'FAIL  engine  - {exc}')
         return 2
-    print(f'Smoke test of commit {git_label()} with {engine}')
-    return Smoke(engine, no_build=args.no_build).run()
+    mode = '' if switch is None else f', LIVE_PERSONAL_FIELDS={args.live_personal_fields}'
+    print(f'Smoke test of commit {git_label()} with {engine}{mode}')
+    return Smoke(engine, no_build=args.no_build, live_personal_fields=switch).run()
 
 
 if __name__ == '__main__':

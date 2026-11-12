@@ -1,7 +1,9 @@
-// Live-message dispatch (vertical-slice step 2). Pure: imports nothing. The socket in
+// Live-message dispatch (vertical-slice step 2). Pure: imports only the error describer. The socket in
 // composables/useWebSocket.js stays where it is; what it does with a message or a timer tick is
 // read from the modules' contributions (`liveHandlers`, `live`) plus the `legacy` lists that hold
 // what has not moved into a module yet.
+
+import { describeError } from '../describeError.js'
 
 const HOOK_KINDS = ['setup', 'onTick', 'onReconnect']
 
@@ -32,8 +34,21 @@ export function collectLiveHooks(modules, legacy = {}) {
   return hooks
 }
 
+
 function report(type, error) {
-  console.error(`live handler ${type} failed`, error)
+  console.error(`live handler ${type} failed: ${describeError(error)}`)
+}
+
+/** Run the `setup` hooks once: a throw or a rejected promise is logged, the next hook still runs. */
+export function runSetup(list) {
+  for (const fn of list) {
+    try {
+      const result = fn()
+      if (result && typeof result.then === 'function') result.then(undefined, (e) => report('setup', e))
+    } catch (e) {
+      report('setup', e)
+    }
+  }
 }
 
 /** Run every handler of `msg.type`. A throw or a rejected promise is logged; the next handler still runs. */

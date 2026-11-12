@@ -12,6 +12,7 @@
 import { computed, nextTick, onBeforeUnmount, onErrorCaptured, onMounted, ref, watch } from 'vue'
 import Overlay from 'ol/Overlay'
 import { contributionProblems, popupFor } from './contributions.js'
+import { describeError } from '../describeError.js'
 
 const props = defineProps({
   map: { type: Object, default: null },
@@ -30,7 +31,7 @@ const shown = computed(() => !!props.selection && !!popup.value && !failed.value
 
 function fail(err) {
   failed.value = true
-  console.error('[map-shell] popup "%s" failed', popup.value?.id ?? '?', err)
+  console.error('[map-shell] popup "%s" failed', popup.value?.id ?? '?', describeError(err))
 }
 
 function removeOverlay() {

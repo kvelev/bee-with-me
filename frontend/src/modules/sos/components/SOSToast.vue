@@ -18,13 +18,21 @@
   </Teleport>
 </template>
 
+<script>
+// Notifications already announced (alarm + auto-dismiss timer), shared by every mount of this component so a remount
+// does not replay the alarm.
+const announced = new WeakSet()
+</script>
+
 <script setup>
-import { watch } from 'vue'
+import { toRaw, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useLocationsStore } from '../stores/locations'
+import { useSosStore } from '../store.js'
+
+defineProps({ context: { type: Object, default: undefined } })
 
 const { t } = useI18n()
-const store = useLocationsStore()
+const store = useSosStore()
 
 function dismiss(id) {
   store.dismissSOSNotification(id)
@@ -55,16 +63,21 @@ function playAlarm() {
   } catch { /* audio not available */ }
 }
 
-// Auto-dismiss after 10 s and play alarm on each new notification
-watch(
-  () => store.sosNotifications.length,
-  (newLen, oldLen) => {
-    if (newLen <= oldLen) return
-    const newest = store.sosNotifications[store.sosNotifications.length - 1]
-    playAlarm()
-    setTimeout(() => store.dismissSOSNotification(newest.id), 10000)
-  },
-)
+// Auto-dismiss after 10 s and play the alarm once for every notification not announced yet. Immediate, because after
+// a render retry (PanelHost) this component is mounted with the triggering notification already in the store.
+function announce() {
+  let fresh = false
+  for (const n of store.sosNotifications) {
+    const key = toRaw(n)
+    if (announced.has(key)) continue
+    announced.add(key)
+    fresh = true
+    setTimeout(() => store.dismissSOSNotification(n.id), 10000)
+  }
+  if (fresh) playAlarm()
+}
+
+watch(() => store.sosNotifications.length, announce, { immediate: true })
 </script>
 
 <style scoped>

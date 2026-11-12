@@ -319,3 +319,73 @@ def test_a_route_type_without_a_path_is_refused(nested):
     with pytest.raises(ValueError, match='cannot carry the auth dependency'):
         include_module_routers(app, [manifest], auth=_deny)
     assert list(app.routes) == before
+
+
+# ── B109: a route without explicit methods is not a WebSocket ─────────────────
+
+def _any_method_endpoint():
+    from starlette.endpoints import HTTPEndpoint
+    from starlette.responses import PlainTextResponse
+
+    class Anything(HTTPEndpoint):
+        async def get(self, request):
+            return PlainTextResponse('read')
+
+        async def delete(self, request):
+            return PlainTextResponse('deleted')
+
+    return Anything
+
+
+@pytest.mark.Trait("Bug", "B109")
+def test_a_route_without_methods_cannot_be_declared_public_as_a_websocket():
+    """A class endpoint leaves `Route.methods` None (it answers every method); the loader read that as WEBSOCKET,
+    so `('WEBSOCKET', path)` in public_routes served GET and DELETE anonymously."""
+    from starlette.routing import Route
+    router = APIRouter()
+    router.routes.append(Route('/p', _any_method_endpoint()))
+    app, manifest = _app_with(router, public_routes=(('WEBSOCKET', '/p'),))
+    before = list(app.routes)
+    with pytest.raises(ValueError, match='explicit methods'):
+        include_module_routers(app, [manifest], auth=_deny)
+    assert list(app.routes) == before
+
+
+@pytest.mark.Trait("Bug", "B109")
+def test_a_route_without_methods_is_refused_until_it_names_them():
+    from fastapi.testclient import TestClient
+    from starlette.routing import Route
+    router = APIRouter()
+    router.routes.append(Route('/p', _any_method_endpoint()))
+    problems = check_modules([ModuleManifest(name='files', router=router)])
+    assert len(problems) == 1 and '/p' in problems[0] and 'explicit methods' in problems[0]
+
+    named = APIRouter()
+    named.routes.append(Route('/p', _any_method_endpoint(), methods=['GET']))
+    # Starlette adds HEAD to a GET route, and a public declaration names every method the route answers
+    app, manifest = _app_with(named, public_routes=(('GET', '/p'), ('HEAD', '/p')))
+    include_module_routers(app, [manifest], auth=_deny)
+    client = TestClient(app)
+    assert client.get('/p').status_code == 200
+    assert client.delete('/p').status_code == 405
+
+
+@pytest.mark.Trait("Bug", "B109")
+def test_websocket_routes_keep_the_websocket_key():
+    from starlette.routing import WebSocketRoute
+
+    from backend.core.modules import _route_keys
+
+    async def ws(websocket):
+        return None
+
+    router = APIRouter()
+
+    @router.websocket('/api/x/ws')
+    async def _ws(websocket):
+        return None
+
+    assert _route_keys(WebSocketRoute('/w', ws)) == {('WEBSOCKET', '/w')}
+    assert _route_keys(router.routes[0]) == {('WEBSOCKET', '/api/x/ws')}
+    app, manifest = _app_with(router, public_routes=(('WEBSOCKET', '/api/x/ws'),))
+    include_module_routers(app, [manifest], auth=_deny)

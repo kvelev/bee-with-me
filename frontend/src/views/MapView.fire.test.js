@@ -68,7 +68,7 @@ async function mountMap(role = 'admin') {
   loc.positions = { [IVAN.device_id]: IVAN, [MARIA.device_id]: MARIA }
   const w = mount(MapView, {
     attachTo: document.body,
-    global: { plugins: [pinia, i18n], stubs: { SOSToast: true } },
+    global: { plugins: [pinia, i18n] },
   })
   await flushPromises()
   return w
@@ -399,7 +399,7 @@ describe('MapView: "Show on map" from a fire alarm', () => {
     const loc = useLocationsStore()
     loc.fetchLive = vi.fn(); loc.fetchSOS = vi.fn(); loc.fetchTrail = vi.fn()
     const Host = defineComponent({ render: () => h(KeepAlive, null, [h(MapView)]) })
-    const w = mount(Host, { attachTo: document.body, global: { plugins: [pinia, i18n], stubs: { SOSToast: true } } })
+    const w = mount(Host, { attachTo: document.body, global: { plugins: [pinia, i18n] } })
     await flushPromises()
     return w
   }

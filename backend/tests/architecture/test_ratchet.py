@@ -209,6 +209,38 @@ def test_remove_stale_deletes_only_stale_lines_and_adds_none(tmp_path):
         regen.main(['--add'])
 
 
+@pytest.mark.Trait("Bug", "B110")
+def test_remove_stale_also_deletes_stale_rows_of_allowlist_json(tmp_path, monkeypatch, capsys):
+    """`--remove-stale` only read importlinter.toml: stale `sql_writes` and `module_edges` rows stayed and it said 0."""
+    import json
+
+    from backend.tests.architecture import regen
+    from backend.tests.architecture.tooling import require_import_linter
+
+    require_import_linter()   # regen runs import-linter and grimp
+
+    original = (TOML.parent / 'allowlist.json').read_text(encoding='utf-8')
+    data = json.loads(original)
+    data['sql_writes'].insert(0, {'file': 'routers/groups.py', 'table': 'no_such_table', 'verb': 'INSERT', 'until': 4})
+    data['module_edges'].append({'from': 'backend.routers.groups', 'to': 'backend.modules.no_such_module.api', 'until': 4})
+    allowlist = tmp_path / 'allowlist.json'
+    allowlist.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+    cfg = tmp_path / 'copy.toml'
+    cfg.write_text(TOML.read_text(encoding='utf-8'), encoding='utf-8')
+
+    assert regen.remove_stale(cfg, allowlist) == 0
+
+    assert allowlist.read_text(encoding='utf-8') == original   # only the two stale rows went, the layout stayed
+    out = capsys.readouterr().out
+    assert 'no_such_table' in out and 'no_such_module' in out
+    assert '2 stale line(s) removed' in out
+
+    # the command line cleans both files
+    seen = []
+    monkeypatch.setattr(regen, 'remove_stale', lambda *paths: seen.append(paths) or 0)
+    assert regen.main(['--remove-stale']) == 0
+    assert seen == [(regen.TOML, regen.ALLOWLIST)]
+
 def _toml_named(names: list[str]) -> str:
     items = ', '.join(f'"{n}"' for n in names)
     return f'[[tool.importlinter.contracts]]\nname = "c"\nignore_imports = [{items}]\n'

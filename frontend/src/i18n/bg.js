@@ -18,6 +18,10 @@ const core = {
   },
   map: {
     trackers:      'Тракери',
+    offlineMapsLoading:     'Зареждане на офлайн картите…',
+    offlineMapsNoMaps:      'На сървъра няма налични офлайн карти',
+    offlineMapsServerError: 'Сървърът за офлайн карти не отговори. Опитай отново.',
+    offlineMapsSelectError: 'Картата не можа да се избере. Опитай отново.',
     noTrackers:    'Няма активни тракери',
     noFix:         'без GPS',
     latLon:        'Шир/Дълж',

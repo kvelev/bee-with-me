@@ -360,7 +360,7 @@ async function save() {
     showModal.value = false
     await load()
   } catch (e) {
-    const msg = typeof e === 'string' ? e : (e?.message ?? String(e))
+    const msg = errorText(e, t('users.actionError'))
     if (showModal.value) formError.value = msg
     else pageError.value = msg
   }
@@ -371,7 +371,7 @@ async function toggleLeader(group) {
     await setGroupLeader(group.id, editing.value.id, !group.is_leader)
     group.is_leader = !group.is_leader
   } catch (e) {
-    formError.value = typeof e === 'string' ? e : (e?.message ?? String(e))
+    formError.value = errorText(e, t('users.actionError'))
   }
 }
 
@@ -380,7 +380,7 @@ async function removeFromTeam(group) {
     await removeMember(group.id, editing.value.id)
     editing.value.groups = editing.value.groups.filter(g => g.id !== group.id)
   } catch (e) {
-    formError.value = typeof e === 'string' ? e : (e?.message ?? String(e))
+    formError.value = errorText(e, t('users.actionError'))
   }
 }
 
@@ -391,7 +391,7 @@ async function deactivate(user) {
     await deactivateUser(user.id)
     await load()
   } catch (e) {
-    pageError.value = typeof e === 'string' ? e : (e?.message ?? String(e))
+    pageError.value = errorText(e, t('users.actionError'))
   }
 }
 
@@ -401,7 +401,7 @@ async function reactivate(user) {
     await reactivateUser(user.id)
     await load()
   } catch (e) {
-    pageError.value = typeof e === 'string' ? e : (e?.message ?? String(e))
+    pageError.value = errorText(e, t('users.actionError'))
   }
 }
 
@@ -413,7 +413,7 @@ async function remove(user) {
     if (editing.value?.id === user.id) showModal.value = false
     await load()
   } catch (e) {
-    pageError.value = typeof e === 'string' ? e : (e?.message ?? String(e))
+    pageError.value = errorText(e, t('users.actionError'))
   }
 }
 </script>

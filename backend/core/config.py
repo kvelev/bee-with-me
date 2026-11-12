@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     # trackers from a previous operation don't linger on the map as ghosts.
     live_position_max_age_hours: int = 24
 
+    # True (today's behaviour): the live messages on /ws (`location_update`, `sos_alert`) carry the person's name,
+    # rank, phone, photo and teams. False: ids and position data only, and the backend does not read the personal
+    # fields for them at all (the browser gets them from the REST endpoints). Read when a message is built, not at
+    # import. Flips to False, and then goes away, once the device maker confirms nothing but the browser reads /ws.
+    live_personal_fields: bool = True
+
     serial_port: str = '/dev/ttyUSB0'
     serial_baud: int = 9600
 
@@ -41,7 +47,7 @@ class Settings(BaseSettings):
 
     offline_maps_password: str = 'change_me'
 
-    # OpenWeatherMap key, used only server-side by routers/weather.py (the browser never sees it).
+    # OpenWeatherMap key, used only server-side by modules/weather/http.py (the browser never sees it).
     # VITE_OWM_API_KEY is the name older .env files use from when the browser called OWM directly.
     owm_api_key: str = Field('', validation_alias=AliasChoices('owm_api_key', 'vite_owm_api_key'))
 

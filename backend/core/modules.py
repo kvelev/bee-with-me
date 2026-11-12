@@ -14,10 +14,11 @@ from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.routing import APIRoute, APIWebSocketRoute
-from starlette.routing import Mount
+from starlette.routing import Mount, WebSocketRoute
 
 NAME_PATTERN = re.compile(r'^[a-z][a-z_]*$')
 HTTP_METHODS = frozenset({'GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS', 'WEBSOCKET', 'MOUNT'})
+ANY_METHOD = '*'    # key of a route without explicit methods; deliberately not in HTTP_METHODS
 
 
 @dataclass(frozen=True)
@@ -73,14 +74,18 @@ def validate_manifest(m: ModuleManifest) -> list[str]:
 def _route_keys(route) -> set[tuple[str, str]]:
     """(METHOD, path) pairs of one route of a module router.
 
-    A WebSocket route has the method WEBSOCKET, a `Mount` (for example `StaticFiles`) has the method MOUNT.
+    A WebSocket route has the method WEBSOCKET, a `Mount` (for example `StaticFiles`) has the method MOUNT. A route
+    that names no methods (a class endpoint leaves `Route.methods` None and answers every method) has the method
+    `*`, which no `public_routes` entry can name: it is not a WebSocket and must not pass for one.
     """
     path = getattr(route, 'path', None)
     if path is None:
         return set()
     if isinstance(route, Mount):
         return {('MOUNT', path)}
-    methods = getattr(route, 'methods', None) or {'WEBSOCKET'}
+    if isinstance(route, WebSocketRoute):
+        return {('WEBSOCKET', path)}
+    methods = getattr(route, 'methods', None) or {ANY_METHOD}
     return {(method.upper(), path) for method in methods}
 
 
@@ -118,9 +123,11 @@ def _unguardable_problems(m: ModuleManifest) -> list[str]:
         if depth == 0 and keys and keys <= public:
             continue
         # fail closed: a type that yields no keys (a `Host`, a custom route) is refused too, never skipped
+        hint = (' (a route without explicit methods cannot be declared: give it methods=[...])'
+                if any(method == ANY_METHOD for method, _ in keys) else '')
         for path in sorted({path for _, path in keys}) or [f'<{kind.__name__} without a path>']:
             problems.append(f'{m.name}: {path} is a {kind.__name__}, which cannot carry the auth dependency: '
-                            'serve it from an endpoint or declare it in public_routes')
+                            f'serve it from an endpoint or declare it in public_routes{hint}')
     return problems
 
 
