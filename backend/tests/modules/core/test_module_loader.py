@@ -603,3 +603,35 @@ def test_a_fastapi_without_the_candidates_cache_attribute_is_refused_at_load(mon
     with pytest.raises(RuntimeError, match='_effective_candidates_version') as err:
         _loaded(router)
     assert 'FastAPI' in str(err.value)
+
+
+@pytest.mark.Trait("Task", "B139")
+def test_a_late_route_with_the_same_method_and_path_is_refused_at_start():
+    from backend.core.modules import recheck_module_routers
+    router, sub = _nested()
+    app = _loaded(router)
+
+    @sub.get('/first')
+    async def _shadow():
+        return {'late': True}
+
+    with pytest.raises(ValueError, match='module routers changed after loading') as err:
+        recheck_module_routers(app)
+    assert 'changed GET /api/x/first' in str(err.value)
+
+
+@pytest.mark.Trait("Task", "B139")
+def test_a_route_replaced_in_place_with_the_same_key_is_refused_at_start():
+    from fastapi.routing import APIRoute
+
+    from backend.core.modules import recheck_module_routers
+    router, sub = _nested()
+    app = _loaded(router)
+
+    async def _other():
+        return {}
+
+    sub.routes[0] = APIRoute('/first', _other, methods=['GET'])
+    with pytest.raises(ValueError, match='module routers changed after loading') as err:
+        recheck_module_routers(app)
+    assert 'changed GET /api/x/first' in str(err.value)

@@ -111,10 +111,10 @@ def _leaf_routes(routes: Iterable, depth: int = 0):
             continue
         real = getattr(route, 'starlette_route', None)
         if real is not None:                       # an effective context wrapping a non-API route
-            yield depth, type(real), _route_keys(real)
+            yield depth, type(real), _route_keys(real), real
         else:
             original = getattr(route, 'original_route', route)
-            yield depth, type(original), _route_keys(route)
+            yield depth, type(original), _route_keys(route), original
 
 
 def _unguardable_problems(m: ModuleManifest) -> list[str]:
@@ -127,7 +127,7 @@ def _unguardable_problems(m: ModuleManifest) -> list[str]:
         return []
     public = set(m.public_routes)
     problems: list[str] = []
-    for depth, kind, keys in _leaf_routes(m.router.routes):
+    for depth, kind, keys, _route in _leaf_routes(m.router.routes):
         if issubclass(kind, (APIRoute, APIWebSocketRoute)):
             continue
         if depth == 0 and keys and keys <= public:
@@ -197,16 +197,25 @@ def include_module_routers(app: FastAPI, modules: Iterable[ModuleManifest], *, a
                 app.include_router(APIRouter(routes=[route]), dependencies=None if is_public else [Depends(auth)])
     # what was mounted, for `recheck_module_routers`: the list itself, not whatever `MODULES` is at start-up
     app.state.loaded_modules = (tuple(modules), served_keys(modules))
+    app.state.loaded_route_ids = _served_routes(modules)
 
 
 def served_keys(modules: Iterable[ModuleManifest]) -> frozenset[tuple[str, str]]:
     """The (METHOD, path) keys of every leaf route of every module router, nested includes read as they are now."""
-    keys: set[tuple[str, str]] = set()
+    return frozenset((method, path) for method, path, _ in _served_routes(modules))
+
+
+def _served_routes(modules: Iterable[ModuleManifest]) -> frozenset[tuple[str, str, int]]:
+    """(METHOD, path, id of the route object) of every leaf route: a late route with a loaded key changes the ids (B139).
+
+    The route objects stay referenced by their routers while the app lives, so an id cannot be reused in between.
+    """
+    found: set[tuple[str, str, int]] = set()
     for m in modules:
         if m.router is not None:
-            for _depth, _kind, route_keys in _leaf_routes(m.router.routes):
-                keys |= route_keys
-    return frozenset(keys)
+            for _depth, _kind, route_keys, route in _leaf_routes(m.router.routes):
+                found |= {(method, path, id(route)) for method, path in route_keys}
+    return frozenset(found)
 
 
 def recheck_module_routers(app: FastAPI) -> None:
@@ -225,6 +234,11 @@ def recheck_module_routers(app: FastAPI) -> None:
     now = served_keys(modules)
     problems.extend(f'added {method} {path}' for method, path in sorted(now - loaded))
     problems.extend(f'missing {method} {path}' for method, path in sorted(loaded - now))
+    # same key, other route object: a second route on a loaded (METHOD, path), or one replaced in place (B139)
+    loaded_ids = getattr(app.state, 'loaded_route_ids', frozenset())
+    changed = {(method, path) for method, path, _ in loaded_ids ^ _served_routes(modules)} & loaded & now
+    problems.extend(f'changed {method} {path} (another route object with a loaded method and path)'
+                    for method, path in sorted(changed))
     if problems:
         raise ValueError(prefix + '; '.join(problems))
 
