@@ -146,3 +146,30 @@ def test_check_is_the_third_exclusive_option(monkeypatch):
     assert seen == [(regen.TOML, regen.ALLOWLIST)]
     with pytest.raises(SystemExit):
         regen.main(['--check', '--remove-stale'])
+
+
+@pytest.mark.Trait("Task", "B140")
+def test_an_approval_for_a_misspelled_file_is_stale():
+    typo = 'backend/tests/architecture/alowlist.json'
+    present = {TOML_REL: set(), JSON_REL: set()}
+    assert regen.stale_approvals({typo: {'sql_writes: x': 'approved'}}, present) == [(typo, 'sql_writes: x')]
+
+
+@pytest.mark.Trait("Task", "B140")
+def test_a_known_file_that_was_not_read_is_still_not_judged():
+    approved = {JSON_REL: {'sql_writes: x': 'approved'}}
+    assert regen.stale_approvals(approved, {TOML_REL: set()}) == []      # --check without an allowlist
+
+
+@pytest.mark.Trait("Task", "B140")
+def test_check_fails_on_an_approval_for_a_misspelled_file(tmp_path, capsys):
+    require_import_linter()
+    cfg, allowlist = _clean(tmp_path)
+    typo = 'backend/tests/architecture/importlinter.tml'
+    assert regen.check(cfg, allowlist, approved={typo: {'x': 'approved'}}) == 1
+    assert f'approval to delete by hand: {typo}: x' in capsys.readouterr().out
+
+
+@pytest.mark.Trait("Task", "B140")
+def test_main_has_two_blank_lines_before_it():
+    assert '\n\n\ndef main(' in Path(regen.__file__).read_text(encoding='utf-8').replace('\r\n', '\n')

@@ -27,6 +27,7 @@ TOML = Path(__file__).with_name('importlinter.toml')
 ALLOWLIST = Path(__file__).with_name('allowlist.json')
 TOML_REL = 'backend/tests/architecture/importlinter.toml'
 ALLOWLIST_REL = 'backend/tests/architecture/allowlist.json'
+KNOWN_FILES = frozenset({TOML_REL, ALLOWLIST_REL})
 
 _LINE = re.compile(r'^\s*"([^"]+ -> [^"]+)"\s*,?')
 
@@ -144,9 +145,13 @@ def _stale_json_rows(allowlist: Path) -> list[str]:
 
 
 def stale_approvals(approved: dict[str, dict[str, str]], present: dict[str, set[str]]) -> list[tuple[str, str]]:
-    """(file, entry) of every approval whose entry is not in its file. A file that is not in `present` is not judged."""
-    return [(rel, entry) for rel, entries_ in approved.items() if rel in present
-            for entry in entries_ if entry not in present[rel]]
+    """(file, entry) of every approval whose entry is not in its file.
+
+    A known allowlist that was not read (not in `present`) is not judged. A file that is not one of the allowlists at
+    all is a misspelled path, so every approval of it is stale (B140).
+    """
+    return [(rel, entry) for rel, entries_ in approved.items() if rel in present or rel not in KNOWN_FILES
+            for entry in entries_ if entry not in present.get(rel, ())]
 
 
 def _present(toml_text: str, json_text: str | None) -> dict[str, set[str]]:
@@ -200,6 +205,7 @@ def remove_stale(config: Path = TOML, allowlist: Path | None = None, *, approved
     _report_approvals(approved, config.read_text(encoding='utf-8'),
                       allowlist.read_text(encoding='utf-8') if allowlist is not None else None)
     return 0
+
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
