@@ -78,6 +78,7 @@ export const useTrackerUi = defineStore('trackerUi', () => {
     rankFilter.value = ''
     selectedDeviceId.value = null
     groupsMap.value = {}
+    nowTick.value = Date.now()      // the tick was stopped while away: ages start current, not up to 10 s old (B129)
   }
 
   return {

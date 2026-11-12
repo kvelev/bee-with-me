@@ -104,4 +104,13 @@ describe('useTrackerUi', () => {
     await nextTick()
     expect(seen).toHaveBeenCalledWith(['b'])
   })
+
+  it('reset() brings the clock up to now, so a panel mounted again shows current ages [B129]', () => {
+    const { ui } = setup([pos('a')])
+    const before = ui.nowTick
+    vi.setSystemTime(NOW + 60_000)                  // the map was away a minute, the tick was stopped
+    ui.reset()
+    expect(ui.nowTick).toBe(NOW + 60_000)
+    expect(ui.nowTick).not.toBe(before)
+  })
 })
