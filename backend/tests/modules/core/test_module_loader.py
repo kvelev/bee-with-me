@@ -389,3 +389,203 @@ def test_websocket_routes_keep_the_websocket_key():
     assert _route_keys(router.routes[0]) == {('WEBSOCKET', '/api/x/ws')}
     app, manifest = _app_with(router, public_routes=(('WEBSOCKET', '/api/x/ws'),))
     include_module_routers(app, [manifest], auth=_deny)
+
+
+# ── T605: the loader checks the module routers again at start-up (L1 of the review of T500) ───────────────────
+
+def _nested(path: str = '/api/x') -> tuple[APIRouter, APIRouter]:
+    """A module router that includes a sub-router: FastAPI keeps the include lazy, so `sub` can still grow."""
+    sub = APIRouter()
+
+    @sub.get('/first')
+    async def _first():
+        return {}
+
+    router = APIRouter()
+    router.include_router(sub, prefix=path)
+    return router, sub
+
+
+def _loaded(router: APIRouter) -> FastAPI:
+    app = FastAPI()
+    include_module_routers(app, [ModuleManifest(name='alpha', router=router)], auth=_deny)
+    return app
+
+
+@pytest.mark.Trait("Task", "T605")
+def test_a_mount_added_to_a_nested_router_after_loading_is_refused_at_start(tmp_path):
+    from fastapi.testclient import TestClient
+    from starlette.staticfiles import StaticFiles
+
+    from backend.core.modules import recheck_module_routers
+    (tmp_path / 'a.txt').write_text('open')
+    router, sub = _nested()
+    app = _loaded(router)
+    sub.mount('/late', StaticFiles(directory=tmp_path))
+    # the door this task closes: the late mount is served, and without the auth dependency
+    assert TestClient(app).get('/api/x/late/a.txt').status_code == 200
+    with pytest.raises(ValueError, match='module routers changed after loading') as err:
+        recheck_module_routers(app)
+    assert '/api/x/late' in str(err.value)
+
+
+@pytest.mark.Trait("Task", "T605")
+def test_an_api_route_added_to_a_nested_router_after_loading_is_refused_at_start():
+    from backend.core.modules import recheck_module_routers
+    router, sub = _nested()
+    app = _loaded(router)
+
+    @sub.get('/late')
+    async def _late():
+        return {}
+
+    # it would be guarded, and it is still refused: the served set changed
+    with pytest.raises(ValueError, match='module routers changed after loading') as err:
+        recheck_module_routers(app)
+    assert 'added GET /api/x/late' in str(err.value)
+
+
+@pytest.mark.Trait("Task", "T605")
+def test_a_route_added_to_the_top_router_after_loading_is_refused():
+    from fastapi.testclient import TestClient
+
+    from backend.core.modules import recheck_module_routers
+    router = _router('/a')
+    app = _loaded(router)
+
+    @router.get('/late')
+    async def _late():
+        return {}
+
+    assert TestClient(app).get('/late').status_code == 404      # the loader copied the top-level routes
+    with pytest.raises(ValueError, match='module routers changed after loading') as err:
+        recheck_module_routers(app)
+    assert 'added GET /late' in str(err.value)
+
+
+@pytest.mark.Trait("Task", "T605")
+def test_a_route_removed_after_loading_is_named_as_missing():
+    from backend.core.modules import recheck_module_routers
+    router, sub = _nested()
+    app = _loaded(router)
+    sub.routes.clear()
+    with pytest.raises(ValueError, match='module routers changed after loading') as err:
+        recheck_module_routers(app)
+    assert 'missing GET /api/x/first' in str(err.value)
+
+
+@pytest.mark.Trait("Task", "T605")
+def test_an_unchanged_module_list_passes():
+    from backend.core.modules import recheck_module_routers
+    router, _sub = _nested()
+    app = _loaded(router)
+    before = list(app.routes)
+    assert recheck_module_routers(app) is None
+    assert recheck_module_routers(app) is None                  # it changes nothing, so it can run again
+    assert list(app.routes) == before
+
+
+@pytest.mark.Trait("Task", "T605")
+def test_the_real_module_list_passes_the_recheck():
+    from backend import main
+    from backend.core.modules import recheck_module_routers
+    assert recheck_module_routers(main.app) is None
+
+
+@pytest.mark.Trait("Task", "T605")
+def test_the_recheck_is_of_what_was_mounted_not_of_the_current_list(monkeypatch):
+    from backend import main
+    from backend.core.modules import recheck_module_routers
+
+    async def _task():
+        return None
+
+    # as test_b93_lifespan_shutdown.py does before it runs main.lifespan(main.app)
+    monkeypatch.setattr(main, 'MODULES', (ModuleManifest(name='probe', router=_router('/probe'), tasks=(_task,)),))
+    assert recheck_module_routers(main.app) is None
+
+
+@pytest.mark.Trait("Task", "T605")
+def test_an_app_the_loader_never_saw_is_refused():
+    from backend.core.modules import recheck_module_routers
+    with pytest.raises(ValueError, match='module routers changed after loading'):
+        recheck_module_routers(FastAPI())
+
+
+@pytest.mark.Trait("Task", "T605")
+def test_a_manifest_that_became_invalid_after_loading_is_refused():
+    from starlette.routing import Route
+
+    from backend.core.modules import recheck_module_routers
+    router, sub = _nested()
+    app = _loaded(router)
+    # same key as the route that was loaded, so only check_modules can see it: a plain Route carries no auth
+    sub.routes.insert(0, Route('/first', _any_method_endpoint(), methods=['GET']))
+    with pytest.raises(ValueError, match='module routers changed after loading') as err:
+        recheck_module_routers(app)
+    assert 'cannot carry the auth dependency' in str(err.value)
+
+
+@pytest.mark.Trait("Task", "T605")
+def test_lifespan_calls_the_recheck_before_any_task_starts():
+    tree = ast.parse(MAIN.read_text(encoding='utf-8'))
+    lifespan = next(n for n in ast.walk(tree) if isinstance(n, ast.AsyncFunctionDef) and n.name == 'lifespan')
+    first: dict[str, int] = {}
+    for n in ast.walk(lifespan):
+        if isinstance(n, ast.Call):
+            f = n.func
+            name = f.id if isinstance(f, ast.Name) else f.attr if isinstance(f, ast.Attribute) else None
+            if name:
+                first[name] = min(first.get(name, n.lineno), n.lineno)
+    recheck = first['recheck_module_routers']
+    assert recheck < first['init_pool']
+    assert recheck < first['create_task']
+    assert recheck < first['start_module_tasks']
+    # nothing is caught around the call: it is a statement of the function body itself, with the lifespan's app
+    stmt = next(s for s in lifespan.body if isinstance(s, ast.Expr) and isinstance(s.value, ast.Call)
+                and getattr(s.value.func, 'id', None) == 'recheck_module_routers')
+    assert [getattr(a, 'id', None) for a in stmt.value.args] == ['app']
+
+
+@pytest.mark.Trait("Task", "T605")
+@pytest.mark.asyncio
+async def test_lifespan_refuses_to_start_when_a_route_was_added_late(monkeypatch):
+    from backend import main
+    started: list[str] = []
+
+    async def _init():
+        started.append('init_pool')
+
+    monkeypatch.setattr(main, 'init_pool', _init)
+    router, sub = _nested()
+    app = _loaded(router)
+
+    @sub.get('/late')
+    async def _late():
+        return {}
+
+    with pytest.raises(ValueError, match='module routers changed after loading'):
+        async with main.lifespan(app):
+            pass
+    assert started == []
+
+
+@pytest.mark.Trait("Task", "T605")
+def test_include_module_routers_records_the_modules_and_their_keys_on_the_app():
+    from backend.core.modules import served_keys
+    router, _sub = _nested()
+    manifests = [ModuleManifest(name='alpha', router=router), ModuleManifest(name='beta'),
+                 ModuleManifest(name='gamma', router=_router('/g'))]
+    app = FastAPI()
+    assert include_module_routers(app, iter(manifests), auth=_deny) is None
+    modules, keys = app.state.loaded_modules
+    assert modules == tuple(manifests)
+    assert keys == served_keys(manifests) == frozenset({('GET', '/api/x/first'), ('GET', '/g')})
+
+
+@pytest.mark.Trait("Task", "T605")
+def test_a_refused_list_leaves_no_record():
+    app = FastAPI()
+    with pytest.raises(ValueError, match='invalid module list'):
+        include_module_routers(app, [ModuleManifest(name='Bad', router=_router('/x'))], auth=_deny)
+    assert not hasattr(app.state, 'loaded_modules')

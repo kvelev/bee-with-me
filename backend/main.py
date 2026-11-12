@@ -18,7 +18,7 @@ from .database import close_pool, get_pool, init_pool
 from .db.migrate import BackupRequiredError, MigrationError, UpdateRequiredError, has_user_tables, migrate, status
 from .routers import auth, devices, export, groups, users, ws, test, hardware_reader, tiles
 from .ws import manager
-from .core.modules import include_module_routers, start_module_tasks, stop_module_tasks
+from .core.modules import include_module_routers, recheck_module_routers, start_module_tasks, stop_module_tasks
 from .modules import MODULES
 from .core.request_id import RequestIdLogFilter, RequestIdMiddleware, make_log_formatter
 from .modules.fire.api import anonymise_alerts, anonymise_hotspots, prune_fire_data
@@ -166,6 +166,8 @@ async def _ensure_default_admin() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _warn_insecure_defaults()
+    # a route added to a module router after the loader checked it stops the start here (nothing is caught)
+    recheck_module_routers(app)
     await init_pool()
     logger.info('Database pool ready')
     await _run_migrations()
