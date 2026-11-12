@@ -107,10 +107,21 @@ function optionalListOf(m, field, itemCheck, problems) {
 
 const dependsProblems = (d) => (isText(d) && NAME.test(d) ? [] : ['must be a module name'])
 
+const actionProblems = (a) => !isObject(a) ? ['must be an object']
+  : [
+      ...(isText(a.id) ? [] : ['id must be a non-empty string']),
+      ...(isText(a.target) ? [] : ['target must be a non-empty string (the place the action is offered)']),
+      ...(Number.isFinite(a.order) ? [] : ['order must be a finite number']),
+      ...(isText(a.labelKey) ? [] : ['labelKey must be an i18n key']),
+      ...(typeof a.onSelect === 'function' ? [] : ['onSelect must be a function']),
+      ...(a.isAvailable === undefined || typeof a.isAvailable === 'function' ? [] : ['isAvailable must be a function']),
+      ...(a.testId === undefined || isText(a.testId) ? [] : ['testId must be a non-empty string']),
+    ]
+
 /**
  * Check a module manifest. Returns one message per problem; an empty array means the manifest is valid.
  * Required fields: name, routes, nav, mapLayers, panels, banners, liveHandlers, i18n ({en, bg}), depends.
- * Optional fields (checked only when present): popups, contextMenu, live ({setup, onTick, onReconnect} functions),
+ * Optional fields (checked only when present): popups, contextMenu, actions, live ({setup, onTick, onReconnect} functions),
  * and `toggle` on a mapLayers item.
  */
 export function validateManifest(m) {
@@ -128,6 +139,7 @@ export function validateManifest(m) {
   listOf(m, 'depends', dependsProblems, problems)
   optionalListOf(m, 'popups', popupProblems, problems)
   optionalListOf(m, 'contextMenu', contextMenuProblems, problems)
+  optionalListOf(m, 'actions', actionProblems, problems)
   if (m.live !== undefined) {
     if (!isObject(m.live)) problems.push('live: must be an object with setup, onTick or onReconnect functions')
     else {

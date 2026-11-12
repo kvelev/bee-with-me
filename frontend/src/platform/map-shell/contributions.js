@@ -2,7 +2,7 @@
 // with "legacy entries" (items of the same shape for features that have no module yet) and sort them.
 // Each collector takes (modules, legacy = []); `legacy` is a list of items of that one kind.
 // `contributionProblems` checks all kinds at once, so its `legacy` is an object
-// { banners, mapLayers, panels, popups, contextMenu } (each optional).
+// { banners, mapLayers, panels, popups, contextMenu, actions } (each optional).
 import { BANNER_PRIORITY } from './zorder.js'
 
 const SOS_ID = 'sos'
@@ -76,10 +76,18 @@ export function collectContextMenu(modules, legacy = []) {
   return gather(modules, 'contextMenu', legacy).sort(byNumberThenId('order'))
 }
 
+// Actions a module offers on an item of another module's panel (today: the rows of the tracker panel).
+// Only the ones for `target`, by `order`, then id.
+export function collectActions(modules, target, legacy = []) {
+  return gather(modules, 'actions', legacy)
+    .filter((a) => a.target === target)
+    .sort(byNumberThenId('order'))
+}
+
 /** Cross-module checks the single-manifest validator cannot do. One message per problem; [] is clean. */
 export function contributionProblems(modules, legacy = {}) {
   if (Array.isArray(legacy) || (legacy !== undefined && legacy !== null && typeof legacy !== 'object')) {
-    throw new TypeError('contributionProblems: legacy must be { banners, mapLayers, panels, popups, contextMenu }')
+    throw new TypeError('contributionProblems: legacy must be { banners, mapLayers, panels, popups, contextMenu, actions }')
   }
   const extra = legacy || {}
   const problems = []
@@ -90,6 +98,7 @@ export function contributionProblems(modules, legacy = {}) {
     panels: gather(modules, 'panels', extra.panels),
     popups: gather(modules, 'popups', extra.popups),
     contextMenu: gather(modules, 'contextMenu', extra.contextMenu),
+    actions: gather(modules, 'actions', extra.actions),
   }
 
   for (const [kind, items] of Object.entries(lists)) {
