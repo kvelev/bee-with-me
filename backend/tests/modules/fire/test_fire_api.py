@@ -42,7 +42,6 @@ def test_the_alarm_lock_key_is_one_value():
 PASS_THROUGH = [
     ('resolve_hq_alerts', repository), ('resolve_disabled_alerts', repository), ('get_alert_out', repository),
     ('notify', service), ('notify_alerts_updated', service),
-    ('anonymise_alerts', repository), ('anonymise_hotspots', repository), ('prune_fire_data', repository),
 ]
 
 
@@ -249,3 +248,10 @@ def test_no_production_file_imports_the_old_fire_package():
             if imported == 'backend.fire' or imported.startswith('backend.fire.'):
                 offenders.append((module, imported))
     assert offenders == []
+
+
+@pytest.mark.Trait("Task", "T620")
+def test_the_fire_clean_up_is_not_part_of_the_public_face():
+    # the clean-up is a task of the fire module itself (fire.tasks calls the repository); nobody outside calls it
+    for name in ('anonymise_alerts', 'anonymise_hotspots', 'prune_fire_data'):
+        assert not hasattr(api, name), name
